@@ -1,0 +1,31 @@
+{
+  "name": "purescript-presto-backend",
+  "version": "1.0.0",
+  "description": "Flow Monad for your Backend",
+  "main": "index.js",
+  "directories": {
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/juspay/purescript-presto-backend.git"
+  },
+  "keywords": [
+    "Flow",
+    "Monad",
+    "Backend"
+  ],
+  "author": "iamnewspecies",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/juspay/purescript-presto-backend/issues"
+  },
+  "homepage": "https://github.com/juspay/purescript-presto-backend#readme",
+  "dependencies": {
+    "child_process": "^1.0.2",
+    "express": "^4.15.2"
+  }
+}
