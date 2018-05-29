@@ -25,7 +25,7 @@ module Presto.Backend.APIHandler where
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (Error)
 import Prelude (Unit, show, (<$>))
-import Presto.Core.Types.API (Header(..), Headers(..), Request(..), URL)
+import Presto.Backend.Types.API (Header(..), Headers(..), Request(..), URL)
 
 
 type NativeHeader = { field :: String , value :: String}

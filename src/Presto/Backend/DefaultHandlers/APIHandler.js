@@ -45,8 +45,8 @@ var callAPIFn = function(error) {
         .then(function(response) {
           console.log("CALL API AXIOS RESP ",response.data);
           success(JSON.stringify({
-            code:response.code,
-            status:response.status,
+            code:response.status,
+            status:response.statusText,
             response:response.data
           }))();
         })
