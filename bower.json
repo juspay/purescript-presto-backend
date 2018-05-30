@@ -21,6 +21,7 @@
   ],
   "dependencies": {
     "purescript-express": "^0.5.0",
+    "purescript-presto": "^0.2.3",
     "purescript-sequelize": "https://github.com/juspay/purescript-sequelize.git",
     "purescript-body-parser": "https://github.com/juspay/purescript-body-parser.git",
     "purescript-uuid": "^4.0.0",
