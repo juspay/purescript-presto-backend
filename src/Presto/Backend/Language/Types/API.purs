@@ -13,23 +13,26 @@ module Presto.Backend.Types.API
   , URL
   , defaultMakeRequest
   , defaultMakeRequest_
-  , defaultDecodeResponse
   , makeRequest
   , decodeResponse
   , responsePayload
   ) where
 
-import Prelude
+-- defaultDecodeResponse
 
-import Data.Foreign (F)
+import Prelude
+import Control.Monad.Except.Trans (ExceptT(..))
+import Data.Foreign (F, Foreign, ForeignError(..))
 import Data.Foreign.Class (class Decode, class Encode)
 import Data.Foreign.Generic.Class (class GenericDecode, class GenericEncode)
 import Data.Generic.Rep (class Generic)
+import Data.Identity (Identity(..))
+import Data.List.Lazy.NonEmpty (NonEmptyList(..))
 import Presto.Backend.Utils.Encoding (defaultDecode, defaultEncode, defaultDecodeJSON, defaultEncodeJSON)
 
 class RestEndpoint a b | a -> b, b -> a where
   makeRequest :: a -> Headers -> Request
-  decodeResponse :: String -> F b
+  decodeResponse :: Foreign -> ExceptT (NonEmptyList ForeignError) Identity b
 
 defaultMakeRequest :: forall a x. Generic a x => GenericEncode x
                    => Method -> URL -> Headers -> a -> Request
@@ -46,9 +49,9 @@ defaultMakeRequest_ method url headers = Request { method:  method
                                                  , payload: ""
                                                  }
 
-defaultDecodeResponse :: forall a x. Generic a x => GenericDecode x
-                      => String -> F a
-defaultDecodeResponse = defaultDecodeJSON
+-- defaultDecodeResponse :: forall a x. Generic a x => GenericDecode x
+--                       => String -> F a
+-- defaultDecodeResponse = defaultDecodeJSON
 
 type RegTokens =
   { regToken :: String

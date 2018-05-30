@@ -28,18 +28,20 @@ import Control.Monad.Eff.Exception (Error, error)
 import Control.Monad.Free (Free, liftF)
 import Data.Either (Either(..))
 import Data.Exists (Exists, mkExists)
+import Data.Foreign (ForeignError(..))
 import Data.Foreign.Class (class Decode, class Encode)
+import Data.List.Lazy.NonEmpty (NonEmptyList(..))
 import Data.Maybe (Maybe(..))
 import Data.Options (Options)
 import Presto.Backend.DB (findOne, findAll, create, update, delete) as DB
 import Presto.Backend.Language.APIInteract (apiInteract)
 import Presto.Backend.Types (BackendAff)
-import Presto.Backend.Types.API (class RestEndpoint, Headers, ErrorResponse)
+import Presto.Backend.Types.API (class RestEndpoint, Headers)
 import Presto.Backend.Types.Language.Interaction (Interaction)
 import Sequelize.Class (class Model)
 import Sequelize.Types (Conn)
 
-type APIResult s = Either ErrorResponse s
+type APIResult s = Either (NonEmptyList ForeignError) s
 newtype Control s = Control (AVar s)
 data BackendException err = CustomException err | StringException Error
 
