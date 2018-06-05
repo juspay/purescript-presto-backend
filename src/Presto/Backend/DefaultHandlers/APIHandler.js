@@ -35,7 +35,6 @@ var callAPIFn = function(error) {
         for(var i=0;i<headersRaw.length;i++){
           headers[headersRaw[i].field] = headersRaw[i].value;
         }
-        console.log("CALL API AXIOS REQ ",request);
         return axios.request({
           url: request.url,
           method: request.method,
@@ -43,7 +42,6 @@ var callAPIFn = function(error) {
           headers: headers
         })
         .then(function(response) {
-          console.log("CALL API AXIOS RESP ",response.data);
           success(JSON.stringify({
             code:response.status,
             status:response.statusText,
@@ -52,7 +50,6 @@ var callAPIFn = function(error) {
         })
         .catch(function(err) {
           var response  = err.response;
-          console.log("CALL API AXIOS ERR ", err);
           if(checkForNullOrUndefined(response.status) && checkForNullOrUndefined(response.statusText) && checkForNullOrUndefined(response.data)) {
             // if(response.status === 200 || response.status === "200") {
               success(JSON.stringify({
@@ -90,10 +87,5 @@ exports["callAPI'"] = callAPIFn;
 exports["logString'"] = function(data) {
   console.log("logString " + JSON.stringify(data));
 }
-
-
 exports["callAPI'"] = callAPIFn;
 
-exports["logString'"] = function(data) {
-  console.log("logString " + JSON.stringify(data));
-}
