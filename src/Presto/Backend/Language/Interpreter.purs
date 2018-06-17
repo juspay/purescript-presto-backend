@@ -22,6 +22,7 @@
 module Presto.Backend.Interpreter where
 
 import Prelude
+
 import Cache (CacheConn, delKey, expire, getHashKey, getKey, incr, publishToChannel, setHash, setKey, setMessageHandler, setex, subscribe)
 import Control.Monad.Aff (Aff, Canceler(..), forkAff)
 import Control.Monad.Aff.AVar (AVAR, makeVar, putVar)
@@ -38,8 +39,7 @@ import Data.StrMap (StrMap, lookup)
 import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), BackendFlowCommandsWrapper, BackendFlowWrapper(..))
 import Presto.Backend.SystemCommands (runSysCmd)
 import Presto.Backend.Types (BackendAff)
-import Presto.Core.Flow (runAPIInteraction)
-import Presto.Core.Language.Runtime.API (APIRunner)
+import Presto.Core.Flow (runAPIInteraction, APIRunner)
 import Presto.Core.Types.Language.Flow (Control(..))
 import Sequelize.Types (Conn)
 

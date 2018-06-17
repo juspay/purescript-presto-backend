@@ -54,20 +54,8 @@ data BackendFlowCommands next st rt s =
     | Update (Either Error (Array s)) (Either Error (Array s) -> next)
     | Delete (Either Error Int) (Either Error Int -> next)
     | GetDBConn String (Conn -> next)
-    | GetCacheConn String (CacheConn -> next)
-    | Log String s next
-    | SetCache CacheConn String String (Either Error String -> next)
-    | SetCacheWithExpiry CacheConn String String String (Either Error String -> next)
-    | GetCache CacheConn String (Either Error String -> next)
-    | DelCache CacheConn String (Either Error String -> next)
     | Fork (BackendFlow st rt s) (Control s -> next)
-    | Expire CacheConn String String (Either Error String -> next)
-    | Incr CacheConn String (Either Error String -> next)
-    | SetHash CacheConn String String (Either Error String -> next)
-    | GetHashKey CacheConn String String (Either Error String -> next)
-    | PublishToChannel CacheConn String String (Either Error String -> next)
-    | Subscribe CacheConn String (Either Error String -> next)
-    | SetMessageHandler CacheConn (String -> String -> Unit) (Either Error String -> next)
+    | Log String s next
     | RunSysCmd String (String -> next)
 
     -- | HandleException 
@@ -145,70 +133,13 @@ getDBConn :: forall st rt. String -> BackendFlow st rt Conn
 getDBConn dbName = do
   wrap $ GetDBConn dbName id
 
-getCacheConn :: forall st rt. String -> BackendFlow st rt CacheConn
-getCacheConn dbName = wrap $ GetCacheConn dbName id
-
 callAPI :: forall st rt a b. Encode a => Decode b => RestEndpoint a b
   => Headers -> a -> BackendFlow st rt (APIResult b)
 callAPI headers a = wrap $ CallAPI (apiInteract a headers) id 
 
-setCache :: forall st rt. String -> String ->  String -> BackendFlow st rt (Either Error String)
-setCache cacheName key value = do
-  cacheConn <- getCacheConn cacheName
-  wrap $ SetCache cacheConn key value id
-
-getCache :: forall st rt. String -> String -> BackendFlow st rt (Either Error String)
-getCache cacheName key = do
-  cacheConn <- getCacheConn cacheName
-  wrap $ GetCache cacheConn key id
-
-delCache :: forall st rt. String -> String -> BackendFlow st rt (Either Error String)
-delCache cacheName key = do
-  cacheConn <- getCacheConn cacheName
-  wrap $ DelCache cacheConn key id
-
-setCacheWithExpiry :: forall st rt. String -> String -> String -> String -> BackendFlow st rt (Either Error String)
-setCacheWithExpiry cacheName key value ttl = do
-  cacheConn <- getCacheConn cacheName
-  wrap $ SetCacheWithExpiry cacheConn key value ttl id
-
 log :: forall st rt a. String -> a -> BackendFlow st rt Unit
 log tag message = wrap $ Log tag message unit
 
-expire :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error String)
-expire cacheName key ttl = do 
-  cacheConn <- getCacheConn cacheName
-  wrap $ Expire cacheConn key ttl id
-
-incr :: forall st rt. String -> String -> BackendFlow st rt (Either Error String)
-incr cacheName key = do
-  cacheConn <- getCacheConn cacheName
-  wrap $ Incr cacheConn key id
-
-setHash :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error String)
-setHash cacheName key value = do
-  cacheConn <- getCacheConn cacheName
-  wrap $ SetCache cacheConn key value id
-
-getHashKey :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error String)
-getHashKey cacheName key field = do 
-  cacheConn <- getCacheConn cacheName
-  wrap $ GetHashKey cacheConn key field id 
-
-publishToChannel :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error String)
-publishToChannel cacheName channel message = do
-  cacheConn <- getCacheConn cacheName
-  wrap $ PublishToChannel cacheConn channel message id
-
-subscribe :: forall st rt. String -> String -> BackendFlow st rt (Either Error String)
-subscribe cacheName channel = do
-  cacheConn <- getCacheConn cacheName
-  wrap $ Subscribe cacheConn channel id
-
-setMessageHandler :: forall st rt. String -> (String -> String -> Unit) -> BackendFlow st rt (Either Error String)
-setMessageHandler cacheName f = do
-  cacheConn <- getCacheConn cacheName
-  wrap $ SetMessageHandler cacheConn f id
 
 runSysCmd :: forall st rt. String -> BackendFlow st rt String
 runSysCmd cmd = wrap $ RunSysCmd cmd id
