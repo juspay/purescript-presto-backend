@@ -36,7 +36,6 @@ data BackendFlowCommands next st rt s =
     | DoAff (forall eff. BackendAff eff s) (s -> next)
     | ThrowException String (s -> next)
     | Fork (BackendFlow st rt s) (Control s -> next)
-    | Log String s next
 
     -- | HandleException 
     -- | Await (Control s) (s -> next)
@@ -69,6 +68,3 @@ throwException errorMessage = wrap $ ThrowException errorMessage id
 doAff :: forall st rt a. (forall eff. BackendAff eff a) -> BackendFlow st rt a
 doAff aff = wrap $ DoAff aff id
 
-
-log :: forall st rt a. String -> a -> BackendFlow st rt Unit
-log tag message = wrap $ Log tag message unit
