@@ -55,8 +55,6 @@ type DB = {
   , connection :: Conn
 }
 
-type LogRunner = forall e a. String -> a -> Aff e Unit
-
 data Connection = Sequelize Conn | Redis CacheConn
 
 data BackendRuntime = BackendRuntime APIRunner (StrMap Connection) LogRunner

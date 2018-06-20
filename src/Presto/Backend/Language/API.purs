@@ -4,7 +4,9 @@ import Prelude
 
 import Control.Monad.Free (Free)
 import Data.Foreign.Class (class Decode, class Encode)
-import Presto.Core.Flow (class Inject, APIResult, Interaction, inject)
+import Presto.Backend.Flow (BackendFlow(..), apiFlow)
+import Presto.Core.Flow (class Inject, class Run, APIResult, Interaction, inject)
+import Presto.Core.Language.Runtime.Interaction (runAPIInteraction)
 import Presto.Core.Types.API (class RestEndpoint, Headers)
 import Presto.Core.Types.Language.APIInteract (apiInteract)
 import Presto.Core.Utils.Existing (Existing, mkExisting, unExisting)
@@ -19,6 +21,10 @@ newtype ApiF next = ApiF (Existing APIMethod next)
 
 instance functorApiF :: Functor ApiF where
   map f (ApiF e) = ApiF $ mkExisting $ f <$> unExisting e
+
+instance runApiF :: Run ApiF BackendFlow where
+  runAlgebra (ApiF e) = runAlgebra' $ unExisting e
+    where runAlgebra' (CallAPI i next) = apiFlow (\apiRunner -> runAPIInteraction apiRunner i) >>= (pure <<< next)
 
 callAPI :: forall f a b. Inject ApiF f => Encode a => Decode b => RestEndpoint a b
   => Headers -> a -> Free f (APIResult b)

@@ -23,11 +23,14 @@ module Presto.Backend.Flow where
 
 import Prelude
 
-import Control.Monad.Aff (Milliseconds)
+import Control.Monad.Aff (Aff, Milliseconds)
 import Control.Monad.Free (Free, liftF)
+import Control.Monad.Rec.Class (class MonadRec, Step(..), tailRecM)
 import Presto.Backend.Types (BackendAff)
-import Presto.Core.Flow (Control)
-import Presto.Core.Utils.Existing (Existing, mkExisting)
+import Presto.Core.Flow (Control, APIRunner)
+import Presto.Core.Utils.Existing (Existing, mkExisting, unExisting)
+
+type LogRunner = forall e a. String -> a -> Aff e Unit
 
 data BackendFlowCommands s next = 
       DoAff (forall eff. BackendAff eff s) (s -> next)
@@ -36,14 +39,52 @@ data BackendFlowCommands s next =
     | HandleException s next
     | Await (Control s) (s -> next)
     | Delay Milliseconds next
+    -- private commands
+    | LogFlow (forall e. LogRunner -> BackendAff e s) (s -> next)
+    | APIFlow (forall e. APIRunner -> Aff e s) (s -> next)
 
+instance functorBackendFlowCommands :: Functor (BackendFlowCommands s) where
+  map f (DoAff g h) = DoAff g (f <<< h)
+  map f (ThrowException g h) = ThrowException g (f <<< h)
+  map f (Fork g h) = Fork g (f <<< h)
+  map f (HandleException g h) = HandleException g (f h)
+  map f (Await g h) = Await g (f <<< h)
+  map f (Delay g h) = Delay g (f h)
+  map f (LogFlow g h) = LogFlow g (f <<< h)
+  map f (APIFlow g h) = APIFlow g (f <<< h)
 
 newtype BackendFlowF next = BackendFlowF (Existing BackendFlowCommands next)
 
-type BackendFlow = Free BackendFlowF
+instance functorBackendFlowF :: Functor BackendFlowF where
+  map f (BackendFlowF e) = BackendFlowF $ mkExisting $ f <$> unExisting e
+
+newtype BackendFlow a = BackendFlow (Free BackendFlowF a)
+
+unBackendFlow :: forall a. BackendFlow a -> Free BackendFlowF a
+unBackendFlow (BackendFlow fl) = fl
+
+instance functorBackendFlow :: Functor BackendFlow where
+  map f (BackendFlow fl) = BackendFlow (f <$> fl)
+
+instance applyBackendFlow :: Apply BackendFlow where
+  apply (BackendFlow f) (BackendFlow fl) = BackendFlow (apply f fl)
+
+instance applicativeBackendFlow :: Applicative BackendFlow where
+  pure = BackendFlow <<< pure
+
+instance bindBackendFlow :: Bind BackendFlow where
+  bind (BackendFlow fl) f = BackendFlow $ bind fl (unBackendFlow <<< f)
+
+instance monadBackendFlow :: Monad BackendFlow
+
+instance monadRecBackendFlow :: MonadRec BackendFlow where
+  tailRecM k a = k a >>= case _ of
+    Loop b -> tailRecM k b
+    Done r -> pure r
+
 
 wrap :: forall next s. BackendFlowCommands s next -> BackendFlow next
-wrap = liftF <<< BackendFlowF <<< mkExisting
+wrap = BackendFlow <<< liftF <<< BackendFlowF <<< mkExisting
 
 doAff :: forall a. (forall eff. BackendAff eff a) -> BackendFlow a
 doAff aff = wrap $ DoAff aff id
@@ -62,3 +103,9 @@ await c = wrap $ Await c id
 
 delay :: Milliseconds -> BackendFlow Unit
 delay t = wrap $ Delay t unit
+
+logFlow :: forall a. (forall e. LogRunner -> BackendAff e a) -> BackendFlow a
+logFlow f = wrap $ LogFlow f id
+
+apiFlow :: forall a. (forall e. APIRunner -> Aff e a) -> BackendFlow a
+apiFlow f = wrap $ APIFlow f id
