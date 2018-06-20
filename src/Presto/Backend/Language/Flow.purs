@@ -23,48 +23,42 @@ module Presto.Backend.Flow where
 
 import Prelude
 
+import Control.Monad.Aff (Milliseconds)
 import Control.Monad.Free (Free, liftF)
-import Data.Exists (Exists, mkExists)
 import Presto.Backend.Types (BackendAff)
-import Presto.Core.Types.Language.Flow (Control)
+import Presto.Core.Flow (Control)
+import Presto.Core.Utils.Existing (Existing, mkExisting)
 
-data BackendFlowCommands next st rt s = 
-      Ask (rt -> next)
-    | Get (st -> next)
-    | Put st (st -> next)
-    | Modify (st -> st) (st -> next)
-    | DoAff (forall eff. BackendAff eff s) (s -> next)
+data BackendFlowCommands s next = 
+      DoAff (forall eff. BackendAff eff s) (s -> next)
     | ThrowException String (s -> next)
-    | Fork (BackendFlow st rt s) (Control s -> next)
+    | Fork (BackendFlow s) (Control s -> next)
+    | HandleException s next
+    | Await (Control s) (s -> next)
+    | Delay Milliseconds next
 
-    -- | HandleException 
-    -- | Await (Control s) (s -> next)
-    -- | Delay Milliseconds next
 
-type BackendFlowCommandsWrapper st rt s next = BackendFlowCommands next st rt s
+newtype BackendFlowF next = BackendFlowF (Existing BackendFlowCommands next)
 
-newtype BackendFlowWrapper st rt next = BackendFlowWrapper (Exists (BackendFlowCommands next st rt))
+type BackendFlow = Free BackendFlowF
 
-type BackendFlow st rt next = Free (BackendFlowWrapper st rt) next
+wrap :: forall next s. BackendFlowCommands s next -> BackendFlow next
+wrap = liftF <<< BackendFlowF <<< mkExisting
 
-wrap :: forall next st rt s. BackendFlowCommands next st rt s -> BackendFlow st rt next
-wrap = liftF <<< BackendFlowWrapper <<< mkExists
-
-ask :: forall st rt. BackendFlow st rt rt
-ask = wrap $ Ask id
-
-get :: forall st rt. BackendFlow st rt st
-get = wrap $ Get id
-
-put :: forall st rt. st -> BackendFlow st rt st
-put st = wrap $ Put st id
-
-modify :: forall st rt. (st -> st) -> BackendFlow st rt st
-modify fst = wrap $ Modify fst id
-
-throwException :: forall st rt a. String -> BackendFlow st rt a
-throwException errorMessage = wrap $ ThrowException errorMessage id
-
-doAff :: forall st rt a. (forall eff. BackendAff eff a) -> BackendFlow st rt a
+doAff :: forall a. (forall eff. BackendAff eff a) -> BackendFlow a
 doAff aff = wrap $ DoAff aff id
 
+throwException :: forall a. String -> BackendFlow a
+throwException errorMessage = wrap $ ThrowException errorMessage id
+
+fork :: forall a. BackendFlow a -> BackendFlow (Control a)
+fork f = wrap $ Fork f id
+
+handleException :: forall a. a -> BackendFlow Unit
+handleException e = wrap $ HandleException e unit
+
+await :: forall a. Control a -> BackendFlow a
+await c = wrap $ Await c id
+
+delay :: Milliseconds -> BackendFlow Unit
+delay t = wrap $ Delay t unit
