@@ -25,20 +25,14 @@ import Prelude
 
 import Control.Monad.Free (Free, liftF)
 import Data.Exists (Exists, mkExists)
-import Data.Foreign.Class (class Decode, class Encode)
 import Presto.Backend.Types (BackendAff)
-import Presto.Core.Types.API (class RestEndpoint, Headers)
-import Presto.Core.Types.Language.API (APIResult)
-import Presto.Core.Types.Language.APIInteract (apiInteract)
 import Presto.Core.Types.Language.Flow (Control)
-import Presto.Core.Types.Language.Interaction (Interaction)
 
 data BackendFlowCommands next st rt s = 
       Ask (rt -> next)
     | Get (st -> next)
     | Put st (st -> next)
     | Modify (st -> st) (st -> next)
-    | CallAPI (Interaction (APIResult s)) (APIResult s -> next)
     | DoAff (forall eff. BackendAff eff s) (s -> next)
     | ThrowException String (s -> next)
     | Fork (BackendFlow st rt s) (Control s -> next)
@@ -76,10 +70,6 @@ throwException errorMessage = wrap $ ThrowException errorMessage id
 doAff :: forall st rt a. (forall eff. BackendAff eff a) -> BackendFlow st rt a
 doAff aff = wrap $ DoAff aff id
 
-
-callAPI :: forall st rt a b. Encode a => Decode b => RestEndpoint a b
-  => Headers -> a -> BackendFlow st rt (APIResult b)
-callAPI headers a = wrap $ CallAPI (apiInteract a headers) id 
 
 log :: forall st rt a. String -> a -> BackendFlow st rt Unit
 log tag message = wrap $ Log tag message unit
