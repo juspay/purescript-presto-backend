@@ -22,22 +22,16 @@
 module Presto.Backend.Flow where
 
 import Prelude
-import Control.Monad.Eff.Exception (Error)
+
 import Control.Monad.Free (Free, liftF)
-import Presto.Backend.DB (findOne, findAll, create, update, delete) as DB
-import Data.Either (Either(..))
 import Data.Exists (Exists, mkExists)
 import Data.Foreign.Class (class Decode, class Encode)
-import Data.Maybe (Maybe(..))
-import Data.Options (Options)
 import Presto.Backend.Types (BackendAff)
 import Presto.Core.Types.API (class RestEndpoint, Headers)
+import Presto.Core.Types.Language.API (APIResult)
 import Presto.Core.Types.Language.APIInteract (apiInteract)
-import Presto.Core.Types.Language.Flow (APIResult, Control)
+import Presto.Core.Types.Language.Flow (Control)
 import Presto.Core.Types.Language.Interaction (Interaction)
-import Sequelize.Class (class Model)
-import Sequelize.Types (Conn)
-import Cache (CacheConn)
 
 data BackendFlowCommands next st rt s = 
       Ask (rt -> next)
@@ -47,13 +41,6 @@ data BackendFlowCommands next st rt s =
     | CallAPI (Interaction (APIResult s)) (APIResult s -> next)
     | DoAff (forall eff. BackendAff eff s) (s -> next)
     | ThrowException String (s -> next)
-    | FindOne (Either Error (Maybe s)) (Either Error (Maybe s) -> next)
-    | FindAll (Either Error (Array s)) (Either Error (Array s) -> next)
-    | Create  (Either Error (Maybe s)) (Either Error (Maybe s) -> next)
-    | FindOrCreate (Either Error (Maybe s)) (Either Error (Maybe s) -> next)
-    | Update (Either Error (Array s)) (Either Error (Array s) -> next)
-    | Delete (Either Error Int) (Either Error Int -> next)
-    | GetDBConn String (Conn -> next)
     | Fork (BackendFlow st rt s) (Control s -> next)
     | Log String s next
     | RunSysCmd String (String -> next)
@@ -89,49 +76,6 @@ throwException errorMessage = wrap $ ThrowException errorMessage id
 doAff :: forall st rt a. (forall eff. BackendAff eff a) -> BackendFlow st rt a
 doAff aff = wrap $ DoAff aff id
 
-findOne :: forall model st rt. Model model => String -> Options model -> BackendFlow st rt (Either Error (Maybe model))
-findOne dbName options = do
-  conn <- getDBConn dbName
-  model <- doAff do
-        DB.findOne conn options
-  wrap $ FindOne model id
-
-findAll :: forall model st rt. Model model => String -> Options model -> BackendFlow st rt (Either Error (Array model))
-findAll dbName options = do
-  conn <- getDBConn dbName
-  model <- doAff do
-        DB.findAll conn options
-  wrap $ FindAll model id 
-
-create :: forall model st rt. Model model => String -> model -> BackendFlow st rt (Either Error (Maybe model))
-create dbName model = do
-  conn <- getDBConn dbName
-  result <- doAff do
-        DB.create conn model
-  wrap $ Create result id
-
-findOrCreate :: forall model st rt. Model model => String -> Options model -> BackendFlow st rt (Either Error (Maybe model))
-findOrCreate dbName options = do
-  conn <- getDBConn dbName
-  wrap $ FindOrCreate (Right Nothing) id
-
-update :: forall model st rt. Model model => String -> Options model -> Options model -> BackendFlow st rt (Either Error (Array model))
-update dbName updateValues whereClause = do
-  conn <- getDBConn dbName
-  model <- doAff do
-        DB.update conn updateValues whereClause
-  wrap $ Update model id
-
-delete :: forall model st rt. Model model => String -> Options model -> BackendFlow st rt (Either Error Int)
-delete dbName options = do
-  conn <- getDBConn dbName
-  model <- doAff do
-        DB.delete conn options
-  wrap $ Delete model id
-
-getDBConn :: forall st rt. String -> BackendFlow st rt Conn
-getDBConn dbName = do
-  wrap $ GetDBConn dbName id
 
 callAPI :: forall st rt a b. Encode a => Decode b => RestEndpoint a b
   => Headers -> a -> BackendFlow st rt (APIResult b)
