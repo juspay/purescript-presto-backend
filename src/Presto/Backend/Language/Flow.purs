@@ -37,7 +37,6 @@ data BackendFlowCommands next st rt s =
     | ThrowException String (s -> next)
     | Fork (BackendFlow st rt s) (Control s -> next)
     | Log String s next
-    | RunSysCmd String (String -> next)
 
     -- | HandleException 
     -- | Await (Control s) (s -> next)
@@ -73,7 +72,3 @@ doAff aff = wrap $ DoAff aff id
 
 log :: forall st rt a. String -> a -> BackendFlow st rt Unit
 log tag message = wrap $ Log tag message unit
-
-
-runSysCmd :: forall st rt. String -> BackendFlow st rt String
-runSysCmd cmd = wrap $ RunSysCmd cmd id
