@@ -26,11 +26,17 @@ import Prelude
 import Control.Monad.Aff (Aff, Milliseconds)
 import Control.Monad.Free (Free, liftF)
 import Control.Monad.Rec.Class (class MonadRec, Step(..), tailRecM)
+import Data.StrMap (StrMap)
 import Presto.Backend.Types (BackendAff)
 import Presto.Core.Flow (Control, APIRunner)
 import Presto.Core.Utils.Existing (Existing, mkExisting, unExisting)
+import Sequelize.Types (Conn)
+import Cache (CacheConn)
+
 
 type LogRunner = forall e a. String -> a -> Aff e Unit
+
+data Connection = Sequelize Conn | Redis CacheConn
 
 data BackendFlowCommands s next = 
       DoAff (forall eff. BackendAff eff s) (s -> next)
@@ -42,6 +48,7 @@ data BackendFlowCommands s next =
     -- private commands
     | LogFlow (forall e. LogRunner -> BackendAff e s) (s -> next)
     | APIFlow (forall e. APIRunner -> Aff e s) (s -> next)
+    | DBFlow (forall e. StrMap Connection -> BackendAff e s) (s -> next)
 
 instance functorBackendFlowCommands :: Functor (BackendFlowCommands s) where
   map f (DoAff g h) = DoAff g (f <<< h)
@@ -52,6 +59,7 @@ instance functorBackendFlowCommands :: Functor (BackendFlowCommands s) where
   map f (Delay g h) = Delay g (f h)
   map f (LogFlow g h) = LogFlow g (f <<< h)
   map f (APIFlow g h) = APIFlow g (f <<< h)
+  map f (DBFlow g h) = DBFlow g (f <<< h)
 
 newtype BackendFlowF next = BackendFlowF (Existing BackendFlowCommands next)
 
@@ -109,3 +117,6 @@ logFlow f = wrap $ LogFlow f id
 
 apiFlow :: forall a. (forall e. APIRunner -> Aff e a) -> BackendFlow a
 apiFlow f = wrap $ APIFlow f id
+
+dbFlow :: forall a. (forall e. StrMap Connection -> BackendAff e a) -> BackendFlow a
+dbFlow f = wrap $ DBFlow f id

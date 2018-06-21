@@ -36,10 +36,10 @@ import Data.Either (Either(..))
 import Data.Exists (runExists)
 import Data.Maybe (Maybe(..))
 import Data.StrMap (StrMap, lookup)
-import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), BackendFlowCommandsWrapper, BackendFlowWrapper(..))
+import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), Connection, LogRunner)
 import Presto.Backend.SystemCommands (runSysCmd)
 import Presto.Backend.Types (BackendAff)
-import Presto.Core.Flow (runAPIInteraction, APIRunner)
+import Presto.Core.Flow (APIRunner)
 import Presto.Core.Types.Language.Flow (Control(..))
 import Sequelize.Types (Conn)
 
@@ -54,8 +54,6 @@ type DB = {
     name :: String
   , connection :: Conn
 }
-
-data Connection = Sequelize Conn | Redis CacheConn
 
 data BackendRuntime = BackendRuntime APIRunner (StrMap Connection) LogRunner
 
@@ -73,14 +71,6 @@ forkFlow runtime flow = do
 
 
 interpret :: forall st rt s eff a.  BackendRuntime -> BackendFlowCommandsWrapper st rt s a -> InterpreterMT rt st Error eff a
-interpret _ (Ask next) = R.ask >>= (pure <<< next)
-
-interpret _ (Get next) = R.lift (S.get) >>= (pure <<< next)
-
-interpret _ (Put d next) = R.lift (S.put d) *> (pure <<< next) d
-
-interpret _ (Modify d next) = R.lift (S.modify d) *> S.get >>= (pure <<< next)
-
 interpret _ (ThrowException errorMessage next) = (R.lift $ S.lift $ E.ExceptT $ Left <$> (pure $ error errorMessage)) >>= pure <<< next
 
 interpret _ (DoAff aff nextF) = (R.lift $ S.lift $ E.lift aff) >>= (pure <<< nextF)

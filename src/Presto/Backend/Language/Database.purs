@@ -7,8 +7,12 @@ import Control.Monad.Free (Free)
 import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Data.Options (Options)
+import Data.StrMap (lookup)
 import Presto.Backend.DB (findOne, findAll, create, update, delete) as DB
+import Presto.Backend.Flow (BackendFlow, Connection(..), dbFlow, throwException)
+import Presto.Backend.Flow as BF
 import Presto.Backend.Types (BackendAff)
+import Presto.Core.Flow (class Run)
 import Presto.Core.Utils.Existing (Existing, mkExisting, unExisting)
 import Presto.Core.Utils.Inject (class Inject, inject)
 import Sequelize.Class (class Model)
@@ -39,6 +43,22 @@ newtype DatabaseF next = DatabaseF (Existing DatabaseCommand next)
 
 instance functorDatabaseF :: Functor DatabaseF where
     map f (DatabaseF e) = DatabaseF $ mkExisting $ f <$> unExisting e
+
+
+instance runDatabaseF :: Run DatabaseF BackendFlow where
+  runAlgebra (DatabaseF e) = runAlgebra' $ unExisting e
+    where runAlgebra' (FindOne model next) = pure $ next model
+          runAlgebra' (FindAll models next) = pure $ next models
+          runAlgebra' (Create model next) = pure $ next model
+          runAlgebra' (FindOrCreate model next) = pure $ next model
+          runAlgebra' (Update model next) = pure $ next model
+          runAlgebra' (Delete model next) = pure $ next model
+          runAlgebra' (GetDBConn dbName next) = do
+            maybedb <- dbFlow (pure <<< lookup dbName)
+            case maybedb of
+              Just (Sequelize db) -> pure $ next db
+              _ -> throwException "No DB found"
+          runAlgebra' (DoAff a next) = BF.doAff a >>= (next >>> pure)
 
 
 wrap :: forall s a f. Inject DatabaseF f => DatabaseCommand s a -> Free f a
