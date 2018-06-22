@@ -24,8 +24,8 @@ module Presto.Backend.Interpreter where
 import Prelude
 
 import Cache (CacheConn, delKey, expire, getHashKey, getKey, incr, publishToChannel, setHash, setKey, setMessageHandler, setex, subscribe)
-import Control.Monad.Aff (Aff, Canceler(..), forkAff)
-import Control.Monad.Aff.AVar (AVAR, makeVar, putVar)
+import Control.Monad.Aff (Aff, Canceler(..), delay, forkAff)
+import Control.Monad.Aff.AVar (AVAR, makeEmptyVar, makeVar, putVar, readVar)
 import Control.Monad.Eff.Exception (EXCEPTION, Error, error, message)
 import Control.Monad.Except.Trans (ExceptT, ExceptT(..), lift, throwError, runExceptT) as E
 import Control.Monad.Free (foldFree)
@@ -36,14 +36,15 @@ import Data.Either (Either(..))
 import Data.Exists (runExists)
 import Data.Maybe (Maybe(..))
 import Data.StrMap (StrMap, lookup)
-import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), Connection, LogRunner)
+import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), BackendFlowF(..), Connection, LogRunner, doAff, unBackendFlow)
 import Presto.Backend.SystemCommands (runSysCmd)
 import Presto.Backend.Types (BackendAff)
 import Presto.Core.Flow (APIRunner)
 import Presto.Core.Types.Language.Flow (Control(..))
+import Presto.Core.Utils.Existing (runExisting)
 import Sequelize.Types (Conn)
 
-type InterpreterMT rt st err eff a = R.ReaderT rt (S.StateT st (E.ExceptT err (BackendAff eff))) a
+type InterpreterMT err eff a = E.ExceptT err (BackendAff eff) a
 
 type Cache = {
     name :: String
@@ -58,81 +59,27 @@ type DB = {
 data BackendRuntime = BackendRuntime APIRunner (StrMap Connection) LogRunner
 
 -- Need to be looked at later point of time.
-forkFlow :: forall eff rt st a. BackendRuntime -> BackendFlow st rt a -> InterpreterMT rt st Error eff (Control a)
+forkFlow :: forall eff a. BackendRuntime -> BackendFlow a -> InterpreterMT Error eff (Control a)
 forkFlow runtime flow = do
-  st <- R.lift $ S.get
-  rt <- R.ask
-  resultVar <- R.lift $ S.lift $ E.lift $ makeVar
-  -- let m = E.runExceptT ( S.runStateT ( R.runReaderT ( runBackend runtime flow ) rt) st)
-  -- _ <- R.lift $ S.lift $ E.lift do
-  --   value <- forkAff m 
-  --   putVar resultVar value
+  resultVar <- E.lift makeEmptyVar
+  _ <- E.lift $ forkAff (do
+                            res <- E.runExceptT (runBackend runtime flow)
+                            case res of
+                              Right val -> putVar val resultVar
+                              Left err -> pure unit
+                        )
   pure $ Control resultVar
 
 
-interpret :: forall st rt s eff a.  BackendRuntime -> BackendFlowCommandsWrapper st rt s a -> InterpreterMT rt st Error eff a
-interpret _ (ThrowException errorMessage next) = (R.lift $ S.lift $ E.ExceptT $ Left <$> (pure $ error errorMessage)) >>= pure <<< next
+interpret :: forall s eff a. BackendRuntime -> BackendFlowCommands s a -> InterpreterMT Error eff a
+interpret _ (DoAff aff nextF) = E.lift aff >>= (pure <<< nextF)
+interpret _ (ThrowException errorMessage next) = E.ExceptT (Left <$> (pure $ error errorMessage)) *> pure next
+interpret r (Fork flow nextF) = forkFlow r flow >>= (pure <<< nextF)
+interpret _ (Await (Control var) nextF) = E.lift (readVar var) >>= (pure <<< nextF)
+interpret _ (Delay t next) = E.lift (delay t) *> pure next
+interpret (BackendRuntime _ _ logRunner) (LogFlow f nextF) = E.lift (f logRunner) >>= (pure <<< nextF)
+interpret (BackendRuntime apiRunner _ _) (APIFlow f nextF) = E.lift (f apiRunner) >>= (pure <<< nextF)
+interpret (BackendRuntime _ connMap _) (ConnFlow f nextF) = E.lift (f connMap) >>= (pure <<< nextF)
 
-interpret _ (DoAff aff nextF) = (R.lift $ S.lift $ E.lift aff) >>= (pure <<< nextF)
-
-interpret _ (SetCache cacheConn key value next) = (R.lift $ S.lift $ E.lift $ setKey cacheConn key value) >>= (pure <<< next )
-
-interpret _ (SetCacheWithExpiry cacheConn key value ttl next) = (R.lift $ S.lift $ E.lift $ setex cacheConn key value ttl) >>= (pure <<< next)
-
-interpret _ (GetCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ getKey cacheConn key) >>= (pure <<< next)
-
-interpret _ (DelCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ delKey cacheConn key) >>= (pure <<< next)
-
-interpret _ (Expire cacheConn key ttl next) = (R.lift $ S.lift $ E.lift $ expire cacheConn key ttl) >>= (pure <<< next)
-    
-interpret _ (Incr cacheConn key next) = (R.lift $ S.lift $ E.lift $ incr cacheConn key) >>= (pure <<< next) 
-
-interpret _ (SetHash cacheConn key value next) = (R.lift $ S.lift $ E.lift $ setHash cacheConn key value) >>= (pure <<< next) 
-
-interpret _ (GetHashKey cacheConn key field next) = (R.lift $ S.lift $ E.lift $ getHashKey cacheConn key field) >>= (pure <<< next) 
-
-interpret _ (PublishToChannel cacheConn channel message next) = (R.lift $ S.lift $ E.lift $ publishToChannel cacheConn channel message) >>= (pure <<< next) 
-
-interpret _ (Subscribe cacheConn channel next) = (R.lift $ S.lift $ E.lift $ subscribe cacheConn channel) >>= (pure <<< next) 
-
-interpret _ (SetMessageHandler cacheConn f next) = (R.lift $ S.lift $ E.lift $ setMessageHandler cacheConn f) >>= (pure <<< next) 
-
-interpret (BackendRuntime a connections c) (GetCacheConn cacheName next) = do
-  maybeCache <- pure $ lookup cacheName connections
-  case maybeCache of
-    Just (Redis cache) -> (pure <<< next) cache
-    Just _ -> interpret (BackendRuntime a connections c) (ThrowException "No DB found" next)
-    Nothing -> interpret (BackendRuntime a connections c) (ThrowException "No DB found" next)
-
-interpret _ (FindOne model next) = (pure <<< next) model
-
-interpret _ (FindAll models next) = (pure <<< next) models
-
-interpret _ (Create model next) = (pure <<< next) model
-
-interpret _ (Update model next) = (pure <<< next) model
-
-interpret _ (Delete model next) = (pure <<< next) model
-
-interpret ((BackendRuntime a connections c)) (GetDBConn dbName next) = do
-  maybedb <- pure $ lookup dbName connections
-  case maybedb of
-    Just (Sequelize db) -> (pure <<< next) db
-    Just _ -> interpret (BackendRuntime a connections c) (ThrowException "No DB found" next)
-    Nothing -> interpret (BackendRuntime a connections c) (ThrowException "No DB found" next)
-  
-
-interpret (BackendRuntime apiRunner _ _) (CallAPI apiInteractionF nextF) = do
-  R.lift $ S.lift $ E.lift $ runAPIInteraction apiRunner apiInteractionF
-    >>= (pure <<< nextF)
-
-interpret (BackendRuntime _ _ logRunner) (Log tag message next) = (R.lift ( S.lift ( E.lift (logRunner tag message)))) *> pure next
-
--- interpret r (Fork flow nextF) = forkFlow r flow >>= (pure <<< nextF)
-
-interpret _ (RunSysCmd cmd next) = R.lift $ S.lift $ E.lift $ runSysCmd cmd >>= (pure <<< next)
-
-interpret _ _ = E.throwError $ error "Not implemented yet!"
-
-runBackend :: forall st rt eff a. BackendRuntime -> BackendFlow st rt a -> InterpreterMT rt st Error eff a
-runBackend backendRuntime = foldFree (\(BackendFlowWrapper x) -> runExists (interpret backendRuntime) x)
+runBackend :: forall eff a. BackendRuntime -> BackendFlow a -> InterpreterMT Error eff a
+runBackend backendRuntime = foldFree (\(BackendFlowF x) -> runExisting (interpret backendRuntime) x) <<< unBackendFlow

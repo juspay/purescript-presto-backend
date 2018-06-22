@@ -40,9 +40,8 @@ data Connection = Sequelize Conn | Redis CacheConn
 
 data BackendFlowCommands s next = 
       DoAff (forall eff. BackendAff eff s) (s -> next)
-    | ThrowException String (s -> next)
+    | ThrowException String next
     | Fork (BackendFlow s) (Control s -> next)
-    | HandleException s next
     | Await (Control s) (s -> next)
     | Delay Milliseconds next
     -- private commands
@@ -52,9 +51,8 @@ data BackendFlowCommands s next =
 
 instance functorBackendFlowCommands :: Functor (BackendFlowCommands s) where
   map f (DoAff g h) = DoAff g (f <<< h)
-  map f (ThrowException g h) = ThrowException g (f <<< h)
+  map f (ThrowException g h) = ThrowException g (f h)
   map f (Fork g h) = Fork g (f <<< h)
-  map f (HandleException g h) = HandleException g (f h)
   map f (Await g h) = Await g (f <<< h)
   map f (Delay g h) = Delay g (f h)
   map f (LogFlow g h) = LogFlow g (f <<< h)
@@ -97,14 +95,11 @@ wrap = BackendFlow <<< liftF <<< BackendFlowF <<< mkExisting
 doAff :: forall a. (forall eff. BackendAff eff a) -> BackendFlow a
 doAff aff = wrap $ DoAff aff id
 
-throwException :: forall a. String -> BackendFlow a
-throwException errorMessage = wrap $ ThrowException errorMessage id
+throwException :: forall a. String -> BackendFlow Unit
+throwException errorMessage = wrap $ ThrowException errorMessage unit
 
 fork :: forall a. BackendFlow a -> BackendFlow (Control a)
 fork f = wrap $ Fork f id
-
-handleException :: forall a. a -> BackendFlow Unit
-handleException e = wrap $ HandleException e unit
 
 await :: forall a. Control a -> BackendFlow a
 await c = wrap $ Await c id
