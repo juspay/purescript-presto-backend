@@ -95,7 +95,7 @@ wrap = BackendFlow <<< liftF <<< BackendFlowF <<< mkExisting
 doAff :: forall a. (forall eff. BackendAff eff a) -> BackendFlow a
 doAff aff = wrap $ DoAff aff id
 
-throwException :: forall a. String -> BackendFlow Unit
+throwException :: String -> BackendFlow Unit
 throwException errorMessage = wrap $ ThrowException errorMessage unit
 
 fork :: forall a. BackendFlow a -> BackendFlow (Control a)

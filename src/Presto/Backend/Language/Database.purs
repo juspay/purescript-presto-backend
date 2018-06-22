@@ -2,6 +2,7 @@ module Presto.Backend.Database where
 
 import Prelude
 
+import Control.Monad.Aff (error)
 import Control.Monad.Eff.Exception (Error)
 import Control.Monad.Free (Free)
 import Data.Either (Either(..))
@@ -25,7 +26,7 @@ data DatabaseCommand s next =
     | FindOrCreate (Either Error (Maybe s)) (Either Error (Maybe s) -> next)
     | Update (Either Error (Array s)) (Either Error (Array s) -> next)
     | Delete (Either Error Int) (Either Error Int -> next)
-    | GetDBConn String (Conn -> next)
+    | GetDBConn String (Maybe Conn -> next)
     | DoAff (forall eff. BackendAff eff s) (s -> next)
 
 
@@ -56,34 +57,32 @@ instance runDatabaseF :: Run DatabaseF BackendFlow where
           runAlgebra' (GetDBConn dbName next) = do
             maybedb <- connFlow (pure <<< lookup dbName)
             case maybedb of
-              Just (Sequelize db) -> pure $ next db
-              _ -> throwException "No DB found"
+              Just (Sequelize db) -> pure $ next $ Just db
+              _ -> throwException "No DB found" *> pure (next Nothing)
           runAlgebra' (DoAff a next) = BF.doAff a >>= (next >>> pure)
 
 
 wrap :: forall s a f. Inject DatabaseF f => DatabaseCommand s a -> Free f a
 wrap = inject <<< DatabaseF <<< mkExisting
 
+withConn :: forall f a. (Conn -> Free f (Either Error a)) -> Maybe Conn -> Free f (Either Error a)
+withConn f (Just conn) = f conn
+withConn _ Nothing     = pure $ Left $ error "No DB Connection"
+
 findOne :: forall model f. Inject DatabaseF f => Model model => String -> Options model -> Free f (Either Error (Maybe model))
-findOne dbName options = do
-  conn <- getDBConn dbName
-  model <- doAff do
-        DB.findOne conn options
-  wrap $ FindOne model id
+findOne dbName options = getDBConn dbName >>= withConn (\conn -> do
+                                                           model <- doAff do DB.findOne conn options
+                                                           wrap $ FindOne model id)
 
 findAll :: forall model f. Inject DatabaseF f => Model model => String -> Options model -> Free f (Either Error (Array model))
-findAll dbName options = do
-  conn <- getDBConn dbName
-  model <- doAff do
-        DB.findAll conn options
-  wrap $ FindAll model id 
+findAll dbName options = getDBConn dbName >>= withConn (\conn -> do
+                                                           model <- doAff do DB.findAll conn options
+                                                           wrap $ FindAll model id)
 
 create :: forall model f. Inject DatabaseF f => Model model => String -> model -> Free f (Either Error (Maybe model))
-create dbName model = do
-  conn <- getDBConn dbName
-  result <- doAff do
-        DB.create conn model
-  wrap $ Create result id
+create dbName model = getDBConn dbName >>= withConn (\conn -> do
+                                                        result <- doAff do DB.create conn model
+                                                        wrap $ Create result id)
 
 findOrCreate :: forall model f. Inject DatabaseF f => Model model => String -> Options model -> Free f (Either Error (Maybe model))
 findOrCreate dbName options = do
@@ -91,20 +90,16 @@ findOrCreate dbName options = do
   wrap $ FindOrCreate (Right Nothing) id
 
 update :: forall model f. Inject DatabaseF f => Model model => String -> Options model -> Options model -> Free f (Either Error (Array model))
-update dbName updateValues whereClause = do
-  conn <- getDBConn dbName
-  model <- doAff do
-        DB.update conn updateValues whereClause
-  wrap $ Update model id
+update dbName updateValues whereClause = getDBConn dbName >>= withConn (\conn -> do
+                                                                           model <- doAff do DB.update conn updateValues whereClause
+                                                                           wrap $ Update model id)
 
 delete :: forall model f. Inject DatabaseF f => Model model => String -> Options model -> Free f (Either Error Int)
-delete dbName options = do
-  conn <- getDBConn dbName
-  model <- doAff do
-        DB.delete conn options
-  wrap $ Delete model id
+delete dbName options = getDBConn dbName >>= withConn (\conn -> do
+                                                          model <- doAff do DB.delete conn options
+                                                          wrap $ Delete model id)
 
-getDBConn :: forall f. Inject DatabaseF f => String -> Free f Conn
+getDBConn :: forall f. Inject DatabaseF f => String -> Free f (Maybe Conn)
 getDBConn dbName = wrap $ GetDBConn dbName id
 
 doAff :: forall f a. Inject DatabaseF f => (forall eff. BackendAff eff a) -> Free f a

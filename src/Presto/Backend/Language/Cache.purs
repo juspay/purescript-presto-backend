@@ -4,16 +4,16 @@ import Prelude
 
 import Cache (CacheConn, delKey, getKey, setKey, setex)
 import Cache as Cache
-import Control.Monad.Eff.Exception (Error)
+import Control.Monad.Eff.Exception (Error, error)
 import Control.Monad.Free (Free)
-import Data.Either (Either)
+import Data.Either (Either(..))
 import Data.Maybe (Maybe(..))
 import Data.StrMap (lookup)
 import Presto.Backend.Flow (BackendFlow, Connection(..), connFlow, doAff, throwException)
 import Presto.Core.Flow (class Inject, class Run, inject)
 
 data CacheF next =
-      GetCacheConn String (CacheConn -> next)
+      GetCacheConn String (Maybe CacheConn -> next)
     | SetCache CacheConn String String (Either Error String -> next)
     | SetCacheWithExpiry CacheConn String String String (Either Error String -> next)
     | GetCache CacheConn String (Either Error String -> next)
@@ -45,8 +45,8 @@ instance runCacheF :: Run CacheF BackendFlow where
   runAlgebra (GetCacheConn name next) = do
     maybeCache <- connFlow (pure <<< lookup name)
     case maybeCache of
-      Just (Redis cache) -> pure $ next cache
-      _ -> throwException "No Cache Found"
+      Just (Redis cache) -> pure $ next $ Just cache
+      _ -> throwException "No Cache Found" *> pure (next Nothing)
   runAlgebra (SetCache conn key value next) = doAff (setKey conn key value) >>= (pure <<< next)
   runAlgebra (SetCacheWithExpiry conn key value ttl next) = doAff (setex conn key value ttl) >>= (pure <<< next)
   runAlgebra (GetCache conn key next) = doAff (getKey conn key) >>= (pure <<< next)
@@ -59,60 +59,42 @@ instance runCacheF :: Run CacheF BackendFlow where
   runAlgebra (Subscribe conn channel next) = doAff (Cache.subscribe conn channel) >>= (pure <<< next)
   runAlgebra (SetMessageHandler conn f next) = doAff (Cache.setMessageHandler conn f) >>= (pure <<< next)
 
-getCacheConn :: forall f. Inject CacheF f => String -> Free f CacheConn
+getCacheConn :: forall f. Inject CacheF f => String -> Free f (Maybe CacheConn)
 getCacheConn dbName = inject $ GetCacheConn dbName id
 
+withConn :: forall f a. (Cache.CacheConn -> Free f (Either Error a)) -> Maybe Cache.CacheConn -> Free f (Either Error a)
+withConn f (Just conn) = f conn
+withConn _ Nothing     = pure $ Left $ error "No Cache Connection"
+
 setCache :: forall f. Inject CacheF f => String -> String ->  String -> Free f (Either Error String)
-setCache cacheName key value = do
-  cacheConn <- getCacheConn cacheName
-  inject $ SetCache cacheConn key value id
+setCache cacheName key value = getCacheConn cacheName >>= withConn (\cacheConn -> inject $ SetCache cacheConn key value id)
 
 getCache :: forall f. Inject CacheF f => String -> String -> Free f (Either Error String)
-getCache cacheName key = do
-  cacheConn <- getCacheConn cacheName
-  inject $ GetCache cacheConn key id
+getCache cacheName key = getCacheConn cacheName >>= withConn (\cacheConn -> inject $ GetCache cacheConn key id)
 
 delCache :: forall f. Inject CacheF f => String -> String -> Free f (Either Error String)
-delCache cacheName key = do
-  cacheConn <- getCacheConn cacheName
-  inject $ DelCache cacheConn key id
+delCache cacheName key = getCacheConn cacheName >>= withConn (\cacheConn -> inject $ DelCache cacheConn key id)
 
 setCacheWithExpiry :: forall f. Inject CacheF f => String -> String -> String -> String -> Free f (Either Error String)
-setCacheWithExpiry cacheName key value ttl = do
-  cacheConn <- getCacheConn cacheName
-  inject $ SetCacheWithExpiry cacheConn key value ttl id
+setCacheWithExpiry cacheName key value ttl = getCacheConn cacheName >>= withConn (\cacheConn -> inject $ SetCacheWithExpiry cacheConn key value ttl id)
 
 expire :: forall f. Inject CacheF f => String -> String -> String -> Free f (Either Error String)
-expire cacheName key ttl = do 
-  cacheConn <- getCacheConn cacheName
-  inject $ Expire cacheConn key ttl id
+expire cacheName key ttl = getCacheConn cacheName >>= withConn (\cacheConn -> inject $ Expire cacheConn key ttl id)
 
 incr :: forall f. Inject CacheF f => String -> String -> Free f (Either Error String)
-incr cacheName key = do
-  cacheConn <- getCacheConn cacheName
-  inject $ Incr cacheConn key id
+incr cacheName key = getCacheConn cacheName >>= withConn (\cacheConn -> inject $ Incr cacheConn key id)
 
 setHash :: forall f. Inject CacheF f => String -> String -> String -> Free f (Either Error String)
-setHash cacheName key value = do
-  cacheConn <- getCacheConn cacheName
-  inject $ SetCache cacheConn key value id
+setHash cacheName key value = getCacheConn cacheName >>= withConn (\cacheConn -> inject $ SetCache cacheConn key value id)
 
 getHashKey :: forall f. Inject CacheF f => String -> String -> String -> Free f (Either Error String)
-getHashKey cacheName key field = do 
-  cacheConn <- getCacheConn cacheName
-  inject $ GetHashKey cacheConn key field id 
+getHashKey cacheName key field = getCacheConn cacheName >>= withConn (\cacheConn -> inject $ GetHashKey cacheConn key field id)
 
 publishToChannel :: forall f. Inject CacheF f => String -> String -> String -> Free f (Either Error String)
-publishToChannel cacheName channel message = do
-  cacheConn <- getCacheConn cacheName
-  inject $ PublishToChannel cacheConn channel message id
+publishToChannel cacheName channel message = getCacheConn cacheName >>= withConn (\cacheConn -> inject $ PublishToChannel cacheConn channel message id)
 
 subscribe :: forall f. Inject CacheF f => String -> String -> Free f (Either Error String)
-subscribe cacheName channel = do
-  cacheConn <- getCacheConn cacheName
-  inject $ Subscribe cacheConn channel id
+subscribe cacheName channel = getCacheConn cacheName >>= withConn (\cacheConn -> inject $ Subscribe cacheConn channel id)
 
 setMessageHandler :: forall f. Inject CacheF f => String -> (String -> String -> Unit) -> Free f (Either Error String)
-setMessageHandler cacheName f = do
-  cacheConn <- getCacheConn cacheName
-  inject $ SetMessageHandler cacheConn f id
+setMessageHandler cacheName f = getCacheConn cacheName >>= withConn (\cacheConn -> inject $ SetMessageHandler cacheConn f id)
