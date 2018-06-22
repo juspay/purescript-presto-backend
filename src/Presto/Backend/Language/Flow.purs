@@ -48,7 +48,7 @@ data BackendFlowCommands s next =
     -- private commands
     | LogFlow (forall e. LogRunner -> BackendAff e s) (s -> next)
     | APIFlow (forall e. APIRunner -> Aff e s) (s -> next)
-    | DBFlow (forall e. StrMap Connection -> BackendAff e s) (s -> next)
+    | ConnFlow (forall e. StrMap Connection -> BackendAff e s) (s -> next)
 
 instance functorBackendFlowCommands :: Functor (BackendFlowCommands s) where
   map f (DoAff g h) = DoAff g (f <<< h)
@@ -59,7 +59,7 @@ instance functorBackendFlowCommands :: Functor (BackendFlowCommands s) where
   map f (Delay g h) = Delay g (f h)
   map f (LogFlow g h) = LogFlow g (f <<< h)
   map f (APIFlow g h) = APIFlow g (f <<< h)
-  map f (DBFlow g h) = DBFlow g (f <<< h)
+  map f (ConnFlow g h) = ConnFlow g (f <<< h)
 
 newtype BackendFlowF next = BackendFlowF (Existing BackendFlowCommands next)
 
@@ -118,5 +118,5 @@ logFlow f = wrap $ LogFlow f id
 apiFlow :: forall a. (forall e. APIRunner -> Aff e a) -> BackendFlow a
 apiFlow f = wrap $ APIFlow f id
 
-dbFlow :: forall a. (forall e. StrMap Connection -> BackendAff e a) -> BackendFlow a
-dbFlow f = wrap $ DBFlow f id
+connFlow :: forall a. (forall e. StrMap Connection -> BackendAff e a) -> BackendFlow a
+connFlow f = wrap $ ConnFlow f id

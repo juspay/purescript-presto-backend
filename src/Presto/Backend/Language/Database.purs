@@ -9,7 +9,7 @@ import Data.Maybe (Maybe(..))
 import Data.Options (Options)
 import Data.StrMap (lookup)
 import Presto.Backend.DB (findOne, findAll, create, update, delete) as DB
-import Presto.Backend.Flow (BackendFlow, Connection(..), dbFlow, throwException)
+import Presto.Backend.Flow (BackendFlow, Connection(..), connFlow, throwException)
 import Presto.Backend.Flow as BF
 import Presto.Backend.Types (BackendAff)
 import Presto.Core.Flow (class Run)
@@ -54,7 +54,7 @@ instance runDatabaseF :: Run DatabaseF BackendFlow where
           runAlgebra' (Update model next) = pure $ next model
           runAlgebra' (Delete model next) = pure $ next model
           runAlgebra' (GetDBConn dbName next) = do
-            maybedb <- dbFlow (pure <<< lookup dbName)
+            maybedb <- connFlow (pure <<< lookup dbName)
             case maybedb of
               Just (Sequelize db) -> pure $ next db
               _ -> throwException "No DB found"

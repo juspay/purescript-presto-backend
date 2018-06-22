@@ -2,11 +2,15 @@ module Presto.Backend.Cache where
 
 import Prelude
 
-import Cache (CacheConn)
+import Cache (CacheConn, delKey, getKey, setKey, setex)
+import Cache as Cache
 import Control.Monad.Eff.Exception (Error)
 import Control.Monad.Free (Free)
 import Data.Either (Either)
-import Presto.Core.Flow (class Inject, inject)
+import Data.Maybe (Maybe(..))
+import Data.StrMap (lookup)
+import Presto.Backend.Flow (BackendFlow, Connection(..), connFlow, doAff, throwException)
+import Presto.Core.Flow (class Inject, class Run, inject)
 
 data CacheF next =
       GetCacheConn String (CacheConn -> next)
@@ -36,6 +40,24 @@ instance functorCacheF :: Functor CacheF where
     map f (Subscribe c d h) = Subscribe c d (f <<< h)
     map f (SetMessageHandler c d h) = SetMessageHandler c d (f <<< h)
 
+
+instance runCacheF :: Run CacheF BackendFlow where
+  runAlgebra (GetCacheConn name next) = do
+    maybeCache <- connFlow (pure <<< lookup name)
+    case maybeCache of
+      Just (Redis cache) -> pure $ next cache
+      _ -> throwException "No Cache Found"
+  runAlgebra (SetCache conn key value next) = doAff (setKey conn key value) >>= (pure <<< next)
+  runAlgebra (SetCacheWithExpiry conn key value ttl next) = doAff (setex conn key value ttl) >>= (pure <<< next)
+  runAlgebra (GetCache conn key next) = doAff (getKey conn key) >>= (pure <<< next)
+  runAlgebra (DelCache conn key next) = doAff (delKey conn key) >>= (pure <<< next)
+  runAlgebra (Expire conn key ttl next) = doAff (Cache.expire conn key ttl) >>= (pure <<< next)
+  runAlgebra (Incr conn key next) = doAff (Cache.incr conn key) >>= (pure <<< next)
+  runAlgebra (SetHash conn key value next) = doAff (Cache.setHash conn key value) >>= (pure <<< next)
+  runAlgebra (GetHashKey conn key value next) = doAff (Cache.getHashKey conn key value) >>= (pure <<< next)
+  runAlgebra (PublishToChannel conn channel msg next) = doAff (Cache.publishToChannel conn channel msg) >>= (pure <<< next)
+  runAlgebra (Subscribe conn channel next) = doAff (Cache.subscribe conn channel) >>= (pure <<< next)
+  runAlgebra (SetMessageHandler conn f next) = doAff (Cache.setMessageHandler conn f) >>= (pure <<< next)
 
 getCacheConn :: forall f. Inject CacheF f => String -> Free f CacheConn
 getCacheConn dbName = inject $ GetCacheConn dbName id
