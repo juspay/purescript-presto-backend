@@ -25,6 +25,39 @@
 
 var axios = require("axios");
 
+var zipkinCheck = function(zipkinConfig) {
+  var zipkinFlag = zipkinConfig.enable
+  var zipkinAxiosFlag = zipkinConfig.axios
+
+  if (zipkinFlag === "true" && zipkinAxiosFlag === "true") {
+    var wrapAxios = require('zipkin-instrumentation-axios')
+    var logger = require('zipkin-transport-http')
+    var zipkin = require('zipkin')
+
+    var ClsContext = require('zipkin-context-cls')
+    var ctxImpl = new ClsContext()
+
+    var endpoint = zipkinConfig.url
+    var serviceName = zipkinConfig.serviceName + '_axios'
+
+    var recorder = new zipkin.BatchRecorder({
+      logger: new logger.HttpLogger({
+        endpoint: endpoint + '/api/v1/spans'
+      })
+    })
+
+    var tracer = new zipkin.Tracer({ctxImpl: ctxImpl, recorder: recorder})
+
+    return wrapAxios(axios, {tracer: tracer, serviceName: serviceName})
+  } else {
+    return axios
+  }
+}
+
+var traceCallAPI = function (zipkinConfig) {
+  axios = zipkinCheck(zipkinConfig)
+  return callAPIFn
+}
 
 var callAPIFn = function(error) {
   return function(success) {
@@ -88,4 +121,4 @@ exports["logString'"] = function(data) {
   console.log("logString " + JSON.stringify(data));
 }
 exports["callAPI'"] = callAPIFn;
-
+exports["traceCallAPI"] = traceCallAPI

@@ -25,6 +25,7 @@ module Presto.Backend.APIHandler where
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (Error)
 import Prelude (Unit, show, (<$>))
+import Presto.Backend.Types (ZipkinConfig)
 import Presto.Core.Types.API (Header(..), Headers(..), Request(..), URL)
 
 
@@ -42,6 +43,7 @@ newtype NativeRequest = NativeRequest
   }
 
 foreign import callAPI' :: forall e. (AffError e) -> (AffSuccess String e) -> NativeRequest -> (Eff e Unit)
+foreign import traceCallAPI :: forall e. ZipkinConfig -> (AffError e) -> (AffSuccess String e) -> NativeRequest -> (Eff e Unit)
 foreign import logString' :: forall a. a -> String
 
 mkNativeRequest :: Request -> NativeRequest
