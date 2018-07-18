@@ -83,20 +83,12 @@ var callAPIFn = function(error) {
         })
         .catch(function(err) {
           var response  = err.response;
-          if(checkForNullOrUndefined(response.status) && checkForNullOrUndefined(response.statusText) && checkForNullOrUndefined(response.data)) {
-            // if(response.status === 200 || response.status === "200") {
+          if(response && checkForNullOrUndefined(response.status) && checkForNullOrUndefined(response.statusText) && checkForNullOrUndefined(response.data)) {
               success(JSON.stringify({
                 code:response.status,
                 status:response.statusText,
                 response:response.data
               }))();
-            // } else {
-            //   error(JSON.stringify({
-            //     code:response.status,
-            //     status:response.statusText,
-            //     response:response.data
-            //   }))();
-            // }
           } else {
             error("Not able to find code/status/data in response")();
           }
