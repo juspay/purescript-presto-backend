@@ -28,7 +28,6 @@ exports._getModelByName = function(seq,name) {
         if(seq.models[name]) {
             return seq.models[name];
         } else {
-            console.log("_getModelByName", seq.models);
             throw new Error("Model not found " + name);
         }
     };

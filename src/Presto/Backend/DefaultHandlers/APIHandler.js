@@ -25,6 +25,39 @@
 
 var axios = require("axios");
 
+var zipkinCheck = function(zipkinConfig) {
+  var zipkinFlag = zipkinConfig.enable
+  var zipkinAxiosFlag = zipkinConfig.axios
+
+  if (zipkinFlag === "true" && zipkinAxiosFlag === "true") {
+    var wrapAxios = require('zipkin-instrumentation-axios')
+    var logger = require('zipkin-transport-http')
+    var zipkin = require('zipkin')
+
+    var ClsContext = require('zipkin-context-cls')
+    var ctxImpl = new ClsContext()
+
+    var endpoint = zipkinConfig.url
+    var serviceName = zipkinConfig.serviceName + '_axios'
+
+    var recorder = new zipkin.BatchRecorder({
+      logger: new logger.HttpLogger({
+        endpoint: endpoint + '/api/v1/spans'
+      })
+    })
+
+    var tracer = new zipkin.Tracer({ctxImpl: ctxImpl, recorder: recorder})
+
+    return wrapAxios(axios, {tracer: tracer, serviceName: serviceName})
+  } else {
+    return axios
+  }
+}
+
+var traceCallAPI = function (zipkinConfig) {
+  axios = zipkinCheck(zipkinConfig)
+  return callAPIFn
+}
 
 var callAPIFn = function(error) {
   return function(success) {
@@ -35,7 +68,6 @@ var callAPIFn = function(error) {
         for(var i=0;i<headersRaw.length;i++){
           headers[headersRaw[i].field] = headersRaw[i].value;
         }
-        console.log("CALL API AXIOS REQ ",request);
         return axios.request({
           url: request.url,
           method: request.method,
@@ -43,7 +75,6 @@ var callAPIFn = function(error) {
           headers: headers
         })
         .then(function(response) {
-          console.log("CALL API AXIOS RESP ",response.data);
           success(JSON.stringify({
             code:response.status,
             status:response.statusText,
@@ -52,21 +83,12 @@ var callAPIFn = function(error) {
         })
         .catch(function(err) {
           var response  = err.response;
-          console.log("CALL API AXIOS ERR ", err);
-          if(checkForNullOrUndefined(response.status) && checkForNullOrUndefined(response.statusText) && checkForNullOrUndefined(response.data)) {
-            // if(response.status === 200 || response.status === "200") {
+          if(response && checkForNullOrUndefined(response.status) && checkForNullOrUndefined(response.statusText) && checkForNullOrUndefined(response.data)) {
               success(JSON.stringify({
                 code:response.status,
                 status:response.statusText,
                 response:response.data
               }))();
-            // } else {
-            //   error(JSON.stringify({
-            //     code:response.status,
-            //     status:response.statusText,
-            //     response:response.data
-            //   }))();
-            // }
           } else {
             error("Not able to find code/status/data in response")();
           }
@@ -90,10 +112,5 @@ exports["callAPI'"] = callAPIFn;
 exports["logString'"] = function(data) {
   console.log("logString " + JSON.stringify(data));
 }
-
-
 exports["callAPI'"] = callAPIFn;
-
-exports["logString'"] = function(data) {
-  console.log("logString " + JSON.stringify(data));
-}
+exports["traceCallAPI"] = traceCallAPI
