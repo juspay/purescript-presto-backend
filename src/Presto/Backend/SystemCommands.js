@@ -28,7 +28,7 @@ var exec = require("child_process").exec;
 exports.runSysCmdImpl = function(err,sc,cmd) {
     return function() {
         var pid = exec(cmd,function(e,stdout,stderr) {
-            console.log(cmd)
+            // console.log(cmd)
             if (e instanceof Error) {
                 console.error(e);
                 err(e)();
