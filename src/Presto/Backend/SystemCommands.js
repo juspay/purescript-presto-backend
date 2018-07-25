@@ -25,19 +25,20 @@
 
 var exec = require("child_process").exec;
 
-exports.runSysCmdImpl = function(err,sc,cmd) {
+exports.runSysCmdImpl = function(handler, cmd) {
     return function() {
-        var pid = exec(cmd,function(e,stdout,stderr) {
-            if (e instanceof Error) {
-                console.error(e);
-                err(e)();
-                return;
-            }
-            if(typeof(stderr)=="undefined" && stderr!="") {
-                err(new Error(stderr))();
-                return;
-            }
-            sc(stdout)();
-        });
+        throw Error("Not Implemented yet!");
+        // var pid = exec(cmd,function(e,stdout,stderr) {
+        //     if (e instanceof Error) {
+        //         console.error(e);
+        //         err(e)();
+        //         return;
+        //     }
+        //     if(typeof(stderr)=="undefined" && stderr!="") {
+        //         err(new Error(stderr))();
+        //         return;
+        //     }
+        //     sc(stdout)();
+        // });
     };
 };
