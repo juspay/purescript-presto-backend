@@ -22,14 +22,43 @@
 module Main where
 
 import Prelude
-import Control.Monad.Aff.Console (CONSOLE)
-import Control.Monad.Eff (Eff)
-import Control.Monad.Eff.Console (log)
 
-apiWrapper :: forall t2. Applicative t2 => t2 Unit
-apiWrapper = do
-    pure unit
+import Effect.Aff (Aff, launchAff)
+import Effect.Aff.Class (liftAff)
+import Effect.Aff.Console as A
+import Effect (Eff)
+import Effect.Console (log)
+import Control.Monad.Except (runExceptT)
+import Control.Monad.Reader (runReaderT)
+import Control.Monad.State (runStateT)
+import Data.StrMap (singleton)
+import Presto.Backend.Flow (forkFlow)
+import Presto.Backend.Interpreter (BackendRuntime(..), Connection, LogRunner, runBackend)
+import Presto.Backend.Language.Runtime.API (APIRunner)
 
-main :: forall t1. Eff ( console :: CONSOLE | t1) Unit
+
+main :: Eff _ Unit
 main = do
+    _ <- launchAff testForkFlow 
     log "I am awesome"
+
+affForFork :: forall e. Aff (console :: CONSOLE | e) Unit
+affForFork = A.log "Awesome it works"
+
+-- testFlow :: forall t2 t3 t4. Free (BackendFlowWrapper t4 t3 t2) Unit
+testFlow = forkFlow affForFork
+
+foreign import getDummyConnection :: Connection
+
+-- ( avar :: AVAR, exception :: EXCEPTION, network :: NETWORK, console :: CONSOLE, sequelize :: SEQUELIZE, cache :: CACHE, fs :: FS, process :: PROCESS, uuid :: GENUUID | e)
+testForkFlow :: Aff _ Unit
+testForkFlow = do
+  let backendRuntime = BackendRuntime apiRunner (singleton "test" getDummyConnection) logRunner
+  someResult <- liftAff $ runExceptT ( runStateT ( runReaderT ( runBackend backendRuntime (testFlow)) "reader") "state")
+  pure unit
+  where
+      apiRunner :: APIRunner
+      apiRunner a = pure "unit"
+      
+      logRunner :: LogRunner
+      logRunner tag message = pure unit

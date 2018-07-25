@@ -20,15 +20,16 @@
     "tests"
   ],
   "dependencies": {
-    "purescript-express": "^0.5.0",
-    "purescript-sequelize": "https://github.com/juspay/purescript-sequelize.git",
-    "purescript-body-parser": "https://github.com/juspay/purescript-body-parser.git",
-    "purescript-uuid": "^4.0.0",
-    "purescript-redis": "https://github.com/juspay/purescript-redis.git",
-    "purescript-node-process": "^5.0.0"
+    "purescript-sequelize": "https://github.com/juspay/purescript-sequelize.git#compiler/0.12",
+    "purescript-body-parser": "https://github.com/juspay/purescript-body-parser.git#0.12.upgrade",
+    "purescript-uuid": "^5.0.0",
+    "purescript-redis": "https://github.com/juspay/purescript-redis.git#0.12.upgrade",
+    "purescript-node-process": "^6.0.0",
+    "purescript-test-unit": "^14.0.0"
   },
   "devDependencies": {
-    "purescript-psci-support": "^3.0.0"
+    "purescript-psci-support": "^4.0.0",
+    "purescript-express": "https://github.com/nkly/purescript-express.git#master"
   },
   "version": "0.0.1"
 }

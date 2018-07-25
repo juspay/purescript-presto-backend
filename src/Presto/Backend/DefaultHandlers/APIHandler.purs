@@ -22,18 +22,18 @@
 module Presto.Backend.APIHandler where
 
 
-import Control.Monad.Eff (Eff)
-import Control.Monad.Eff.Exception (Error)
+import Effect (Effect)
+import Effect.Exception (Error)
 import Prelude (Unit, show, (<$>))
 import Presto.Backend.Types (ZipkinConfig)
-import Presto.Core.Types.API (Header(..), Headers(..), Request(..), URL)
+import Presto.Backend.Types.API (Header(..), Headers(..), Request(..), URL)
 
 
 type NativeHeader = { field :: String , value :: String}
 type NativeHeaders = Array NativeHeader
 
-type AffError e = (Error -> Eff e Unit)
-type AffSuccess s e = (s -> Eff e Unit)
+type AffError = (Error -> Effect Unit)
+type AffSuccess s = (s -> Effect Unit)
 
 newtype NativeRequest = NativeRequest
   { method :: String
@@ -42,8 +42,8 @@ newtype NativeRequest = NativeRequest
   , headers :: NativeHeaders
   }
 
-foreign import callAPI' :: forall e. (AffError e) -> (AffSuccess String e) -> NativeRequest -> (Eff e Unit)
-foreign import traceCallAPI :: forall e. ZipkinConfig -> (AffError e) -> (AffSuccess String e) -> NativeRequest -> (Eff e Unit)
+foreign import callAPI' :: (AffError) -> (AffSuccess String) -> NativeRequest -> (Effect Unit)
+foreign import traceCallAPI :: ZipkinConfig -> (AffError) -> (AffSuccess String) -> NativeRequest -> (Effect Unit)
 foreign import logString' :: forall a. a -> String
 
 mkNativeRequest :: Request -> NativeRequest

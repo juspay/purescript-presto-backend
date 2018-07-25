@@ -13,9 +13,9 @@ module Presto.Backend.Types.Language.Interaction
 import Prelude
 import Control.Monad.Free (Free, liftF)
 import Control.Monad.Except (runExcept)
-import Control.Monad.Eff.Exception (error, Error)
-import Data.Foreign (Foreign)
-import Data.Foreign.Class (class Decode, class Encode, encode, decode)
+import Effect.Exception (error, Error)
+import Foreign (Foreign)
+import Foreign.Class (class Decode, class Encode, encode, decode)
 import Data.Either (Either(..))
 
 newtype ForeignIn = ForeignIn Foreign
@@ -35,7 +35,7 @@ class (Encode a, Decode b) <= Interact err a b | a -> b, b -> a where
 
 request :: Foreign -> Interaction Foreign
 request fgnIn = do
-  ForeignOut fgnOut <- liftF $ Request (ForeignIn fgnIn) id
+  ForeignOut fgnOut <- liftF $ Request (ForeignIn fgnIn) identity
   pure fgnOut
 
 interactConv :: forall a b s err. Interact err a b =>

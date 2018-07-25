@@ -21,15 +21,15 @@
 
 module Presto.Backend.SystemCommands where
 
-import Prelude
-import Data.Function.Uncurried (Fn3)
-import Control.Monad.Eff.Exception (Error)
-import Control.Monad.Eff (Eff)
-import Control.Monad.Aff (makeAff, Aff)
-import Data.Function.Uncurried (runFn3)
+import Prelude (Unit, ($))
+import Data.Either
+import Data.Function.Uncurried (Fn2, runFn2)
+import Effect.Exception (Error)
+import Effect (Effect)
+import Effect.Aff (makeAff, Aff, Canceler)
 
-foreign import runSysCmdImpl :: forall a e. Fn3 (Error -> Eff e Unit) (a -> Eff e Unit) String (Eff e Unit)
+foreign import runSysCmdImpl :: forall a. Fn2 (Either Error a -> Effect Unit) String (Effect Canceler)
 
-runSysCmd :: forall eff. String -> Aff eff String
+runSysCmd :: String -> Aff String
 runSysCmd cmd = do
-	makeAff $ (\err sc -> runFn3 runSysCmdImpl err sc cmd)
+	makeAff $ (\handler -> runFn2 runSysCmdImpl handler cmd)

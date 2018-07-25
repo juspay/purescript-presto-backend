@@ -21,9 +21,9 @@ module Presto.Backend.Types.API
 
 import Prelude
 
-import Data.Foreign (F)
-import Data.Foreign.Class (class Decode, class Encode)
-import Data.Foreign.Generic.Class (class GenericDecode, class GenericEncode)
+import Foreign (F)
+import Foreign.Class (class Decode, class Encode)
+import Foreign.Generic.Class (class GenericDecode, class GenericEncode)
 import Data.Generic.Rep (class Generic)
 import Presto.Backend.Utils.Encoding (defaultDecode, defaultEncode, defaultDecodeJSON, defaultEncodeJSON)
 

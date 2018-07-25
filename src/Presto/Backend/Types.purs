@@ -21,22 +21,9 @@
 
 module Presto.Backend.Types where
 
-import Control.Monad.Aff (Aff)
-import Control.Monad.Aff.AVar (AVAR)
-import Control.Monad.Aff.Console (CONSOLE)
-import Control.Monad.Eff.Exception (EXCEPTION)
-import Cache (CACHE)
-import Sequelize.Types (SEQUELIZE)
-import Node.FS (FS)
-import Node.Process (PROCESS)
-import Data.UUID (GENUUID)
-import Control.Monad.Eff (kind Effect)
+import Effect.Aff (Aff)
 
-foreign import data NETWORK :: Effect
 foreign import data URL :: Type
-
-type BackendEffects eff = (avar :: AVAR, exception :: EXCEPTION, network :: NETWORK, console :: CONSOLE, sequelize :: SEQUELIZE, cache :: CACHE, fs :: FS, process :: PROCESS, uuid :: GENUUID | eff)
-type BackendAff eff = Aff (BackendEffects eff)
 
 type ZipkinConfig =
   { enable :: String

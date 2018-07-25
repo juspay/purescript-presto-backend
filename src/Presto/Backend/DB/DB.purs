@@ -22,10 +22,10 @@
 module Presto.Backend.DB where
 
 import Prelude
-import Control.Monad.Aff (Aff, attempt)
-import Control.Monad.Eff (Eff)
-import Control.Monad.Eff.Class (liftEff)
-import Control.Monad.Eff.Exception (Error, error)
+import Effect.Aff (Aff, attempt)
+import Effect (Effect)
+import Effect.Class (liftEffect)
+import Effect.Exception (Error, error)
 import Data.Bifunctor (bimap)
 import Data.Either (Either(..))
 import Data.Function.Uncurried (Fn2, runFn2)
@@ -37,20 +37,20 @@ import Sequelize.CRUD.Read (findAll', findOne')
 import Sequelize.CRUD.Update (updateModel)
 import Sequelize.Class (class Model, modelName)
 import Sequelize.Instance (instanceToModelE)
-import Sequelize.Types (Conn, ModelOf, SEQUELIZE)
+import Sequelize.Types (Conn, ModelOf)
 import Type.Proxy (Proxy(..))
 
-foreign import _getModelByName :: forall a e. Fn2 Conn String (Eff (sequelize :: SEQUELIZE | e) (ModelOf a))
+foreign import _getModelByName :: forall a e. Fn2 Conn String (Effect (ModelOf a))
 
 
-getModelByName :: forall a e. Model a => Conn -> Aff (sequelize :: SEQUELIZE | e) (Either Error (ModelOf a))
+getModelByName :: forall a. Model a => Conn -> Aff (Either Error (ModelOf a))
 getModelByName conn = do
     let mName = modelName (Proxy :: Proxy a)
-    attempt $ liftEff $ runFn2 _getModelByName conn mName
+    attempt $ liftEffect $ runFn2 _getModelByName conn mName
 
-findOne :: forall a e. Model a => Conn -> Options a -> Aff (sequelize :: SEQUELIZE | e) (Either Error (Maybe a))
+findOne :: forall a e. Model a => Conn -> Options a -> Aff (Either Error (Maybe a))
 findOne conn options = do
-    model <- getModelByName conn :: (Aff (sequelize :: SEQUELIZE | e) (Either Error (ModelOf a)))
+    model <- getModelByName conn :: (Aff (Either Error (ModelOf a)))
     case model of 
         Right m -> do
             val <- attempt $ findOne' m options
@@ -72,9 +72,9 @@ findOne conn options = do
 --       Right Nothing -> pure <<< Left $ DBError { message : mName <> " not found" }
 --       Left err -> pure <<< Left $ DBError { message : show err }
 
-findAll :: forall a e. Model a => Conn -> Options a -> Aff (sequelize :: SEQUELIZE | e) (Either Error (Array a))
+findAll :: forall a. Model a => Conn -> Options a -> Aff (Either Error (Array a))
 findAll conn options = do
-    model <- getModelByName conn :: (Aff (sequelize :: SEQUELIZE | e) (Either Error (ModelOf a)))
+    model <- getModelByName conn :: (Aff (Either Error (ModelOf a)))
     case model of
         Right m -> do
             val <- attempt $ findAll' m options
@@ -83,9 +83,9 @@ findAll conn options = do
                 Left err -> pure <<< Left $ error $ show err
         Left err -> pure $ Left $ error $ show err
 
-create :: forall a e. Model a => Conn -> a -> Aff (sequelize :: SEQUELIZE | e) (Either Error (Maybe a))
+create :: forall a. Model a => Conn -> a -> Aff (Either Error (Maybe a))
 create conn entity = do
-    model <- getModelByName conn :: (Aff (sequelize :: SEQUELIZE | e) (Either Error (ModelOf a)))
+    model <- getModelByName conn :: (Aff (Either Error (ModelOf a)))
     case model of
         Right m -> do
             val <- attempt $ create' m entity
@@ -94,9 +94,9 @@ create conn entity = do
                 Left err -> pure <<< Left $ error $ show err
         Left err -> pure $ Left $ error $ show err
 
-update :: forall a e . Model a => Conn -> Options a -> Options a -> Aff (sequelize :: SEQUELIZE | e) (Either Error (Array a))
+update :: forall a. Model a => Conn -> Options a -> Options a -> Aff (Either Error (Array a))
 update conn updateValues whereClause = do
-    model <- getModelByName conn :: (Aff (sequelize :: SEQUELIZE | e) (Either Error (ModelOf a)))
+    model <- getModelByName conn :: (Aff (Either Error (ModelOf a)))
     case model of
         Right m -> do
             val <- attempt $ updateModel m updateValues whereClause
@@ -122,9 +122,9 @@ update conn updateValues whereClause = do
 --       Right { affectedCount , affectedRows : Just x } -> pure <<< Right $ recs
 --       Left err -> pure <<< Left $ DBError { message : message err }
 
-delete :: forall a e. Model a => Conn -> Options a -> Aff (sequelize :: SEQUELIZE | e) (Either Error Int)
+delete :: forall a. Model a => Conn -> Options a -> Aff (Either Error Int)
 delete conn whereClause = do
-  model <- getModelByName conn :: (Aff (sequelize :: SEQUELIZE | e) (Either Error (ModelOf a)))
+  model <- getModelByName conn :: (Aff (Either Error (ModelOf a)))
   let mName = modelName (Proxy :: Proxy a)
   case model of
     Right m -> do
