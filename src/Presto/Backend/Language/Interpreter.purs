@@ -123,9 +123,7 @@ interpret (BackendRuntime apiRunner _ _) (CallAPI apiInteractionF nextF) = do
 
 interpret (BackendRuntime _ _ logRunner) (Log tag message next) = (R.lift ( S.lift ( E.lift (logRunner tag message)))) *> pure next
 
--- fork is for tasks which don't have to return any value.
--- Parallel aff passes the result of its computation.
-interpret r (Fork flow nextF) = R.lift $ S.lift $ E.lift $ forkAff flow *> (pure <<< nextF) unit
+interpret r (Fork flow nextF) = R.lift $ S.lift $ E.lift $ forkAff flow >>= (pure <<< nextF)
 
 interpret _ (RunSysCmd cmd next) = R.lift $ S.lift $ E.lift $ runSysCmd cmd >>= (pure <<< next)
 

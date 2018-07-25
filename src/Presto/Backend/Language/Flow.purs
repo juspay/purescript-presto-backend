@@ -24,7 +24,7 @@ module Presto.Backend.Flow where
 import Prelude
 
 import Cache (CacheConn)
-import Effect.Aff (Aff)
+import Effect.Aff (Aff, Fiber)
 import Effect.Aff.AVar (AVar)
 import Effect.Exception (Error, error)
 import Control.Monad.Free (Free, liftF)
@@ -74,7 +74,7 @@ data BackendFlowCommands next st rt error s =
     | SetMessageHandler CacheConn (String -> String -> Unit) (Either Error String -> next)
     | RunSysCmd String (String -> next)
     | Parallel (Unit -> next)
-    | Fork (Aff s) (Unit -> next)
+    | Fork (Aff s) (Fiber s -> next)
 
 type BackendFlowCommandsWrapper st rt error s next = BackendFlowCommands next st rt error s
 
@@ -215,7 +215,7 @@ setMessageHandler cacheName f = do
   cacheConn <- getCacheConn cacheName
   wrap $ SetMessageHandler cacheConn f identity
 
-forkFlow :: forall s st rt error. Aff s -> BackendFlow st rt error Unit
+forkFlow :: forall s st rt error. Aff s -> BackendFlow st rt error (Fiber s)
 forkFlow flow = wrap $ Fork flow identity
 
 paralleliseFlow :: forall st rt error. BackendFlow st rt error Unit -> BackendFlow st rt error Unit
