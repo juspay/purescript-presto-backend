@@ -27,7 +27,7 @@
   "dependencies": {
     "axios": "^0.18.0",
     "child_process": "^1.0.2",
-    "express": "^4.15.2",
+    "express": "^4.16.3",
     "node-redis": "^0.1.7",
     "zipkin": "^0.13.0",
     "zipkin-context-cls": "^0.13.0",

@@ -65,7 +65,6 @@ data BackendFlowCommands next st rt error s =
     | SetCacheWithExpiry CacheConn String String String (Either Error String -> next)
     | GetCache CacheConn String (Either Error String -> next)
     | DelCache CacheConn String (Either Error String -> next)
-    | Fork (Aff s) (Unit -> next)
     | Expire CacheConn String String (Either Error String -> next)
     | Incr CacheConn String (Either Error String -> next)
     | SetHash CacheConn String String (Either Error String -> next)
@@ -75,10 +74,7 @@ data BackendFlowCommands next st rt error s =
     | SetMessageHandler CacheConn (String -> String -> Unit) (Either Error String -> next)
     | RunSysCmd String (String -> next)
     | Parallel (Unit -> next)
-
-    -- | HandleException 
-    -- | Await (Control s) (s -> next)
-    -- | Delay Milliseconds next
+    | Fork (Aff s) (Unit -> next)
 
 type BackendFlowCommandsWrapper st rt error s next = BackendFlowCommands next st rt error s
 
