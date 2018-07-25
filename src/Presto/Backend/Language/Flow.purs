@@ -73,7 +73,6 @@ data BackendFlowCommands next st rt error s =
     | Subscribe CacheConn String (Either Error String -> next)
     | SetMessageHandler CacheConn (String -> String -> Unit) (Either Error String -> next)
     | RunSysCmd String (String -> next)
-    | Parallel (Unit -> next)
     | Fork (Aff s) (Fiber s -> next)
 
 type BackendFlowCommandsWrapper st rt error s next = BackendFlowCommands next st rt error s
