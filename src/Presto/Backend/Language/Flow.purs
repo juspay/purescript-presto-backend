@@ -217,8 +217,5 @@ setMessageHandler cacheName f = do
 forkFlow :: forall s st rt error. Aff s -> BackendFlow st rt error (Fiber s)
 forkFlow flow = wrap $ Fork flow identity
 
-paralleliseFlow :: forall st rt error. BackendFlow st rt error Unit -> BackendFlow st rt error Unit
-paralleliseFlow flow = wrap $ Parallel identity
-
 runSysCmd :: forall st rt error. String -> BackendFlow st rt error String
 runSysCmd cmd = wrap $ RunSysCmd cmd identity
