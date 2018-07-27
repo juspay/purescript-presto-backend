@@ -22,7 +22,9 @@
 module Presto.Backend.APIHandler where
 
 
+import Data.Either (Either)
 import Effect (Effect)
+import Effect.Aff (Canceler(..))
 import Effect.Exception (Error)
 import Prelude (Unit, show, (<$>))
 import Presto.Backend.Types (ZipkinConfig)
@@ -42,7 +44,7 @@ newtype NativeRequest = NativeRequest
   , headers :: NativeHeaders
   }
 
-foreign import callAPI' :: (AffError) -> (AffSuccess String) -> NativeRequest -> (Effect Unit)
+foreign import callAPI' :: (Either Error String -> Effect Unit) -> NativeRequest -> Effect Canceler
 foreign import traceCallAPI :: ZipkinConfig -> (AffError) -> (AffSuccess String) -> NativeRequest -> (Effect Unit)
 foreign import logString' :: forall a. a -> String
 
