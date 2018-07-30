@@ -38,6 +38,7 @@ import Presto.Backend.Types.API (class RestEndpoint, Headers, ErrorResponse)
 import Presto.Backend.Types.Language.Interaction (Interaction)
 import Sequelize.Class (class Model)
 import Sequelize.Types (Conn)
+import Control.Monad.Aff (Aff)
 
 type APIResult s = Either ErrorResponse s
 newtype Control s = Control (AVar s)
@@ -64,7 +65,7 @@ data BackendFlowCommands next st rt error s =
     | SetCacheWithExpiry CacheConn String String String (Either Error String -> next)
     | GetCache CacheConn String (Either Error String -> next)
     | DelCache CacheConn String (Either Error String -> next)
-    | Fork (BackendFlow st rt error s) (Control s -> next)
+    | Fork (forall eff. Aff eff s) (Unit -> next)
     | Expire CacheConn String String (Either Error String -> next)
     | Incr CacheConn String (Either Error String -> next)
     | SetHash CacheConn String String (Either Error String -> next)
@@ -73,10 +74,6 @@ data BackendFlowCommands next st rt error s =
     | Subscribe CacheConn String (Either Error String -> next)
     | SetMessageHandler CacheConn (String -> String -> Unit) (Either Error String -> next)
     | RunSysCmd String (String -> next)
-
-    -- | HandleException 
-    -- | Await (Control s) (s -> next)
-    -- | Delay Milliseconds next
 
 type BackendFlowCommandsWrapper st rt error s next = BackendFlowCommands next st rt error s
 
@@ -219,3 +216,6 @@ setMessageHandler cacheName f = do
 
 runSysCmd :: forall st rt error. String -> BackendFlow st rt error String
 runSysCmd cmd = wrap $ RunSysCmd cmd id
+
+forkFlow :: forall st rt error a. (forall eff. Aff eff a) -> BackendFlow st rt error Unit
+forkFlow flow = wrap $ Fork flow id

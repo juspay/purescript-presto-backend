@@ -59,18 +59,6 @@ data Connection = Sequelize Conn | Redis CacheConn
 
 data BackendRuntime = BackendRuntime APIRunner (StrMap Connection) LogRunner
 
--- Need to be looked at later point of time.
-forkFlow :: forall eff rt st a err. BackendRuntime -> BackendFlow st rt err a -> InterpreterMT rt st (BackendException err) eff (Control a)
-forkFlow runtime flow = do
-  st <- R.lift $ S.get
-  rt <- R.ask
-  resultVar <- R.lift $ S.lift $ E.lift $ makeVar
-  -- let m = E.runExceptT ( S.runStateT ( R.runReaderT ( runBackend runtime flow ) rt) st)
-  -- _ <- R.lift $ S.lift $ E.lift do
-  --   value <- forkAff m 
-  --   putVar resultVar value
-  pure $ Control resultVar
-
 
 interpret :: forall st rt s eff a err.  BackendRuntime -> BackendFlowCommandsWrapper st rt err s a -> InterpreterMT rt st (BackendException err) eff a
 interpret _ (Ask next) = R.ask >>= (pure <<< next)
@@ -138,7 +126,7 @@ interpret (BackendRuntime apiRunner _ _) (CallAPI apiInteractionF nextF) = do
 
 interpret (BackendRuntime _ _ logRunner) (Log tag message next) = (R.lift ( S.lift ( E.lift (logRunner tag message)))) *> pure next
 
--- interpret r (Fork flow nextF) = forkFlow r flow >>= (pure <<< nextF)
+interpret r (Fork flow nextF) = R.lift $ S.lift $ E.lift (forkAff flow) *> (pure <<< nextF) unit
 
 interpret _ (RunSysCmd cmd next) = R.lift $ S.lift $ E.lift $ runSysCmd cmd >>= (pure <<< next)
 
