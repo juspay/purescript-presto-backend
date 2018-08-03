@@ -59,43 +59,39 @@ var traceCallAPI = function (zipkinConfig) {
   return callAPIFn
 }
 
-var callAPIFn = function(error) {
-  return function(success) {
-    return function(request) {
-      return function() {
-        var headersRaw = request.headers;
-        var headers = {};
-        for(var i=0;i<headersRaw.length;i++){
-          headers[headersRaw[i].field] = headersRaw[i].value;
-        }
-        return axios.request({
-          url: request.url,
-          method: request.method,
-          data: request.payload,
-          headers: headers
-        })
-        .then(function(response) {
+var callAPIFn = function(request) {
+  return function (error, success) {
+    var headersRaw = request.headers;
+    var headers = {};
+    for(var i=0;i<headersRaw.length;i++){
+      headers[headersRaw[i].field] = headersRaw[i].value;
+    }
+    return axios.request({
+      url: request.url,
+      method: request.method,
+      data: request.payload,
+      headers: headers
+    })
+      .then(function(response) {
+        success(JSON.stringify({
+          code:response.status,
+          status:response.statusText,
+          response:response.data
+        }));
+      })
+      .catch(function(err) {
+        var response  = err.response;
+        if(response && checkForNullOrUndefined(response.status) && checkForNullOrUndefined(response.statusText) && checkForNullOrUndefined(response.data)) {
           success(JSON.stringify({
             code:response.status,
             status:response.statusText,
             response:response.data
-          }))();
-        })
-        .catch(function(err) {
-          var response  = err.response;
-          if(response && checkForNullOrUndefined(response.status) && checkForNullOrUndefined(response.statusText) && checkForNullOrUndefined(response.data)) {
-              success(JSON.stringify({
-                code:response.status,
-                status:response.statusText,
-                response:response.data
-              }))();
-          } else {
-            error("Not able to find code/status/data in response")();
-          }
-        });
-      }
-    };
-  };
+          }));
+        } else {
+          error("Not able to find code/status/data in response");
+        }
+      });
+  }
 };
 
 var checkForNullOrUndefined = function(value) {
