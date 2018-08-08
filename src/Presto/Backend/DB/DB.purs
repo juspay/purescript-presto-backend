@@ -22,16 +22,17 @@
 module Presto.Backend.DB where
 
 import Prelude
-import Effect.Aff (Aff, attempt)
-import Effect (Effect)
-import Effect.Class (liftEffect)
-import Effect.Exception (Error, error)
+
 import Data.Bifunctor (bimap)
 import Data.Either (Either(..))
 import Data.Function.Uncurried (Fn2, runFn2)
 import Data.Maybe (Maybe(..))
 import Data.Options (Options)
-import Sequelize.CRUD.Create (create')
+import Effect (Effect)
+import Effect.Aff (Aff, attempt)
+import Effect.Class (liftEffect)
+import Effect.Exception (Error, error)
+import Sequelize.CRUD.Create (bulkCreate, create')
 import Sequelize.CRUD.Destroy (delete) as Destroy
 import Sequelize.CRUD.Read (findAll', findOne')
 import Sequelize.CRUD.Update (updateModel)
@@ -40,7 +41,7 @@ import Sequelize.Instance (instanceToModelE)
 import Sequelize.Types (Conn, ModelOf)
 import Type.Proxy (Proxy(..))
 
-foreign import _getModelByName :: forall a e. Fn2 Conn String (Effect (ModelOf a))
+foreign import _getModelByName :: forall a. Fn2 Conn String (Effect (ModelOf a))
 
 
 getModelByName :: forall a. Model a => Conn -> Aff (Either Error (ModelOf a))
@@ -48,10 +49,10 @@ getModelByName conn = do
     let mName = modelName (Proxy :: Proxy a)
     attempt $ liftEffect $ runFn2 _getModelByName conn mName
 
-findOne :: forall a e. Model a => Conn -> Options a -> Aff (Either Error (Maybe a))
+findOne :: forall a. Model a => Conn -> Options a -> Aff (Either Error (Maybe a))
 findOne conn options = do
     model <- getModelByName conn :: (Aff (Either Error (ModelOf a)))
-    case model of 
+    case model of
         Right m -> do
             val <- attempt $ findOne' m options
             case val of
@@ -94,6 +95,17 @@ create conn entity = do
                 Left err -> pure <<< Left $ error $ show err
         Left err -> pure $ Left $ error $ show err
 
+bCreate' :: forall a. Model a => Conn -> Array a -> Aff (Either Error Unit)
+bCreate' conn entity = do
+    model <- getModelByName conn :: (Aff (Either Error (ModelOf a)))
+    case model of
+        Right m -> do
+            val <- attempt $ bulkCreate m entity
+            case val of
+                Right rec -> pure $ Right unit
+                Left err -> pure <<< Left $ error $ show err
+        Left err -> pure $ Left $ error $ show err
+
 update :: forall a. Model a => Conn -> Options a -> Options a -> Aff (Either Error (Array a))
 update conn updateValues whereClause = do
     model <- getModelByName conn :: (Aff (Either Error (ModelOf a)))
@@ -101,7 +113,7 @@ update conn updateValues whereClause = do
         Right m -> do
             val <- attempt $ updateModel m updateValues whereClause
             recs <- findAll' m whereClause
-            case val of 
+            case val of
                 Right {affectedCount : 0, affectedRows } -> pure <<< Right $ recs
                 Right {affectedCount , affectedRows : Nothing } -> pure <<< Right $ recs
                 Right {affectedCount , affectedRows : Just x } -> pure <<< Right $ recs
@@ -132,4 +144,4 @@ delete conn whereClause = do
       case val of
         Right { affectedCount : count } -> pure <<< Right $ count
         Left err ->pure $ Left $ error $ show err
-    Left err -> pure $ Left $ error $ show err  
+    Left err -> pure $ Left $ error $ show err
