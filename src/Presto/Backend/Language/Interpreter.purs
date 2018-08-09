@@ -105,6 +105,8 @@ interpret _ (FindAll models next) = (pure <<< next) models
 
 interpret _ (Create model next) = (pure <<< next) model
 
+interpret _ (BulkCreate model next) = (pure <<< next) model
+
 interpret _ (Update model next) = (pure <<< next) model
 
 interpret _ (Delete model next) = (pure <<< next) model

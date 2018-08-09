@@ -24,16 +24,16 @@ module Presto.Backend.Flow where
 import Prelude
 
 import Cache (CacheConn)
-import Effect.Aff (Aff, Fiber)
-import Effect.Aff.AVar (AVar)
-import Effect.Exception (Error, error)
 import Control.Monad.Free (Free, liftF)
 import Data.Either (Either(..))
 import Data.Exists (Exists, mkExists)
-import Foreign.Class (class Decode, class Encode)
 import Data.Maybe (Maybe(..))
 import Data.Options (Options)
-import Presto.Backend.DB (findOne, findAll, create, update, delete) as DB
+import Effect.Aff (Aff, Fiber)
+import Effect.Aff.AVar (AVar)
+import Effect.Exception (Error, error)
+import Foreign.Class (class Decode, class Encode)
+import Presto.Backend.DB (findOne, findAll, create, update, delete, bCreate') as DB
 import Presto.Backend.Language.APIInteract (apiInteract)
 import Presto.Backend.Types.API (class RestEndpoint, Headers, ErrorResponse)
 import Presto.Backend.Types.Language.Interaction (Interaction)
@@ -44,7 +44,7 @@ type APIResult s = Either ErrorResponse s
 newtype Control s = Control (AVar s)
 data BackendException err = CustomException err | StringException Error
 
-data BackendFlowCommands next st rt error s = 
+data BackendFlowCommands next st rt error s =
       Ask (rt -> next)
     | Get (st -> next)
     | Put st (st -> next)
@@ -55,6 +55,7 @@ data BackendFlowCommands next st rt error s =
     | FindOne (Either Error (Maybe s)) (Either Error (Maybe s) -> next)
     | FindAll (Either Error (Array s)) (Either Error (Array s) -> next)
     | Create  (Either Error (Maybe s)) (Either Error (Maybe s) -> next)
+    | BulkCreate (Either Error Unit) (Either Error Unit -> next)
     | FindOrCreate (Either Error (Maybe s)) (Either Error (Maybe s) -> next)
     | Update (Either Error (Array s)) (Either Error (Array s) -> next)
     | Delete (Either Error Int) (Either Error Int -> next)
@@ -117,7 +118,7 @@ findAll dbName options = do
   conn <- getDBConn dbName
   model <- doAff do
         DB.findAll conn options
-  wrap $ FindAll model identity 
+  wrap $ FindAll model identity
 
 create :: forall model st rt error. Model model => String -> model -> BackendFlow st rt error (Either Error (Maybe model))
 create dbName model = do
@@ -125,6 +126,13 @@ create dbName model = do
   result <- doAff do
         DB.create conn model
   wrap $ Create result identity
+
+bulkCreate :: forall model st rt error. Model model => String -> Array model -> BackendFlow st rt error (Either Error Unit)
+bulkCreate dbName model = do
+  conn <- getDBConn dbName
+  result <- doAff do
+        DB.bCreate' conn model
+  wrap $ BulkCreate result identity
 
 findOrCreate :: forall model st rt error. Model model => String -> Options model -> BackendFlow st rt error (Either Error (Maybe model))
 findOrCreate dbName options = do
@@ -154,11 +162,11 @@ getCacheConn dbName = wrap $ GetCacheConn dbName identity
 
 callAPI :: forall st rt error a b. Encode a => Decode b => RestEndpoint a b
   => Headers -> a -> BackendFlow st rt error (APIResult b)
-callAPI headers a = wrap $ CallAPI (apiInteract a headers) identity 
+callAPI headers a = wrap $ CallAPI (apiInteract a headers) identity
 
 setCache :: forall st rt error. String -> String ->  String -> BackendFlow st rt error (Either Error String)
 setCache cacheName key value = do
-  cacheConn <- getCacheConn cacheName 
+  cacheConn <- getCacheConn cacheName
   wrap $ SetCache cacheConn key value identity
 
 getCache :: forall st rt error. String -> String -> BackendFlow st rt error (Either Error String)
@@ -180,7 +188,7 @@ log :: forall st rt error a. String -> a -> BackendFlow st rt error Unit
 log tag message = wrap $ Log tag message unit
 
 expire :: forall st rt error. String -> String -> String -> BackendFlow st rt error (Either Error String)
-expire cacheName key ttl = do 
+expire cacheName key ttl = do
   cacheConn <- getCacheConn cacheName
   wrap $ Expire cacheConn key ttl identity
 
@@ -195,9 +203,9 @@ setHash cacheName key value = do
   wrap $ SetCache cacheConn key value identity
 
 getHashKey :: forall st rt error. String -> String -> String -> BackendFlow st rt error (Either Error String)
-getHashKey cacheName key field = do 
+getHashKey cacheName key field = do
   cacheConn <- getCacheConn cacheName
-  wrap $ GetHashKey cacheConn key field identity 
+  wrap $ GetHashKey cacheConn key field identity
 
 publishToChannel :: forall st rt error. String -> String -> String -> BackendFlow st rt error (Either Error String)
 publishToChannel cacheName channel message = do
