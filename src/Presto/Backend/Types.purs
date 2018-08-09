@@ -22,8 +22,7 @@
 module Presto.Backend.Types where
 
 import Effect.Aff (Aff)
-
-foreign import data URL :: Type
+import Presto.Backend.Types.API (URL)
 
 type ZipkinConfig =
   { enable :: String
