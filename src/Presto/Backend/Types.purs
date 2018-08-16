@@ -26,14 +26,12 @@ import Control.Monad.Aff.AVar (AVAR)
 import Control.Monad.Aff.Console (CONSOLE)
 import Control.Monad.Eff.Exception (EXCEPTION)
 import Cache (CACHE)
+import Presto.Core.Types.API (URL)
+import Presto.Core.Types.App (NETWORK)
 import Sequelize.Types (SEQUELIZE)
 import Node.FS (FS)
 import Node.Process (PROCESS)
 import Data.UUID (GENUUID)
-import Control.Monad.Eff (kind Effect)
-
-foreign import data NETWORK :: Effect
-foreign import data URL :: Type
 
 type BackendEffects eff = (avar :: AVAR, exception :: EXCEPTION, network :: NETWORK, console :: CONSOLE, sequelize :: SEQUELIZE, cache :: CACHE, fs :: FS, process :: PROCESS, uuid :: GENUUID | eff)
 type BackendAff eff = Aff (BackendEffects eff)
