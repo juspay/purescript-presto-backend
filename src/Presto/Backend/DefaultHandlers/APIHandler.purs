@@ -26,7 +26,7 @@ import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (Error)
 import Prelude (Unit, show, (<$>))
 import Presto.Backend.Types (ZipkinConfig)
-import Presto.Backend.Types.API (Header(..), Headers(..), Request(..), URL)
+import Presto.Core.Types.API (Header(..), Headers(..), Request(..), URL)
 
 
 type NativeHeader = { field :: String , value :: String}
