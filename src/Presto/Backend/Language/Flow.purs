@@ -213,5 +213,5 @@ setMessageHandler cacheName f = do
 runSysCmd :: forall st rt. String -> BackendFlow st rt String
 runSysCmd cmd = wrap $ RunSysCmd cmd id
 
-forkFlow :: forall st rt a. BackendFlow st rt a -> BackendFlow st rt unit
+forkFlow :: forall st rt a. BackendFlow st rt a -> BackendFlow st rt Unit
 forkFLow flow = wrap $ Fork flow id
