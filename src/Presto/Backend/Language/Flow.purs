@@ -22,14 +22,17 @@
 module Presto.Backend.Flow where
 
 import Prelude
+
+import Cache (CacheConn)
+import Control.Monad.Aff (forkAff)
 import Control.Monad.Eff.Exception (Error)
 import Control.Monad.Free (Free, liftF)
-import Presto.Backend.DB (findOne, findAll, create, update, delete) as DB
 import Data.Either (Either(..))
 import Data.Exists (Exists, mkExists)
 import Data.Foreign.Class (class Decode, class Encode)
 import Data.Maybe (Maybe(..))
 import Data.Options (Options)
+import Presto.Backend.DB (findOne, findAll, create, update, delete) as DB
 import Presto.Backend.Types (BackendAff)
 import Presto.Core.Types.API (class RestEndpoint, Headers)
 import Presto.Core.Types.Language.APIInteract (apiInteract)
@@ -37,7 +40,6 @@ import Presto.Core.Types.Language.Flow (APIResult, Control)
 import Presto.Core.Types.Language.Interaction (Interaction)
 import Sequelize.Class (class Model)
 import Sequelize.Types (Conn)
-import Cache (CacheConn)
 
 data BackendFlowCommands next st rt s = 
       Ask (rt -> next)
@@ -60,7 +62,7 @@ data BackendFlowCommands next st rt s =
     | SetCacheWithExpiry CacheConn String String String (Either Error String -> next)
     | GetCache CacheConn String (Either Error String -> next)
     | DelCache CacheConn String (Either Error String -> next)
-    | Fork (BackendFlow st rt s) (Control s -> next)
+    | Fork (BackendFlow st rt s) (Unit -> next)
     | Expire CacheConn String String (Either Error String -> next)
     | Incr CacheConn String (Either Error String -> next)
     | SetHash CacheConn String String (Either Error String -> next)
@@ -212,3 +214,6 @@ setMessageHandler cacheName f = do
 
 runSysCmd :: forall st rt. String -> BackendFlow st rt String
 runSysCmd cmd = wrap $ RunSysCmd cmd id
+
+forkFlow :: forall st rt a. BackendFlow st rt a -> BackendFlow st rt Unit
+forkFlow flow = wrap $ Fork flow id
