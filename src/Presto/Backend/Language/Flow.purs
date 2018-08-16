@@ -60,7 +60,7 @@ data BackendFlowCommands next st rt s =
     | SetCacheWithExpiry CacheConn String String String (Either Error String -> next)
     | GetCache CacheConn String (Either Error String -> next)
     | DelCache CacheConn String (Either Error String -> next)
-    | Fork (BackendFlow st rt s) (Control s -> next)
+    | Fork (BackendFlow st rt s) (Unit -> next)
     | Expire CacheConn String String (Either Error String -> next)
     | Incr CacheConn String (Either Error String -> next)
     | SetHash CacheConn String String (Either Error String -> next)
@@ -212,3 +212,6 @@ setMessageHandler cacheName f = do
 
 runSysCmd :: forall st rt. String -> BackendFlow st rt String
 runSysCmd cmd = wrap $ RunSysCmd cmd id
+
+forkFlow :: forall st rt a. BackendFlow st rt a -> BackendFlow st rt unit
+forkFLow flow = wrap $ Fork flow id

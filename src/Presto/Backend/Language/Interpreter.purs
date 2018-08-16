@@ -61,17 +61,12 @@ data Connection = Sequelize Conn | Redis CacheConn
 
 data BackendRuntime = BackendRuntime APIRunner (StrMap Connection) LogRunner
 
--- Need to be looked at later point of time.
-forkFlow :: forall eff rt st a. BackendRuntime -> BackendFlow st rt a -> InterpreterMT rt st Error eff (Control a)
-forkFlow runtime flow = do
+forkF :: forall eff rt st a. BackendRuntime -> BackendFlow st rt a -> InterpreterMT rt st Error eff Unit
+forkF runtime flow = do
   st <- R.lift $ S.get
   rt <- R.ask
-  resultVar <- R.lift $ S.lift $ E.lift $ makeVar
-  -- let m = E.runExceptT ( S.runStateT ( R.runReaderT ( runBackend runtime flow ) rt) st)
-  -- _ <- R.lift $ S.lift $ E.lift do
-  --   value <- forkAff m 
-  --   putVar resultVar value
-  pure $ Control resultVar
+  let m = E.runExceptT ( S.runStateT ( R.runReaderT ( runBackend runtime flow ) rt) st)
+  R.lift $ S.lift $ E.lift $ forkAff m *> pure unit
 
 
 interpret :: forall st rt s eff a.  BackendRuntime -> BackendFlowCommandsWrapper st rt s a -> InterpreterMT rt st Error eff a
@@ -140,7 +135,7 @@ interpret (BackendRuntime apiRunner _ _) (CallAPI apiInteractionF nextF) = do
 
 interpret (BackendRuntime _ _ logRunner) (Log tag message next) = (R.lift ( S.lift ( E.lift (logRunner tag message)))) *> pure next
 
--- interpret r (Fork flow nextF) = forkFlow r flow >>= (pure <<< nextF)
+interpret r (Fork flow nextF) = forkF r flow >>= (pure <<< nextF)
 
 interpret _ (RunSysCmd cmd next) = R.lift $ S.lift $ E.lift $ runSysCmd cmd >>= (pure <<< next)
 
