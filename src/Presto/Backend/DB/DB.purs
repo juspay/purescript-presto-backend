@@ -34,7 +34,7 @@ import Effect.Class (liftEffect)
 import Effect.Exception (Error, error)
 import Sequelize.CRUD.Create (bulkCreate, create')
 import Sequelize.CRUD.Destroy (delete) as Destroy
-import Sequelize.CRUD.Read (findAll', findOne')
+import Sequelize.CRUD.Read (findAll', findAndCountAll', findOne')
 import Sequelize.CRUD.Update (updateModel)
 import Sequelize.Class (class Model, modelName)
 import Sequelize.Instance (instanceToModelE)
@@ -83,6 +83,18 @@ findAll conn options = do
                 Right arrayRec -> pure <<< Right $ arrayRec
                 Left err -> pure <<< Left $ error $ show err
         Left err -> pure $ Left $ error $ show err
+
+findAndCountAll :: forall a. Model a => Conn -> Options a
+  -> Aff (Either Error { count :: Int, rows :: Array a})
+findAndCountAll conn options = do
+  model <- getModelByName conn :: (Aff (Either Error (ModelOf a)))
+  case model of
+      Right m -> do
+          val <- attempt $ findAndCountAll' m options
+          case val of
+              Right arrayRec -> pure <<< Right $ arrayRec
+              Left err -> pure <<< Left $ error $ show err
+      Left err -> pure $ Left $ error $ show err
 
 create :: forall a. Model a => Conn -> a -> Aff (Either Error (Maybe a))
 create conn entity = do
