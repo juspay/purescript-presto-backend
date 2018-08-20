@@ -33,7 +33,7 @@ import Effect.Aff (Aff, Fiber)
 import Effect.Aff.AVar (AVar)
 import Effect.Exception (Error, error)
 import Foreign.Class (class Decode, class Encode)
-import Presto.Backend.DB (findOne, findAll, create, update, delete, bCreate') as DB
+import Presto.Backend.DB (findOne, findAll, findAndCountAll, create, update, delete, bCreate') as DB
 import Presto.Backend.Language.APIInteract (apiInteract)
 import Presto.Backend.Types.API (class RestEndpoint, Headers, ErrorResponse)
 import Presto.Backend.Types.Language.Interaction (Interaction)
@@ -54,6 +54,8 @@ data BackendFlowCommands next st rt error s =
     | ThrowException (BackendException error) (s -> next)
     | FindOne (Either Error (Maybe s)) (Either Error (Maybe s) -> next)
     | FindAll (Either Error (Array s)) (Either Error (Array s) -> next)
+    | FindAndCountAll (Either Error {count :: Int, rows :: Array s})
+        (Either Error {count :: Int, rows :: Array s} -> next)
     | Create  (Either Error (Maybe s)) (Either Error (Maybe s) -> next)
     | BulkCreate (Either Error Unit) (Either Error Unit -> next)
     | FindOrCreate (Either Error (Maybe s)) (Either Error (Maybe s) -> next)
@@ -119,6 +121,14 @@ findAll dbName options = do
   model <- doAff do
         DB.findAll conn options
   wrap $ FindAll model identity
+
+findAndCountAll :: forall model st rt error. Model model => String -> Options model
+  -> BackendFlow st rt error (Either Error {count :: Int, rows :: Array model})
+findAndCountAll dbName options = do
+  conn <- getDBConn dbName
+  model <- doAff do
+        DB.findAndCountAll conn options
+  wrap $ FindAndCountAll model identity
 
 create :: forall model st rt error. Model model => String -> model -> BackendFlow st rt error (Either Error (Maybe model))
 create dbName model = do
