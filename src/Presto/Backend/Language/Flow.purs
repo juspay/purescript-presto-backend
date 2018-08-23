@@ -29,6 +29,7 @@ import Data.Either (Either(..))
 import Data.Exists (Exists, mkExists)
 import Data.Maybe (Maybe(..))
 import Data.Options (Options)
+import Data.Tuple (Tuple(..))
 import Effect.Aff (Aff, Fiber)
 import Effect.Aff.AVar (AVar)
 import Effect.Exception (Error, error)
@@ -76,7 +77,8 @@ data BackendFlowCommands next st rt error s =
     | Subscribe CacheConn String (Either Error String -> next)
     | SetMessageHandler CacheConn (String -> String -> Unit) (Either Error String -> next)
     | RunSysCmd String (String -> next)
-    | Fork (Aff s) (Fiber s -> next)
+    | Fork (BackendFlow st rt error s) (Unit -> next)
+    | Attempt (BackendFlow st rt error s) ((Either (BackendException error) s) -> next)
 
 type BackendFlowCommandsWrapper st rt error s next = BackendFlowCommands next st rt error s
 
@@ -232,8 +234,11 @@ setMessageHandler cacheName f = do
   cacheConn <- getCacheConn cacheName
   wrap $ SetMessageHandler cacheConn f identity
 
-forkFlow :: forall s st rt error. Aff s -> BackendFlow st rt error (Fiber s)
+forkFlow :: forall s st rt error. BackendFlow st rt error s -> BackendFlow st rt error Unit
 forkFlow flow = wrap $ Fork flow identity
+
+attemptFlow :: forall s st rt error. BackendFlow st rt error s -> BackendFlow st rt error (Either (BackendException error) s)
+attemptFlow flow = wrap $ Attempt flow identity
 
 runSysCmd :: forall st rt error. String -> BackendFlow st rt error String
 runSysCmd cmd = wrap $ RunSysCmd cmd identity

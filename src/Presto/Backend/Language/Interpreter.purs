@@ -24,20 +24,22 @@ module Presto.Backend.Interpreter where
 import Prelude
 
 import Cache (CacheConn, delKey, expire, getHashKey, getKey, incr, publishToChannel, setHash, setKey, setMessageHandler, setex, subscribe)
-import Effect.Aff (Aff, forkAff)
-import Effect.Exception (error)
-import Control.Monad.Except.Trans (ExceptT(..), lift, throwError) as E
+import Control.Monad.Except.Trans (ExceptT(..), lift, throwError, runExceptT) as E
 import Control.Monad.Free (foldFree)
-import Control.Monad.Reader.Trans (ReaderT, ask, lift) as R
-import Control.Monad.State.Trans (StateT, get, lift, modify, put) as S
+import Control.Monad.Reader.Trans (ReaderT, ask, lift, runReaderT) as R
+import Control.Monad.State.Trans (StateT, get, lift, modify, put, runStateT) as S
 import Data.Either (Either(..))
 import Data.Exists (runExists)
 import Data.Maybe (Maybe(..))
+import Data.Tuple (Tuple(..))
+import Effect.Aff (Aff, attempt, forkAff)
+import Effect.Aff.Class (liftAff)
+import Effect.Exception (error)
+import Foreign.Object as O
 import Presto.Backend.Flow (BackendException(..), BackendFlow, BackendFlowCommands(..), BackendFlowCommandsWrapper, BackendFlowWrapper(..))
 import Presto.Backend.Language.Runtime.API (APIRunner, runAPIInteraction)
 import Presto.Backend.SystemCommands (runSysCmd)
 import Sequelize.Types (Conn)
-import Foreign.Object as O
 
 type InterpreterMT rt st err a = R.ReaderT rt (S.StateT st (E.ExceptT err (Aff))) a
 
@@ -127,7 +129,21 @@ interpret (BackendRuntime apiRunner _ _) (CallAPI apiInteractionF nextF) = do
 
 interpret (BackendRuntime _ _ logRunner) (Log tag message next) = (R.lift ( S.lift ( E.lift (logRunner tag message)))) *> pure next
 
-interpret r (Fork flow nextF) = R.lift $ S.lift $ E.lift $ forkAff flow >>= (pure <<< nextF)
+interpret r (Fork flow nextF) = do
+  st <- R.lift $ S.get
+  rt <- R.ask
+  let m = E.runExceptT ( S.runStateT ( R.runReaderT ( runBackend r flow ) rt) st)
+  R.lift $ S.lift $ E.lift $ forkAff m *> (pure <<< nextF) unit
+
+interpret r (Attempt flow nextF) = do
+  st <- R.lift $ S.get
+  rt <- R.ask
+  let m = E.runExceptT ( S.runStateT ( R.runReaderT ( runBackend r flow ) rt) st)
+  result <- R.lift $ S.lift $ E.lift $ liftAff m
+  (pure <<< nextF) $ do
+      case result of
+        Right (Tuple x _) ->  Right x
+        Left b -> Left b
 
 interpret _ (RunSysCmd cmd next) = R.lift $ S.lift $ E.lift $ runSysCmd cmd >>= (pure <<< next)
 
