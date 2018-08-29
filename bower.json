@@ -30,5 +30,8 @@
   "devDependencies": {
     "purescript-psci-support": "^3.0.0"
   },
+  "resolutions": {
+    "purescript-aff-promise": "^0.7.0"
+  },
   "version": "0.0.1"
 }

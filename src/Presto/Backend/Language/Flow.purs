@@ -22,14 +22,17 @@
 module Presto.Backend.Flow where
 
 import Prelude
+
+import Cache (CacheConn)
+import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (Error)
 import Control.Monad.Free (Free, liftF)
-import Presto.Backend.DB (findOne, findAll, create, update, delete) as DB
 import Data.Either (Either(..))
 import Data.Exists (Exists, mkExists)
 import Data.Foreign.Class (class Decode, class Encode)
 import Data.Maybe (Maybe(..))
 import Data.Options (Options)
+import Presto.Backend.DB (findOne, findAll, create, update, delete) as DB
 import Presto.Backend.Types (BackendAff)
 import Presto.Core.Types.API (class RestEndpoint, Headers)
 import Presto.Core.Types.Language.APIInteract (apiInteract)
@@ -37,7 +40,6 @@ import Presto.Core.Types.Language.Flow (APIResult, Control)
 import Presto.Core.Types.Language.Interaction (Interaction)
 import Sequelize.Class (class Model)
 import Sequelize.Types (Conn)
-import Cache (CacheConn)
 
 data BackendFlowCommands next st rt s = 
       Ask (rt -> next)
@@ -67,7 +69,7 @@ data BackendFlowCommands next st rt s =
     | GetHashKey CacheConn String String (Either Error String -> next)
     | PublishToChannel CacheConn String String (Either Error String -> next)
     | Subscribe CacheConn String (Either Error String -> next)
-    | SetMessageHandler CacheConn (String -> String -> Unit) (Either Error String -> next)
+    | SetMessageHandler CacheConn (forall eff. (String -> String -> Eff eff Unit)) (Either Error String -> next)
     | RunSysCmd String (String -> next)
 
     -- | HandleException 
@@ -205,7 +207,7 @@ subscribe cacheName channel = do
   cacheConn <- getCacheConn cacheName
   wrap $ Subscribe cacheConn channel id
 
-setMessageHandler :: forall st rt. String -> (String -> String -> Unit) -> BackendFlow st rt (Either Error String)
+setMessageHandler :: forall st rt. String -> (forall eff. (String -> String -> Eff eff Unit)) -> BackendFlow st rt (Either Error String)
 setMessageHandler cacheName f = do
   cacheConn <- getCacheConn cacheName
   wrap $ SetMessageHandler cacheConn f id
