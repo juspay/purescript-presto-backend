@@ -32,7 +32,7 @@ import Data.Either (Either(..))
 import Data.Exists (runExists)
 import Data.Maybe (Maybe(..))
 import Data.Tuple (Tuple(..))
-import Effect.Aff (Aff, attempt, forkAff)
+import Effect.Aff (Aff, forkAff)
 import Effect.Aff.Class (liftAff)
 import Effect.Exception (error)
 import Foreign.Object as O
