@@ -85,6 +85,10 @@ newtype BackendFlowWrapper st rt error next = BackendFlowWrapper (Exists (Backen
 
 type BackendFlow st rt error next = Free (BackendFlowWrapper st rt error) next
 
+instance showBackendException :: Show a => Show (BackendException a) where
+  show (CustomException err) = show err
+  show (StringException err) = show err
+
 wrap :: forall next st rt error s. BackendFlowCommands next st rt error s -> BackendFlow st rt error next
 wrap = liftF <<< BackendFlowWrapper <<< mkExists
 
