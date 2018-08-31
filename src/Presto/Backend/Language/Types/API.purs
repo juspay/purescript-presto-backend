@@ -25,6 +25,7 @@ import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
 import Foreign (F, Foreign)
 import Foreign.Class (class Decode, class Encode)
+import Foreign.Generic (encodeJSON)
 import Foreign.Generic.Class (class GenericDecode, class GenericEncode)
 import Presto.Backend.Utils.Encoding (defaultDecode, defaultDecodeJSON, defaultEncode, defaultEncodeJSON, defaultEnumDecode, defaultEnumEncode)
 
@@ -118,6 +119,8 @@ instance encodeErrorPayload :: Encode ErrorPayload where
   encode = defaultEncode
 instance decodeErrorPayload :: Decode ErrorPayload where
   decode = defaultDecode
+instance showErrorPayload :: Show ErrorPayload where
+  show = encodeJSON
 
 derive instance genericResponse :: Generic (Response a) _
 instance decodeResponseG :: Decode a => Decode (Response a) where
