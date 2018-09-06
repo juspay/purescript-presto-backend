@@ -24,25 +24,21 @@ module Presto.Backend.Interpreter where
 import Prelude
 
 import Cache (CacheConn, delKey, expire, getHashKey, getKey, incr, publishToChannel, setHash, setKey, setMessageHandler, setex, subscribe)
-import Control.Monad.Aff (Aff, Canceler(..), forkAff)
-import Control.Monad.Aff.AVar (AVAR, makeVar, putVar)
-import Control.Monad.Eff.Exception (EXCEPTION, Error, error, message)
-import Control.Monad.Except.Trans (ExceptT, ExceptT(..), lift, throwError, runExceptT) as E
+import Control.Monad.Aff (Aff, forkAff)
+import Control.Monad.Eff.Exception (Error, error)
+import Control.Monad.Except.Trans (ExceptT(..), lift, throwError, runExceptT) as E
 import Control.Monad.Free (foldFree)
 import Control.Monad.Reader.Trans (ReaderT, ask, lift, runReaderT) as R
 import Control.Monad.State.Trans (StateT, get, lift, modify, put, runStateT) as S
-import Data.Array (filter, (!!))
 import Data.Either (Either(..))
 import Data.Exists (runExists)
 import Data.Maybe (Maybe(..))
 import Data.StrMap (StrMap, lookup)
-import Control.Monad.Eff.Class (liftEff)
 import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), BackendFlowCommandsWrapper, BackendFlowWrapper(..))
 import Presto.Backend.SystemCommands (runSysCmd)
 import Presto.Backend.Types (BackendAff)
 import Presto.Core.Flow (runAPIInteraction)
 import Presto.Core.Language.Runtime.API (APIRunner)
-import Presto.Core.Types.Language.Flow (Control(..))
 import Sequelize.Types (Conn)
 
 type InterpreterMT rt st err eff a = R.ReaderT rt (S.StateT st (E.ExceptT err (BackendAff eff))) a
@@ -104,7 +100,7 @@ interpret _ (PublishToChannel cacheConn channel message next) = (R.lift $ S.lift
 
 interpret _ (Subscribe cacheConn channel next) = (R.lift $ S.lift $ E.lift $ subscribe cacheConn channel) >>= (pure <<< next) 
 
--- interpret _ (SetMessageHandler cacheConn f next) = (R.lift $ S.lift $ E.lift $ liftEff $ setMessageHandler cacheConn f) >>= (pure <<< next) 
+interpret _ (SetMessageHandler cacheConn f next) = (R.lift $ S.lift $ E.lift $ setMessageHandler cacheConn f) >>= (pure <<< next) 
 
 interpret (BackendRuntime a connections c) (GetCacheConn cacheName next) = do
   maybeCache <- pure $ lookup cacheName connections
