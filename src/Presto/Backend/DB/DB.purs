@@ -22,6 +22,7 @@
 module Presto.Backend.DB where
 
 import Prelude
+
 import Control.Monad.Aff (Aff, attempt)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (liftEff)
@@ -30,8 +31,10 @@ import Data.Bifunctor (bimap)
 import Data.Either (Either(..))
 import Data.Function.Uncurried (Fn2, runFn2)
 import Data.Maybe (Maybe(..))
+import Data.Monoid (mempty)
 import Data.Options (Options)
 import Sequelize.CRUD.Create (create')
+import Sequelize.CRUD.Create (createWithOpts') as Seql
 import Sequelize.CRUD.Destroy (delete) as Destroy
 import Sequelize.CRUD.Read (findAll', findOne')
 import Sequelize.CRUD.Update (updateModel)
@@ -83,16 +86,19 @@ findAll conn options = do
                 Left err -> pure <<< Left $ error $ show err
         Left err -> pure $ Left $ error $ show err
 
-create :: forall a e. Model a => Conn -> a -> Aff (sequelize :: SEQUELIZE | e) (Either Error (Maybe a))
-create conn entity = do
+createWithOpts :: forall a e. Model a => Conn -> a -> Options a -> Aff (sequelize :: SEQUELIZE | e) (Either Error (Maybe a))
+createWithOpts conn entity options = do
     model <- getModelByName conn :: (Aff (sequelize :: SEQUELIZE | e) (Either Error (ModelOf a)))
     case model of
         Right m -> do
-            val <- attempt $ create' m entity
+            val <- attempt $ Seql.createWithOpts' m entity options
             case val of
                 Right rec -> pure $ bimap (\err -> error $ show err) Just (instanceToModelE rec)
                 Left err -> pure <<< Left $ error $ show err
         Left err -> pure $ Left $ error $ show err
+
+create :: forall a e. Model a => Conn -> a -> Aff (sequelize :: SEQUELIZE | e) (Either Error (Maybe a))
+create conn entity = createWithOpts conn entity mempty
 
 update :: forall a e . Model a => Conn -> Options a -> Options a -> Aff (sequelize :: SEQUELIZE | e) (Either Error (Array a))
 update conn updateValues whereClause = do

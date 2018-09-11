@@ -32,7 +32,7 @@ import Data.Exists (Exists, mkExists)
 import Data.Foreign.Class (class Decode, class Encode)
 import Data.Maybe (Maybe(..))
 import Data.Options (Options)
-import Presto.Backend.DB (findOne, findAll, create, update, delete) as DB
+import Presto.Backend.DB (findOne, findAll, create, createWithOpts, update, delete) as DB
 import Presto.Backend.Types (BackendAff)
 import Presto.Core.Types.API (class RestEndpoint, Headers)
 import Presto.Core.Types.Language.APIInteract (apiInteract)
@@ -122,6 +122,13 @@ create dbName model = do
   conn <- getDBConn dbName
   result <- doAff do
         DB.create conn model
+  wrap $ Create result id
+
+createWithOpts :: forall model st rt. Model model => String -> model -> Options model -> BackendFlow st rt (Either Error (Maybe model))
+createWithOpts dbName model options = do
+  conn <- getDBConn dbName
+  result <- doAff do
+        DB.createWithOpts conn model options
   wrap $ Create result id
 
 findOrCreate :: forall model st rt. Model model => String -> Options model -> BackendFlow st rt (Either Error (Maybe model))
