@@ -58,6 +58,7 @@ data BackendFlowCommands next st rt s =
     | GetDBConn String (Conn -> next)
     | GetCacheConn String (CacheConn -> next)
     | Log String s next
+    | SetWithOptions CacheConn (Array String) (Either Error String -> next)
     | SetCache CacheConn String String (Either Error String -> next)
     | SetCacheWithExpiry CacheConn String String String (Either Error String -> next)
     | GetCache CacheConn String (Either Error String -> next)
@@ -203,6 +204,12 @@ getHashKey :: forall st rt. String -> String -> String -> BackendFlow st rt (Eit
 getHashKey cacheName key field = do 
   cacheConn <- getCacheConn cacheName
   wrap $ GetHashKey cacheConn key field id 
+
+setWithOptions :: forall st rt. String -> Array String -> BackendFlow st rt (Either Error String)
+setWithOptions cacheName arr = do
+  cacheConn <- getCacheConn cacheName
+  wrap $ SetWithOptions cacheConn arr id 
+  
 
 publishToChannel :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error String)
 publishToChannel cacheName channel message = do
