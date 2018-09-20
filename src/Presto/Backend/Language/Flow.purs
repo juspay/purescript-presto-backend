@@ -34,7 +34,7 @@ import Effect.Aff (Aff, Fiber)
 import Effect.Aff.AVar (AVar)
 import Effect.Exception (Error, error)
 import Foreign.Class (class Decode, class Encode)
-import Presto.Backend.DB (findOne, findAll, create, update, delete, bCreate') as DB
+import Presto.Backend.DB (findOne, findAll, findAndCountAll, create, update, delete, bCreate') as DB
 import Presto.Backend.Language.APIInteract (apiInteract)
 import Presto.Backend.Types.API (class RestEndpoint, Headers, ErrorResponse)
 import Presto.Backend.Types.Language.Interaction (Interaction)
@@ -55,6 +55,8 @@ data BackendFlowCommands next st rt error s =
     | ThrowException (BackendException error) (s -> next)
     | FindOne (Either Error (Maybe s)) (Either Error (Maybe s) -> next)
     | FindAll (Either Error (Array s)) (Either Error (Array s) -> next)
+    | FindAndCountAll (Either Error {count :: Int, rows :: Array s})
+        (Either Error {count :: Int, rows :: Array s} -> next)
     | Create  (Either Error (Maybe s)) (Either Error (Maybe s) -> next)
     | BulkCreate (Either Error Unit) (Either Error Unit -> next)
     | FindOrCreate (Either Error (Maybe s)) (Either Error (Maybe s) -> next)
@@ -75,13 +77,18 @@ data BackendFlowCommands next st rt error s =
     | Subscribe CacheConn String (Either Error String -> next)
     | SetMessageHandler CacheConn (String -> String -> Effect Unit) (Either Error String -> next)
     | RunSysCmd String (String -> next)
-    | Fork (Aff s) (Fiber s -> next)
+    | Fork (BackendFlow st rt error s) (Unit -> next)
+    | Attempt (BackendFlow st rt error s) ((Either (BackendException error) s) -> next)
 
 type BackendFlowCommandsWrapper st rt error s next = BackendFlowCommands next st rt error s
 
 newtype BackendFlowWrapper st rt error next = BackendFlowWrapper (Exists (BackendFlowCommands next st rt error))
 
 type BackendFlow st rt error next = Free (BackendFlowWrapper st rt error) next
+
+instance showBackendException :: Show a => Show (BackendException a) where
+  show (CustomException err) = show err
+  show (StringException err) = show err
 
 wrap :: forall next st rt error s. BackendFlowCommands next st rt error s -> BackendFlow st rt error next
 wrap = liftF <<< BackendFlowWrapper <<< mkExists
@@ -120,6 +127,14 @@ findAll dbName options = do
   model <- doAff do
         DB.findAll conn options
   wrap $ FindAll model identity
+
+findAndCountAll :: forall model st rt error. Model model => String -> Options model
+  -> BackendFlow st rt error (Either Error {count :: Int, rows :: Array model})
+findAndCountAll dbName options = do
+  conn <- getDBConn dbName
+  model <- doAff do
+        DB.findAndCountAll conn options
+  wrap $ FindAndCountAll model identity
 
 create :: forall model st rt error. Model model => String -> model -> BackendFlow st rt error (Either Error (Maybe model))
 create dbName model = do
@@ -223,8 +238,11 @@ setMessageHandler cacheName f = do
   cacheConn <- getCacheConn cacheName
   wrap $ SetMessageHandler cacheConn f identity
 
-forkFlow :: forall s st rt error. Aff s -> BackendFlow st rt error (Fiber s)
+forkFlow :: forall s st rt error. BackendFlow st rt error s -> BackendFlow st rt error Unit
 forkFlow flow = wrap $ Fork flow identity
+
+attemptFlow :: forall s st rt error. BackendFlow st rt error s -> BackendFlow st rt error (Either (BackendException error) s)
+attemptFlow flow = wrap $ Attempt flow identity
 
 runSysCmd :: forall st rt error. String -> BackendFlow st rt error String
 runSysCmd cmd = wrap $ RunSysCmd cmd identity
