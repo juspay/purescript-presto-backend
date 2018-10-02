@@ -29,6 +29,7 @@ import Data.Either (Either(..))
 import Data.Exists (Exists, mkExists)
 import Data.Maybe (Maybe(..))
 import Data.Options (Options)
+import Effect (Effect)
 import Effect.Aff (Aff)
 import Effect.Aff.AVar (AVar)
 import Effect.Exception (Error, error)
@@ -74,7 +75,7 @@ data BackendFlowCommands next st rt error s =
     | GetHashKey CacheConn String String (Either Error String -> next)
     | PublishToChannel CacheConn String String (Either Error String -> next)
     | Subscribe CacheConn String (Either Error String -> next)
-    | SetMessageHandler CacheConn (String -> String -> Unit) (Either Error String -> next)
+    | SetMessageHandler CacheConn (String -> String -> Effect Unit) (Either Error String -> next)
     | RunSysCmd String (String -> next)
     | Fork (BackendFlow st rt error s) (Unit -> next)
     | Attempt (BackendFlow st rt error s) ((Either (BackendException error) s) -> next)
@@ -232,7 +233,7 @@ subscribe cacheName channel = do
   cacheConn <- getCacheConn cacheName
   wrap $ Subscribe cacheConn channel identity
 
-setMessageHandler :: forall st rt error. String -> (String -> String -> Unit) -> BackendFlow st rt error (Either Error String)
+setMessageHandler :: forall st rt error. String -> (String -> String -> Effect Unit) -> BackendFlow st rt error (Either Error String)
 setMessageHandler cacheName f = do
   cacheConn <- getCacheConn cacheName
   wrap $ SetMessageHandler cacheConn f identity
