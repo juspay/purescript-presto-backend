@@ -23,7 +23,7 @@ module Presto.Backend.Interpreter where
 
 import Prelude
 
-import Cache (CacheConn, delKey, expire, getHashKey, getKey, incr, publishToChannel, setHash, setKey, setMessageHandler, setex, subscribe)
+import Cache (CacheConn, delKey, expire, getHashKey, getKey, incr, publishToChannel, setHash, setKey, setMessageHandler, setex, subscribe, set)
 import Control.Monad.Except.Trans (ExceptT(..), lift, throwError, runExceptT) as E
 import Control.Monad.Free (foldFree)
 import Control.Monad.Reader.Trans (ReaderT, ask, lift, runReaderT) as R
@@ -87,6 +87,8 @@ interpret _ (Incr cacheConn key next) = (R.lift $ S.lift $ E.lift $ incr cacheCo
 interpret _ (SetHash cacheConn key value next) = (R.lift $ S.lift $ E.lift $ setHash cacheConn key value) >>= (pure <<< next) 
 
 interpret _ (GetHashKey cacheConn key field next) = (R.lift $ S.lift $ E.lift $ getHashKey cacheConn key field) >>= (pure <<< next) 
+
+interpret _ (SetWithOptions cacheConn arr next) = (R.lift $ S.lift $ E.lift $ set cacheConn arr) >>= (pure <<< next)
 
 interpret _ (PublishToChannel cacheConn channel message next) = (R.lift $ S.lift $ E.lift $ publishToChannel cacheConn channel message) >>= (pure <<< next) 
 
