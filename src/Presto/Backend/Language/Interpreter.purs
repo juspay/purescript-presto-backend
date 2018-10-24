@@ -24,10 +24,11 @@ module Presto.Backend.Interpreter where
 import Prelude
 
 import Cache (CacheConn, delKey, expire, getHashKey, getKey, incr, publishToChannel, setHash, setKey, setMessageHandler, setex, subscribe, set)
-import Control.Monad.Except.Trans (ExceptT(..), lift, throwError, runExceptT) as E
+import Control.Monad.Except.Trans (ExceptT, runExceptT, throwError) as E
 import Control.Monad.Free (foldFree)
-import Control.Monad.Reader.Trans (ReaderT, ask, lift, runReaderT) as R
-import Control.Monad.State.Trans (StateT, get, lift, modify, put, runStateT) as S
+import Control.Monad.Reader.Trans (ReaderT, ask, runReaderT) as R
+import Control.Monad.State.Trans (StateT, get, modify, put, runStateT) as S
+import Control.Monad.Trans.Class (lift)
 import Data.Either (Either(..))
 import Data.Exists (runExists)
 import Data.Maybe (Maybe(..))
@@ -62,39 +63,39 @@ data BackendRuntime = BackendRuntime APIRunner (O.Object Connection) LogRunner
 interpret :: forall st rt s a err.  BackendRuntime -> BackendFlowCommandsWrapper st rt err s a -> InterpreterMT rt st (BackendException err) a
 interpret _ (Ask next) = R.ask >>= (pure <<< next)
 
-interpret _ (Get next) = R.lift (S.get) >>= (pure <<< next)
+interpret _ (Get next) = lift S.get >>= (pure <<< next)
 
-interpret _ (Put d next) = R.lift (S.put d) *> (pure <<< next) d
+interpret _ (Put d next) = lift (S.put d) *> (pure <<< next) d
 
-interpret _ (Modify d next) = R.lift (S.modify d) *> S.get >>= (pure <<< next)
+interpret _ (Modify d next) = lift (S.modify d) *> S.get >>= (pure <<< next)
 
-interpret _ (ThrowException err next) = (R.lift $ S.lift $ E.ExceptT $ Left <$> (pure $ err)) >>= pure <<< next
+interpret _ (ThrowException err next) = (lift $ E.throwError err) >>= pure <<< next
 
-interpret _ (DoAff aff nextF) = (R.lift $ S.lift $ E.lift aff) >>= (pure <<< nextF)
+interpret _ (DoAff aff nextF) = liftAff aff >>= (pure <<< nextF)
 
-interpret _ (SetCache cacheConn key value next) = (R.lift $ S.lift $ E.lift $ setKey cacheConn key value) >>= (pure <<< next )
+interpret _ (SetCache cacheConn key value next) = (liftAff $ setKey cacheConn key value) >>= (pure <<< next )
 
-interpret _ (SetCacheWithExpiry cacheConn key value ttl next) = (R.lift $ S.lift $ E.lift $ setex cacheConn key value ttl) >>= (pure <<< next)
+interpret _ (SetCacheWithExpiry cacheConn key value ttl next) = (liftAff $ setex cacheConn key value ttl) >>= (pure <<< next)
 
-interpret _ (GetCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ getKey cacheConn key) >>= (pure <<< next)
+interpret _ (GetCache cacheConn key next) = (liftAff $ getKey cacheConn key) >>= (pure <<< next)
 
-interpret _ (DelCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ delKey cacheConn key) >>= (pure <<< next)
+interpret _ (DelCache cacheConn key next) = (liftAff $ delKey cacheConn key) >>= (pure <<< next)
 
-interpret _ (Expire cacheConn key ttl next) = (R.lift $ S.lift $ E.lift $ expire cacheConn key ttl) >>= (pure <<< next)
-    
-interpret _ (Incr cacheConn key next) = (R.lift $ S.lift $ E.lift $ incr cacheConn key) >>= (pure <<< next) 
+interpret _ (Expire cacheConn key ttl next) = (liftAff $ expire cacheConn key ttl) >>= (pure <<< next)
 
-interpret _ (SetHash cacheConn key value next) = (R.lift $ S.lift $ E.lift $ setHash cacheConn key value) >>= (pure <<< next) 
+interpret _ (Incr cacheConn key next) = (liftAff $ incr cacheConn key) >>= (pure <<< next)
 
-interpret _ (GetHashKey cacheConn key field next) = (R.lift $ S.lift $ E.lift $ getHashKey cacheConn key field) >>= (pure <<< next) 
+interpret _ (SetHash cacheConn key value next) = (liftAff $ setHash cacheConn key value) >>= (pure <<< next)
 
-interpret _ (SetWithOptions cacheConn arr next) = (R.lift $ S.lift $ E.lift $ set cacheConn arr) >>= (pure <<< next)
+interpret _ (GetHashKey cacheConn key field next) = (liftAff $ getHashKey cacheConn key field) >>= (pure <<< next)
 
-interpret _ (PublishToChannel cacheConn channel message next) = (R.lift $ S.lift $ E.lift $ publishToChannel cacheConn channel message) >>= (pure <<< next) 
+interpret _ (SetWithOptions cacheConn arr next) = (liftAff $ set cacheConn arr) >>= (pure <<< next)
 
-interpret _ (Subscribe cacheConn channel next) = (R.lift $ S.lift $ E.lift $ subscribe cacheConn channel) >>= (pure <<< next) 
+interpret _ (PublishToChannel cacheConn channel message next) = (liftAff $ publishToChannel cacheConn channel message) >>= (pure <<< next)
 
-interpret _ (SetMessageHandler cacheConn f next) = (R.lift $ S.lift $ E.lift $ setMessageHandler cacheConn f) >>= (pure <<< next) 
+interpret _ (Subscribe cacheConn channel next) = (liftAff $ subscribe cacheConn channel) >>= (pure <<< next)
+
+interpret _ (SetMessageHandler cacheConn f next) = (liftAff $ setMessageHandler cacheConn f) >>= (pure <<< next)
 
 interpret (BackendRuntime a connections c) (GetCacheConn cacheName next) = do
   maybeCache <- pure $ O.lookup cacheName connections
@@ -123,31 +124,31 @@ interpret ((BackendRuntime a connections c)) (GetDBConn dbName next) = do
     Just (Sequelize db) -> (pure <<< next) db
     Just _ -> interpret (BackendRuntime a connections c) (ThrowException (StringException $ error "No DB Found") next)
     Nothing -> interpret (BackendRuntime a connections c) (ThrowException (StringException $ error "No DB Found") next)
-  
+
 
 interpret (BackendRuntime apiRunner _ _) (CallAPI apiInteractionF nextF) = do
-  R.lift $ S.lift $ E.lift $ runAPIInteraction apiRunner apiInteractionF
+  liftAff $ runAPIInteraction apiRunner apiInteractionF
     >>= (pure <<< nextF)
 
-interpret (BackendRuntime _ _ logRunner) (Log tag message next) = (R.lift ( S.lift ( E.lift (logRunner tag message)))) *> pure next
+interpret (BackendRuntime _ _ logRunner) (Log tag message next) = (liftAff (logRunner tag message)) *> pure next
 
 interpret r (Fork flow nextF) = do
-  st <- R.lift $ S.get
+  st <- lift S.get
   rt <- R.ask
   let m = E.runExceptT ( S.runStateT ( R.runReaderT ( runBackend r flow ) rt) st)
-  R.lift $ S.lift $ E.lift $ forkAff m *> (pure <<< nextF) unit
+  liftAff $ forkAff m *> (pure <<< nextF) unit
 
 interpret r (Attempt flow nextF) = do
-  st <- R.lift $ S.get
+  st <- lift S.get
   rt <- R.ask
   let m = E.runExceptT ( S.runStateT ( R.runReaderT ( runBackend r flow ) rt) st)
-  result <- R.lift $ S.lift $ E.lift $ liftAff m
+  result <- liftAff m
   (pure <<< nextF) $ do
       case result of
         Right (Tuple x _) ->  Right x
         Left b -> Left b
 
-interpret _ (RunSysCmd cmd next) = R.lift $ S.lift $ E.lift $ runSysCmd cmd >>= (pure <<< next)
+interpret _ (RunSysCmd cmd next) = liftAff $ runSysCmd cmd >>= (pure <<< next)
 
 interpret _ _ = E.throwError $ StringException $ error "Not implemented yet!"
 
