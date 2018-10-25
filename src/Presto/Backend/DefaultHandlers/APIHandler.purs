@@ -44,7 +44,7 @@ newtype NativeRequest = NativeRequest
   }
 
 foreign import callAPI' :: NativeRequest -> EffectFnAff String
-foreign import traceCallAPI :: ZipkinConfig -> (AffError) -> (AffSuccess String) -> NativeRequest -> (Effect Unit)
+foreign import traceCallAPI :: ZipkinConfig -> NativeRequest -> EffectFnAff String
 foreign import logString' :: forall a. a -> String
 
 mkNativeRequest :: Request -> NativeRequest
