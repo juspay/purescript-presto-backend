@@ -43,8 +43,10 @@ newtype NativeRequest = NativeRequest
   , headers :: NativeHeaders
   }
 
-foreign import callAPI' :: NativeRequest -> EffectFnAff String
-foreign import traceCallAPI :: ZipkinConfig -> NativeRequest -> EffectFnAff String
+type CallAPI = NativeRequest -> EffectFnAff String
+
+foreign import callAPI' :: CallAPI
+foreign import traceCallAPI :: ZipkinConfig -> CallAPI
 foreign import logString' :: forall a. a -> String
 
 mkNativeRequest :: Request -> NativeRequest
