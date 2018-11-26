@@ -19,7 +19,17 @@
  along with this program. If not, see <https://www.gnu.org/licenses/agpl.html>.
 -}
 
-module Presto.Backend.DB where
+module Presto.Backend.DB 
+  (
+    _getModelByName,
+    getModelByName,
+    findOne,
+    findAll,
+    create,
+    createWithOpts,
+    update,
+    delete
+  ) where
 
 import Prelude
 
@@ -30,9 +40,9 @@ import Control.Monad.Eff.Exception (Error, error)
 import Data.Bifunctor (bimap)
 import Data.Either (Either(..))
 import Data.Function.Uncurried (Fn2, runFn2)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), maybe)
 import Data.Monoid (mempty)
-import Data.Options (Options)
+import Data.Options (Options, assoc, opt)
 import Sequelize.CRUD.Create (create')
 import Sequelize.CRUD.Create (createWithOpts') as Seql
 import Sequelize.CRUD.Destroy (delete) as Destroy
@@ -45,6 +55,8 @@ import Type.Proxy (Proxy(..))
 
 foreign import _getModelByName :: forall a e. Fn2 Conn String (Eff (sequelize :: SEQUELIZE | e) (ModelOf a))
 
+-- Add this clause if you want to force a query to be executed on Master DB
+useMasterClause = (maybe mempty (assoc (opt "useMaster")) $ Just true)
 
 getModelByName :: forall a e. Model a => Conn -> Aff (sequelize :: SEQUELIZE | e) (Either Error (ModelOf a))
 getModelByName conn = do
@@ -106,7 +118,7 @@ update conn updateValues whereClause = do
     case model of
         Right m -> do
             val <- attempt $ updateModel m updateValues whereClause
-            recs <- findAll' m whereClause
+            recs <- findAll' m (whereClause <> useMasterClause)
             case val of 
                 Right {affectedCount : 0, affectedRows } -> pure <<< Right $ recs
                 Right {affectedCount , affectedRows : Nothing } -> pure <<< Right $ recs
