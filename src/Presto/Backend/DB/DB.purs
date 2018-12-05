@@ -21,6 +21,7 @@
 
 module Presto.Backend.DB 
   (
+    useMasterClause,
     _getModelByName,
     getModelByName,
     findOne,
