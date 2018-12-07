@@ -26,8 +26,7 @@
     "purescript-body-parser": "https://github.com/juspay/purescript-body-parser.git",
     "purescript-uuid": "^4.0.0",
     "purescript-redis": "https://github.com/juspay/purescript-redis.git",
-    "purescript-now": "3.0.0",
-    "purescript-bull": "https://github.com/juspay/purescript-bull.git"
+    "purescript-now": "3.0.0"
   },
   "devDependencies": {
     "purescript-psci-support": "^3.0.0"

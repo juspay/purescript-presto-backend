@@ -40,7 +40,6 @@ import Presto.Backend.Types (BackendAff)
 import Presto.Core.Flow (runAPIInteraction)
 import Presto.Core.Language.Runtime.API (APIRunner)
 import Sequelize.Types (Conn)
-import Bull (QueueConn)
 
 type InterpreterMT rt st err eff a = R.ReaderT rt (S.StateT st (E.ExceptT err (BackendAff eff))) a
 
@@ -56,7 +55,7 @@ type DB = {
 
 type LogRunner = forall e a. String -> a -> Aff e Unit
 
-data Connection = Sequelize Conn | Redis CacheConn | Queue QueueConn
+data Connection = Sequelize Conn | Redis CacheConn
 
 data BackendRuntime = BackendRuntime APIRunner (StrMap Connection) LogRunner
 

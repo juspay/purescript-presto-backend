@@ -31,7 +31,6 @@
     "zipkin": "^0.13.0",
     "zipkin-context-cls": "^0.13.0",
     "zipkin-instrumentation-axios": "git://github.com/juspay/zipkin-instrumentation-axios",
-    "zipkin-transport-http": "^0.13.0",
-    "bull": "^3.4.8"
+    "zipkin-transport-http": "^0.13.0"
   }
 }
