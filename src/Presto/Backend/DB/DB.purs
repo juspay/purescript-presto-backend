@@ -35,7 +35,7 @@ import Effect.Exception (Error, error)
 import Sequelize.CRUD.Create (bulkCreate, create')
 import Sequelize.CRUD.Destroy (delete) as Destroy
 import Sequelize.CRUD.Read (findAll', findAndCountAll', findOne')
-import Sequelize.CRUD.Update (updateModel)
+import Sequelize.CRUD.Update (updateModel')
 import Sequelize.Class (class Model, modelName)
 import Sequelize.Instance (instanceToModelE)
 import Sequelize.Types (Conn, ModelOf)
@@ -123,12 +123,13 @@ update conn updateValues whereClause = do
     model <- getModelByName conn :: (Aff (Either Error (ModelOf a)))
     case model of
         Right m -> do
-            val <- attempt $ updateModel m updateValues whereClause
-            recs <- findAll' m whereClause
+            val <- attempt $ updateModel' m updateValues whereClause
             case val of
-                Right {affectedCount : 0, affectedRows } -> pure <<< Right $ recs
-                Right {affectedCount , affectedRows : Nothing } -> pure <<< Right $ recs
-                Right {affectedCount , affectedRows : Just x } -> pure <<< Right $ recs
+                Right {affectedCount : 0, affectedRows } -> pure <<< Right $ []
+                Right {affectedCount , affectedRows : Nothing } -> do
+                    recs <- findAll' m whereClause
+                    pure <<< Right $ recs
+                Right {affectedCount , affectedRows : Just x } -> pure <<< Right $ x
                 Left err -> pure <<< Left $ error $ show err
         Left err -> pure $ Left $ error $ show err
 
