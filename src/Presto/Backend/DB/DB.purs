@@ -138,13 +138,13 @@ delete conn whereClause = do
       val <- attempt $ Destroy.delete m whereClause
       case val of
         Right { affectedCount : count } -> pure <<< Right $ count
-        Left err ->pure $ Left $ error $ show err
+        Left err -> pure $ Left $ error $ show err
     Left err -> pure $ Left $ error $ show err
 
 addReturningClause :: forall a. Model a => Conn -> Options a -> Options a
 addReturningClause conn whereClause = case getDialect conn of
-        Just "postgres" -> returning := true <> whereClause 
+        Just "postgres" -> returning := true <> whereClause
         _ -> whereClause
 
 getDialect :: Conn -> Maybe String
-getDialect conn = maybe Nothing (hush <<< runExcept <<<readString) (lookup "dialect" $ unsafeCoerce <<< unwrap <<< getConnOpts $ conn)
+getDialect conn = maybe Nothing (hush <<< runExcept <<< readString) (lookup "dialect" $ unsafeCoerce <<< unwrap <<< getConnOpts $ conn)
