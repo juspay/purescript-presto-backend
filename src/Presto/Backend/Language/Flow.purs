@@ -39,7 +39,8 @@ import Presto.Backend.Language.APIInteract (apiInteract)
 import Presto.Backend.Types.API (class RestEndpoint, Headers, ErrorResponse)
 import Presto.Backend.Types.Language.Interaction (Interaction)
 import Sequelize.Class (class Model)
-import Sequelize.Types (Conn)
+import Sequelize.Transaction as Seq
+import Sequelize.Types (Conn, Transaction)
 
 type APIResult s = Either ErrorResponse s
 newtype Control s = Control (AVar s)
@@ -63,8 +64,12 @@ data BackendFlowCommands next st rt error s =
     | Update (Either Error (Array s)) (Either Error (Array s) -> next)
     | Delete (Either Error Int) (Either Error Int -> next)
     | GetDBConn String (Conn -> next)
+    | StartDBTxn  Transaction (Transaction -> next)
+    | CommitDBTxn  Transaction (Transaction -> next)
+    | RollBackDBTxn  Transaction (Transaction -> next)
     | GetCacheConn String (CacheConn -> next)
     | Log String s next
+    | SetWithOptions CacheConn (Array String) (Either Error String -> next)
     | SetCache CacheConn String String (Either Error String -> next)
     | SetCacheWithExpiry CacheConn String String String (Either Error String -> next)
     | GetCache CacheConn String (Either Error String -> next)
@@ -113,6 +118,22 @@ throwCustomException err = wrap $ ThrowException (CustomException err) identity
 
 doAff :: forall st rt error a. Aff a -> BackendFlow st rt error a
 doAff aff = wrap $ DoAff aff identity
+
+startTransaction :: forall st rt error. String ->  BackendFlow st rt error Transaction
+startTransaction dbName = do
+  conn <- getDBConn dbName
+  txn <- doAff $ Seq.startTransaction conn
+  wrap $ StartDBTxn txn identity
+
+commitTransaction :: forall st rt error. Transaction ->  BackendFlow st rt error Transaction
+commitTransaction txn = do
+  doAff $ Seq.commitTransaction txn
+  wrap $ CommitDBTxn txn identity
+
+rollbackTransaction :: forall st rt error. Transaction ->  BackendFlow st rt error Transaction
+rollbackTransaction txn = do
+  doAff $ Seq.rollbackTransaction txn
+  wrap $ RollBackDBTxn txn identity
 
 findOne :: forall model st rt error. Model model => String -> Options model -> BackendFlow st rt error (Either Error (Maybe model))
 findOne dbName options = do
@@ -222,6 +243,11 @@ getHashKey :: forall st rt error. String -> String -> String -> BackendFlow st r
 getHashKey cacheName key field = do
   cacheConn <- getCacheConn cacheName
   wrap $ GetHashKey cacheConn key field identity
+
+setWithOptions :: forall st rt error. String -> Array String -> BackendFlow st rt error (Either Error String)
+setWithOptions cacheName arr = do
+  cacheConn <- getCacheConn cacheName
+  wrap $ SetWithOptions cacheConn arr identity
 
 publishToChannel :: forall st rt error. String -> String -> String -> BackendFlow st rt error (Either Error String)
 publishToChannel cacheName channel message = do
