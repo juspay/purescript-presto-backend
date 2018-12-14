@@ -81,20 +81,20 @@ interpret _ (GetCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ getKey c
 interpret _ (DelCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ delKey cacheConn key) >>= (pure <<< next)
 
 interpret _ (Expire cacheConn key ttl next) = (R.lift $ S.lift $ E.lift $ expire cacheConn key ttl) >>= (pure <<< next)
+    
+interpret _ (Incr cacheConn key next) = (R.lift $ S.lift $ E.lift $ incr cacheConn key) >>= (pure <<< next) 
 
-interpret _ (Incr cacheConn key next) = (R.lift $ S.lift $ E.lift $ incr cacheConn key) >>= (pure <<< next)
+interpret _ (SetHash cacheConn key value next) = (R.lift $ S.lift $ E.lift $ setHash cacheConn key value) >>= (pure <<< next) 
 
-interpret _ (SetHash cacheConn key value next) = (R.lift $ S.lift $ E.lift $ setHash cacheConn key value) >>= (pure <<< next)
-
-interpret _ (GetHashKey cacheConn key field next) = (R.lift $ S.lift $ E.lift $ getHashKey cacheConn key field) >>= (pure <<< next)
+interpret _ (GetHashKey cacheConn key field next) = (R.lift $ S.lift $ E.lift $ getHashKey cacheConn key field) >>= (pure <<< next) 
 
 interpret _ (SetWithOptions cacheConn arr next) = (R.lift $ S.lift $ E.lift $ set cacheConn arr) >>= (pure <<< next)
 
-interpret _ (PublishToChannel cacheConn channel message next) = (R.lift $ S.lift $ E.lift $ publishToChannel cacheConn channel message) >>= (pure <<< next)
+interpret _ (PublishToChannel cacheConn channel message next) = (R.lift $ S.lift $ E.lift $ publishToChannel cacheConn channel message) >>= (pure <<< next) 
 
-interpret _ (Subscribe cacheConn channel next) = (R.lift $ S.lift $ E.lift $ subscribe cacheConn channel) >>= (pure <<< next)
+interpret _ (Subscribe cacheConn channel next) = (R.lift $ S.lift $ E.lift $ subscribe cacheConn channel) >>= (pure <<< next) 
 
-interpret _ (SetMessageHandler cacheConn f next) = (R.lift $ S.lift $ E.lift $ setMessageHandler cacheConn f) >>= (pure <<< next)
+interpret _ (SetMessageHandler cacheConn f next) = (R.lift $ S.lift $ E.lift $ setMessageHandler cacheConn f) >>= (pure <<< next) 
 
 interpret (BackendRuntime a connections c) (GetCacheConn cacheName next) = do
   maybeCache <- pure $ O.lookup cacheName connections
@@ -123,12 +123,7 @@ interpret ((BackendRuntime a connections c)) (GetDBConn dbName next) = do
     Just (Sequelize db) -> (pure <<< next) db
     Just _ -> interpret (BackendRuntime a connections c) (ThrowException (StringException $ error "No DB Found") next)
     Nothing -> interpret (BackendRuntime a connections c) (ThrowException (StringException $ error "No DB Found") next)
-
-interpret _ (StartDBTxn txn next) = (pure <<< next) txn
-
-interpret _ (CommitDBTxn txn next) = (pure <<< next) txn
-
-interpret _ (RollBackDBTxn txn next) = (pure <<< next) txn
+  
 
 interpret (BackendRuntime apiRunner _ _) (CallAPI apiInteractionF nextF) = do
   R.lift $ S.lift $ E.lift $ runAPIInteraction apiRunner apiInteractionF
@@ -155,6 +150,12 @@ interpret r (Attempt flow nextF) = do
 interpret _ (RunSysCmd cmd next) = R.lift $ S.lift $ E.lift $ runSysCmd cmd >>= (pure <<< next)
 
 interpret _ _ = E.throwError $ StringException $ error "Not implemented yet!"
+
+interpret _ (StartDBTxn txn next) = (pure <<< next) txn
+
+interpret _ (CommitDBTxn txn next) = (pure <<< next) txn
+
+interpret _ (RollBackDBTxn txn next) = (pure <<< next) txn
 
 runBackend :: forall st rt err a. BackendRuntime -> BackendFlow st rt err a -> InterpreterMT rt st (BackendException err) a
 runBackend backendRuntime = foldFree (\(BackendFlowWrapper x) -> runExists (interpret backendRuntime) x)
