@@ -55,7 +55,7 @@ type DB = {
 
 type LogRunner = forall a. String -> a -> Aff Unit
 
-data Connection = Sequelize Conn | Redis CacheConn
+data Connection = Sequelize Conn | Redis CacheConn | NoConnection
 
 data BackendRuntime = BackendRuntime APIRunner (O.Object Connection) LogRunner
 
