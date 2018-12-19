@@ -23,7 +23,7 @@ module Presto.Backend.DB where
 
 import Prelude
 
-import Control.Monad.Except (runExcept)
+import Control.Monad.Except (runExcept, throwError)
 import Data.Bifunctor (bimap)
 import Data.Either (Either(..), hush)
 import Data.Function.Uncurried (Fn2, runFn2)
@@ -40,7 +40,8 @@ import Sequelize.CRUD.Create (bulkCreate, create')
 import Sequelize.CRUD.Destroy (delete) as Destroy
 import Sequelize.CRUD.Read (findAll', findAndCountAll', findOne')
 import Sequelize.CRUD.Update (updateModel')
-import Sequelize.Class (class Model, modelName)
+import Sequelize.CRUD.Utils (mapInstanceToModel)
+import Sequelize.Class (class Model, class Submodel, modelName)
 import Sequelize.Connection (getConnOpts)
 import Sequelize.Instance (instanceToModelE)
 import Sequelize.Query.Options (returning, useMaster)
@@ -102,14 +103,21 @@ create conn entity = do
                 Left err -> pure <<< Left $ error $ show err
         Left err -> pure $ Left $ error $ show err
 
-bCreate' :: forall a. Model a => Conn -> Array a -> Aff (Either Error Unit)
+bulkCreate':: forall a b. Submodel a b => ModelOf a -> Array b->  Aff (Array b)
+bulkCreate' m e = do 
+  rows <- bulkCreate m e
+  case mapInstanceToModel rows of
+    Right v -> pure v
+    Left err -> (throwError <<< error <<< show) err
+
+bCreate' :: forall a. Model a => Conn -> Array a -> Aff (Either Error (Array a))
 bCreate' conn entity = do
     model <- getModelByName conn :: (Aff (Either Error (ModelOf a)))
     case model of
         Right m -> do
-            val <- attempt $ bulkCreate m entity
+            val <- attempt $ bulkCreate' m entity
             case val of
-                Right rec -> pure $ Right unit
+                Right rec -> pure $ Right rec
                 Left err -> pure <<< Left $ error $ show err
         Left err -> pure $ Left $ error $ show err
 
