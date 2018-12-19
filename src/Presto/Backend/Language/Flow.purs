@@ -58,7 +58,7 @@ data BackendFlowCommands next st rt error s =
     | FindAndCountAll (Either Error {count :: Int, rows :: Array s})
         (Either Error {count :: Int, rows :: Array s} -> next)
     | Create  (Either Error (Maybe s)) (Either Error (Maybe s) -> next)
-    | BulkCreate (Either Error Unit) (Either Error Unit -> next)
+    | BulkCreate (Either Error (Array s)) (Either Error (Array s) -> next)
     | FindOrCreate (Either Error (Maybe s)) (Either Error (Maybe s) -> next)
     | Update (Either Error (Array s)) (Either Error (Array s) -> next)
     | Delete (Either Error Int) (Either Error Int -> next)
@@ -144,7 +144,7 @@ create dbName model = do
         DB.create conn model
   wrap $ Create result identity
 
-bulkCreate :: forall model st rt error. Model model => String -> Array model -> BackendFlow st rt error (Either Error Unit)
+bulkCreate :: forall model st rt error. Model model => String -> Array model -> BackendFlow st rt error (Either Error (Array model))
 bulkCreate dbName model = do
   conn <- getDBConn dbName
   result <- doAff do
