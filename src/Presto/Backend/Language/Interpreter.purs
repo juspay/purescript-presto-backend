@@ -151,5 +151,11 @@ interpret _ (RunSysCmd cmd next) = R.lift $ S.lift $ E.lift $ runSysCmd cmd >>= 
 
 interpret _ _ = E.throwError $ StringException $ error "Not implemented yet!"
 
+interpret _ (StartDBTxn txn next) = (pure <<< next) txn
+
+interpret _ (CommitDBTxn txn next) = (pure <<< next) txn
+
+interpret _ (RollBackDBTxn txn next) = (pure <<< next) txn
+
 runBackend :: forall st rt err a. BackendRuntime -> BackendFlow st rt err a -> InterpreterMT rt st (BackendException err) a
 runBackend backendRuntime = foldFree (\(BackendFlowWrapper x) -> runExists (interpret backendRuntime) x)
