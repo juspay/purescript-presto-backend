@@ -115,6 +115,8 @@ interpret _ (FindOne model next) = (pure <<< next) model
 
 interpret _ (FindAll models next) = (pure <<< next) models
 
+interpret _ (Query models next) = (pure <<< next) models
+
 interpret _ (Create model next) = (pure <<< next) model
 
 interpret _ (Update model next) = (pure <<< next) model

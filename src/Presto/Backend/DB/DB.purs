@@ -26,6 +26,7 @@ module Presto.Backend.DB
     getModelByName,
     findOne,
     findAll,
+    query,
     create,
     createWithOpts,
     update,
@@ -38,6 +39,7 @@ import Control.Monad.Aff (Aff, attempt)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Eff.Exception (Error, error)
+import Control.Promise (Promise, toAff)
 import Data.Bifunctor (bimap)
 import Data.Either (Either(..))
 import Data.Function.Uncurried (Fn2, runFn2)
@@ -55,6 +57,7 @@ import Sequelize.Types (Conn, ModelOf, SEQUELIZE)
 import Type.Proxy (Proxy(..))
 
 foreign import _getModelByName :: forall a e. Fn2 Conn String (Eff (sequelize :: SEQUELIZE | e) (ModelOf a))
+
 
 -- Add this clause if you want to force a query to be executed on Master DB
 useMasterClause = (maybe mempty (assoc (opt "useMaster")) $ Just true)
@@ -98,6 +101,15 @@ findAll conn options = do
                 Right arrayRec -> pure <<< Right $ arrayRec
                 Left err -> pure <<< Left $ error $ show err
         Left err -> pure $ Left $ error $ show err
+
+
+query :: forall a e. Conn -> String -> Aff (sequelize :: SEQUELIZE | e) (Either Error (Array a))
+query conn rawq = do
+    val <- attempt $ query' conn rawq
+    case val of
+        Right arrayRec -> pure <<< Right $ arrayRec
+        Left err -> pure <<< Left $ error $ show err
+
 
 createWithOpts :: forall a e. Model a => Conn -> a -> Options a -> Aff (sequelize :: SEQUELIZE | e) (Either Error (Maybe a))
 createWithOpts conn entity options = do
