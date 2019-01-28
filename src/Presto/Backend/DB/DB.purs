@@ -49,7 +49,7 @@ import Data.Options (Options, assoc, opt)
 import Sequelize.CRUD.Create (create')
 import Sequelize.CRUD.Create (createWithOpts') as Seql
 import Sequelize.CRUD.Destroy (delete) as Destroy
-import Sequelize.CRUD.Read (findAll', findOne')
+import Sequelize.CRUD.Read (findAll', findOne', query')
 import Sequelize.CRUD.Update (updateModel)
 import Sequelize.Class (class Model, modelName)
 import Sequelize.Instance (instanceToModelE)
