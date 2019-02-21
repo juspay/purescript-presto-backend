@@ -32,7 +32,7 @@ import Data.Exists (Exists, mkExists)
 import Data.Foreign.Class (class Decode, class Encode)
 import Data.Maybe (Maybe(..))
 import Data.Options (Options)
-import Presto.Backend.DB (findOne, findAll, create, createWithOpts, update, delete) as DB
+import Presto.Backend.DB (findOne, findAll, create, createWithOpts, query, update, delete) as DB
 import Presto.Backend.Types (BackendAff)
 import Presto.Core.Types.API (class RestEndpoint, Headers)
 import Presto.Core.Types.Language.APIInteract (apiInteract)
@@ -53,6 +53,7 @@ data BackendFlowCommands next st rt s =
     | FindAll (Either Error (Array s)) (Either Error (Array s) -> next)
     | Create  (Either Error (Maybe s)) (Either Error (Maybe s) -> next)
     | FindOrCreate (Either Error (Maybe s)) (Either Error (Maybe s) -> next)
+    | Query (Either Error s) (Either Error s -> next)
     | Update (Either Error (Array s)) (Either Error (Array s) -> next)
     | Delete (Either Error Int) (Either Error Int -> next)
     | GetDBConn String (Conn -> next)
@@ -117,6 +118,13 @@ findAll dbName options = do
   model <- doAff do
         DB.findAll conn options
   wrap $ FindAll model id 
+
+query :: forall a st rt. String -> String -> BackendFlow st rt (Either Error (Array a))
+query dbName rawq = do
+  conn <- getDBConn dbName
+  resp <- doAff do
+        DB.query conn rawq
+  wrap $ Query resp id
 
 create :: forall model st rt. Model model => String -> model -> BackendFlow st rt (Either Error (Maybe model))
 create dbName model = do
