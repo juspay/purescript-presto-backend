@@ -23,7 +23,7 @@ module Presto.Backend.Interpreter where
 
 import Prelude
 
-import Cache (CacheConn, delKey, expire, getHashKey, getKey, incr, publishToChannel, setHash, setKey, setMessageHandler, setex, subscribe, set)
+import Cache (CacheConn, delKey, enqueue, dequeue, expire, getHashKey, getKey, incr, publishToChannel, set, setHash, setKey, setMessageHandler, setex, subscribe, getQueueIdx)
 import Control.Monad.Aff (Aff, forkAff)
 import Control.Monad.Eff.Exception (Error, error)
 import Control.Monad.Except.Trans (ExceptT(..), lift, throwError, runExceptT) as E
@@ -103,6 +103,12 @@ interpret _ (PublishToChannel cacheConn channel message next) = (R.lift $ S.lift
 interpret _ (Subscribe cacheConn channel next) = (R.lift $ S.lift $ E.lift $ subscribe cacheConn channel) >>= (pure <<< next) 
 
 interpret _ (SetMessageHandler cacheConn f next) = (R.lift $ S.lift $ E.lift $ setMessageHandler cacheConn f) >>= (pure <<< next) 
+
+interpret _ (Enqueue cacheConn listName value next) = (R.lift $ S.lift $ E.lift $ enqueue cacheConn listName value) >>= (pure <<< next)
+
+interpret _ (Dequeue cacheConn listName next) = (R.lift $ S.lift $ E.lift $ dequeue cacheConn listName) >>= (pure <<< next)
+
+interpret _ (GetQueueIdx cacheConn listName index next) = (R.lift $ S.lift $ E.lift $ getQueueIdx cacheConn listName index) >>= (pure <<< next)
 
 interpret (BackendRuntime a connections c) (GetCacheConn cacheName next) = do
   maybeCache <- pure $ lookup cacheName connections
