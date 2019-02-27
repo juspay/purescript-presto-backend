@@ -23,7 +23,7 @@ module Presto.Backend.Flow where
 
 import Prelude
 
-import Cache (CacheConn, getQueueIdx)
+import Cache (CacheConn)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (Error)
 import Control.Monad.Free (Free, liftF)
