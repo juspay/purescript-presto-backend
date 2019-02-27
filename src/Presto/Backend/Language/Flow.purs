@@ -23,7 +23,7 @@ module Presto.Backend.Flow where
 
 import Prelude
 
-import Cache (CacheConn)
+import Cache (CacheConn, getQueueIdx)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (Error)
 import Control.Monad.Free (Free, liftF)
@@ -64,6 +64,9 @@ data BackendFlowCommands next st rt s =
     | SetCacheWithExpiry CacheConn String String String (Either Error String -> next)
     | GetCache CacheConn String (Either Error String -> next)
     | DelCache CacheConn String (Either Error String -> next)
+    | Enqueue CacheConn String String (Either Error String -> next)
+    | Dequeue CacheConn String (Either Error String -> next)
+    | GetQueueIdx CacheConn String Int (Either Error String -> next) 
     | Fork (BackendFlow st rt s) (Unit -> next)
     | Expire CacheConn String String (Either Error String -> next)
     | Incr CacheConn String (Either Error String -> next)
@@ -228,6 +231,21 @@ subscribe :: forall st rt. String -> String -> BackendFlow st rt (Either Error S
 subscribe cacheName channel = do
   cacheConn <- getCacheConn cacheName
   wrap $ Subscribe cacheConn channel id
+
+enqueue :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error String)
+enqueue cacheName listName value = do
+  cacheConn <- getCacheConn cacheName
+  wrap $ Enqueue cacheConn listName value id
+
+dequeue :: forall st rt. String -> String -> BackendFlow st rt (Either Error String)
+dequeue cacheName listName = do
+  cacheConn <- getCacheConn cacheName
+  wrap $ Dequeue cacheConn listName id
+
+getQueueIdx :: forall st rt. String -> String -> Int -> BackendFlow st rt (Either Error String)
+getQueueIdx cacheName listName index = do
+  cacheConn <- getCacheConn cacheName
+  wrap $ GetQueueIdx cacheConn listName index id
 
 setMessageHandler :: forall st rt. String -> (forall eff. (String -> String -> Eff eff Unit)) -> BackendFlow st rt (Either Error String)
 setMessageHandler cacheName f = do
