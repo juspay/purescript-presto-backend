@@ -23,7 +23,7 @@ module Presto.Backend.Interpreter where
 
 import Prelude
 
-import Cache (CacheConn, delKey, dequeue, dequeueMulti, enqueue, enqueueMulti, expire, expireMulti, getHashKey, getHashKeyMulti, getKey, getKeyMulti, getMulti, getQueueIdx, getQueueIdxMulti, incr, incrMulti, publishToChannel, publishToChannelMulti, set, setHash, setHashMulti, setKey, setKeyMulti, setMessageHandler, setMulti, setex, setexKeyMulti, subscribe, subscribeMulti)
+import Cache (CacheConn, delKey, lpop, lpopMulti, rpush, rpushMulti, expire, expireMulti, getHashKey, getHashKeyMulti, getKey, getKeyMulti, getMulti, lindex, lindexMulti, incr, incrMulti, publishToChannel, publishToChannelMulti, set, setHash, setHashMulti, setKey, setKeyMulti, setMessageHandler, setMulti, setex, setexKeyMulti, subscribe, subscribeMulti)
 import Control.Monad.Aff (Aff, forkAff)
 import Control.Monad.Eff.Exception (Error, error)
 import Control.Monad.Except.Trans (ExceptT(..), lift, throwError, runExceptT) as E
@@ -104,11 +104,11 @@ interpret _ (Subscribe cacheConn channel next) = (R.lift $ S.lift $ E.lift $ sub
 
 interpret _ (SetMessageHandler cacheConn f next) = (R.lift $ S.lift $ E.lift $ setMessageHandler cacheConn f) >>= (pure <<< next) 
 
-interpret _ (Enqueue cacheConn listName value next) = (R.lift $ S.lift $ E.lift $ enqueue cacheConn listName value) >>= (pure <<< next)
+interpret _ (Enqueue cacheConn listName value next) = (R.lift $ S.lift $ E.lift $ void <$> rpush cacheConn listName value) >>= (pure <<< next)
 
-interpret _ (Dequeue cacheConn listName next) = (R.lift $ S.lift $ E.lift $ dequeue cacheConn listName) >>= (pure <<< next)
+interpret _ (Dequeue cacheConn listName next) = (R.lift $ S.lift $ E.lift $ lpop cacheConn listName) >>= (pure <<< next)
 
-interpret _ (GetQueueIdx cacheConn listName index next) = (R.lift $ S.lift $ E.lift $ getQueueIdx cacheConn listName index) >>= (pure <<< next)
+interpret _ (GetQueueIdx cacheConn listName index next) = (R.lift $ S.lift $ E.lift $ lindex cacheConn listName index) >>= (pure <<< next)
 
 interpret _ (GetMulti cacheConn next) = (R.lift $ S.lift $ E.lift $ getMulti cacheConn) >>= (pure <<< next)
 
@@ -134,11 +134,11 @@ interpret _ (PublishToChannelInMulti multi channel message next) = (R.lift <<< S
 
 interpret _ (SubscribeInMulti multi channel next) = (R.lift <<< S.lift <<< E.lift <<< subscribeMulti channel $ multi) >>= (pure <<< next)
 
-interpret _ (EnqueueInMulti multi listName val next) = (R.lift <<< S.lift <<< E.lift <<< enqueueMulti listName val $ multi) >>= (pure <<< next)
+interpret _ (EnqueueInMulti multi listName val next) = (R.lift <<< S.lift <<< E.lift <<< rpushMulti listName val $ multi) >>= (pure <<< next)
 
-interpret _ (DequeueInMulti multi listName next) = (R.lift <<< S.lift <<< E.lift <<< dequeueMulti listName $ multi) >>= (pure <<< next)
+interpret _ (DequeueInMulti multi listName next) = (R.lift <<< S.lift <<< E.lift <<< lpopMulti listName $ multi) >>= (pure <<< next)
 
-interpret _ (GetQueueIdxInMulti multi listName index next) = (R.lift <<< S.lift <<< E.lift <<< getQueueIdxMulti listName index $ multi) >>= (pure <<< next)
+interpret _ (GetQueueIdxInMulti multi listName index next) = (R.lift <<< S.lift <<< E.lift <<< lindexMulti listName index $ multi) >>= (pure <<< next)
 
 interpret (BackendRuntime a connections c) (GetCacheConn cacheName next) = do
   maybeCache <- pure $ lookup cacheName connections

@@ -36,7 +36,7 @@ import Presto.Backend.DB (findOne, findAll, create, createWithOpts, query, updat
 import Presto.Backend.Types (BackendAff)
 import Presto.Core.Types.API (class RestEndpoint, Headers)
 import Presto.Core.Types.Language.APIInteract (apiInteract)
-import Presto.Core.Types.Language.Flow (APIResult, Control)
+import Presto.Core.Types.Language.Flow (APIResult)
 import Presto.Core.Types.Language.Interaction (Interaction)
 import Sequelize.Class (class Model)
 import Sequelize.Types (Conn)
@@ -64,8 +64,8 @@ data BackendFlowCommands next st rt s =
     | SetCacheWithExpiry CacheConn String String String (Either Error String -> next)
     | GetCache CacheConn String (Either Error String -> next)
     | DelCache CacheConn String (Either Error String -> next)
-    | Enqueue CacheConn String String (Either Error String -> next)
-    | Dequeue CacheConn String (Either Error String -> next)
+    | Enqueue CacheConn String String (Either Error Unit -> next)
+    | Dequeue CacheConn String (Either Error (Maybe String) -> next)
     | GetQueueIdx CacheConn String Int (Either Error String -> next) 
     | Fork (BackendFlow st rt s) (Unit -> next)
     | Expire CacheConn String String (Either Error String -> next)
@@ -287,7 +287,7 @@ subscribe cacheName channel = do
 enqueueInMulti :: forall st rt. Multi -> String -> String -> BackendFlow st rt Multi
 enqueueInMulti multi listName value = wrap $ EnqueueInMulti multi listName value id
 
-enqueue :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error String)
+enqueue :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error Unit)
 enqueue cacheName listName value = do
   cacheConn <- getCacheConn cacheName
   wrap $ Enqueue cacheConn listName value id
@@ -295,7 +295,7 @@ enqueue cacheName listName value = do
 dequeueInMulti :: forall st rt. Multi -> String -> BackendFlow st rt Multi
 dequeueInMulti multi listName = wrap $ DequeueInMulti multi listName id
 
-dequeue :: forall st rt. String -> String -> BackendFlow st rt (Either Error String)
+dequeue :: forall st rt. String -> String -> BackendFlow st rt (Either Error (Maybe String))
 dequeue cacheName listName = do
   cacheConn <- getCacheConn cacheName
   wrap $ Dequeue cacheConn listName id
