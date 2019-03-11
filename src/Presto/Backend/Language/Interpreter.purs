@@ -92,7 +92,7 @@ interpret _ (Expire cacheConn key ttl next) = (R.lift $ S.lift $ E.lift $ expire
     
 interpret _ (Incr cacheConn key next) = (R.lift $ S.lift $ E.lift $ incr cacheConn key) >>= (pure <<< next) 
 
-interpret _ (SetHash cacheConn key value next) = (R.lift $ S.lift $ E.lift $ setHash cacheConn key value) >>= (pure <<< next) 
+interpret _ (SetHash cacheConn key field value next) = (R.lift $ S.lift $ E.lift $ setHash cacheConn key field value) >>= (pure <<< next) 
 
 interpret _ (GetHashKey cacheConn key field next) = (R.lift $ S.lift $ E.lift $ getHashKey cacheConn key field) >>= (pure <<< next) 
 
@@ -124,7 +124,7 @@ interpret _ (ExpireInMulti multi key ttl next) = (R.lift <<< S.lift <<< E.lift <
 
 interpret _ (IncrInMulti multi key next) = (R.lift <<< S.lift <<< E.lift <<< incrMulti key $ multi) >>= (pure <<< next)
 
-interpret _ (SetHashInMulti multi key value next) = (R.lift <<< S.lift <<< E.lift <<< setHashMulti key value $ multi) >>= (pure <<< next )
+interpret _ (SetHashInMulti multi key field value next) = (R.lift <<< S.lift <<< E.lift <<< setHashMulti key field value $ multi) >>= (pure <<< next )
 
 interpret _ (GetHashInMulti multi key value next) = (R.lift <<< S.lift <<< E.lift <<< getHashKeyMulti key value $ multi) >>= (pure <<< next )
 

@@ -70,7 +70,7 @@ data BackendFlowCommands next st rt s =
     | Fork (BackendFlow st rt s) (Unit -> next)
     | Expire CacheConn String String (Either Error String -> next)
     | Incr CacheConn String (Either Error String -> next)
-    | SetHash CacheConn String String (Either Error String -> next)
+    | SetHash CacheConn String String String (Either Error String -> next)
     | GetHashKey CacheConn String String (Either Error String -> next)
     | PublishToChannel CacheConn String String (Either Error String -> next)
     | Subscribe CacheConn String (Either Error String -> next)
@@ -82,7 +82,7 @@ data BackendFlowCommands next st rt s =
     | SetCacheWithExpiryInMulti Multi String String String (Multi -> next)
     | ExpireInMulti Multi String String (Multi -> next)
     | IncrInMulti Multi String (Multi -> next)
-    | SetHashInMulti Multi String String (Multi -> next)
+    | SetHashInMulti Multi String String String (Multi -> next)
     | GetHashInMulti Multi String String (Multi -> next)
     | SetWithOptionsInMulti Multi (Array String) (Multi -> next)
     | PublishToChannelInMulti Multi String String (Multi -> next)
@@ -244,13 +244,13 @@ incr cacheName key = do
   cacheConn <- getCacheConn cacheName
   wrap $ Incr cacheConn key id
 
-setHashInMulti :: forall st rt. Multi -> String -> String -> BackendFlow st rt Multi
-setHashInMulti multi key value = wrap $ SetHashInMulti multi key value id 
+setHashInMulti :: forall st rt. Multi -> String -> String -> String -> BackendFlow st rt Multi
+setHashInMulti multi key field value = wrap $ SetHashInMulti multi key field value id 
 
-setHash :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error String)
-setHash cacheName key value = do
+setHash :: forall st rt. String -> String -> String -> String -> BackendFlow st rt (Either Error String)
+setHash cacheName key field value = do
   cacheConn <- getCacheConn cacheName
-  wrap $ SetHash cacheConn key value id
+  wrap $ SetHash cacheConn key field value id
 
 getHashKeyInMulti :: forall st rt. Multi -> String -> String -> BackendFlow st rt Multi
 getHashKeyInMulti multi key field = wrap $ GetHashInMulti multi key field id
