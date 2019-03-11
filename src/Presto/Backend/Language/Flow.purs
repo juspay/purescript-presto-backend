@@ -76,20 +76,21 @@ data BackendFlowCommands next st rt s =
     | Subscribe CacheConn String (Either Error String -> next)
     | SetMessageHandler CacheConn (forall eff. (String -> String -> Eff eff Unit)) (Either Error String -> next)
     | GetMulti CacheConn (Multi -> next)
-    | SetCacheInMulti Multi String String (Multi -> next)
-    | GetCacheInMulti Multi String (Multi -> next)
-    | DelCacheInMulti Multi String (Multi -> next)
-    | SetCacheWithExpiryInMulti Multi String String String (Multi -> next)
-    | ExpireInMulti Multi String String (Multi -> next)
-    | IncrInMulti Multi String (Multi -> next)
-    | SetHashInMulti Multi String String String (Multi -> next)
-    | GetHashInMulti Multi String String (Multi -> next)
-    | SetWithOptionsInMulti Multi (Array String) (Multi -> next)
-    | PublishToChannelInMulti Multi String String (Multi -> next)
-    | SubscribeInMulti Multi String (Multi -> next)
-    | EnqueueInMulti Multi String String (Multi -> next)
-    | DequeueInMulti Multi String (Multi -> next)
-    | GetQueueIdxInMulti Multi String Int (Multi -> next) 
+    | SetCacheInMulti String String Multi (Multi -> next)
+    | GetCacheInMulti String Multi (Multi -> next)
+    | DelCacheInMulti String Multi (Multi -> next)
+    | SetCacheWithExpiryInMulti String String String Multi (Multi -> next)
+    | ExpireInMulti String String Multi (Multi -> next)
+    | IncrInMulti String Multi (Multi -> next)
+    | SetHashInMulti String String String Multi (Multi -> next)
+    | GetHashInMulti String String Multi (Multi -> next)
+    | SetWithOptionsInMulti (Array String) Multi (Multi -> next)
+    | PublishToChannelInMulti String String Multi (Multi -> next)
+    | SubscribeInMulti String Multi (Multi -> next)
+    | EnqueueInMulti String String Multi (Multi -> next)
+    | DequeueInMulti String Multi (Multi -> next)
+    | GetQueueIdxInMulti String Int Multi (Multi -> next) 
+    | Exec Multi (Either Error (Array String) -> next) 
     | RunSysCmd String (String -> next)
 
     -- | HandleException 
@@ -193,32 +194,32 @@ callAPI :: forall st rt a b. Encode a => Decode b => RestEndpoint a b
   => Headers -> a -> BackendFlow st rt (APIResult b)
 callAPI headers a = wrap $ CallAPI (apiInteract a headers) id 
 
-setCacheInMulti :: forall st rt. Multi -> String -> String -> BackendFlow st rt Multi
-setCacheInMulti multi key value = wrap $ SetCacheInMulti multi key value id
+setCacheInMulti :: forall st rt. String -> String -> Multi -> BackendFlow st rt Multi
+setCacheInMulti key value multi = wrap $ SetCacheInMulti key value multi id
 
 setCache :: forall st rt. String -> String ->  String -> BackendFlow st rt (Either Error String)
 setCache cacheName key value = do
   cacheConn <- getCacheConn cacheName
   wrap $ SetCache cacheConn key value id
 
-getCacheInMulti :: forall st rt. Multi -> String -> BackendFlow st rt Multi
-getCacheInMulti multi key = wrap $ GetCacheInMulti multi key id
+getCacheInMulti :: forall st rt. String -> Multi -> BackendFlow st rt Multi
+getCacheInMulti key multi = wrap $ GetCacheInMulti key multi id
 
 getCache :: forall st rt. String -> String -> BackendFlow st rt (Either Error String)
 getCache cacheName key = do
   cacheConn <- getCacheConn cacheName
   wrap $ GetCache cacheConn key id
 
-delCacheInMulti :: forall st rt. Multi -> String -> BackendFlow st rt Multi
-delCacheInMulti multi key = wrap $ DelCacheInMulti multi key id
+delCacheInMulti :: forall st rt. String -> Multi -> BackendFlow st rt Multi
+delCacheInMulti key multi = wrap $ DelCacheInMulti key multi id
 
 delCache :: forall st rt. String -> String -> BackendFlow st rt (Either Error String)
 delCache cacheName key = do
   cacheConn <- getCacheConn cacheName
   wrap $ DelCache cacheConn key id
 
-setCacheWithExpireInMulti :: forall st rt. Multi -> String -> String -> String -> BackendFlow st rt Multi
-setCacheWithExpireInMulti multi key value ttl = wrap $ SetCacheWithExpiryInMulti multi key value ttl id
+setCacheWithExpireInMulti :: forall st rt. String -> String -> String -> Multi -> BackendFlow st rt Multi
+setCacheWithExpireInMulti key value ttl multi = wrap $ SetCacheWithExpiryInMulti key value ttl multi id
 
 setCacheWithExpiry :: forall st rt. String -> String -> String -> String -> BackendFlow st rt (Either Error String)
 setCacheWithExpiry cacheName key value ttl = do
@@ -228,85 +229,88 @@ setCacheWithExpiry cacheName key value ttl = do
 log :: forall st rt a. String -> a -> BackendFlow st rt Unit
 log tag message = wrap $ Log tag message unit
 
-expireInMulti :: forall st rt. Multi -> String -> String -> BackendFlow st rt Multi
-expireInMulti multi key ttl = wrap $ ExpireInMulti multi key ttl id
+expireInMulti :: forall st rt. String -> String -> Multi -> BackendFlow st rt Multi
+expireInMulti key ttl multi = wrap $ ExpireInMulti key ttl multi id
 
 expire :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error String)
 expire cacheName key ttl = do 
   cacheConn <- getCacheConn cacheName
   wrap $ Expire cacheConn key ttl id
 
-incrInMulti :: forall st rt. Multi -> String -> BackendFlow st rt Multi
-incrInMulti multi key = wrap $ IncrInMulti multi key id
+incrInMulti :: forall st rt. String -> Multi -> BackendFlow st rt Multi
+incrInMulti key multi = wrap $ IncrInMulti key multi id
 
 incr :: forall st rt. String -> String -> BackendFlow st rt (Either Error String)
 incr cacheName key = do
   cacheConn <- getCacheConn cacheName
   wrap $ Incr cacheConn key id
 
-setHashInMulti :: forall st rt. Multi -> String -> String -> String -> BackendFlow st rt Multi
-setHashInMulti multi key field value = wrap $ SetHashInMulti multi key field value id 
+setHashInMulti :: forall st rt. String -> String -> String -> Multi -> BackendFlow st rt Multi
+setHashInMulti key field value multi = wrap $ SetHashInMulti key field value multi id 
 
 setHash :: forall st rt. String -> String -> String -> String -> BackendFlow st rt (Either Error String)
 setHash cacheName key field value = do
   cacheConn <- getCacheConn cacheName
   wrap $ SetHash cacheConn key field value id
 
-getHashKeyInMulti :: forall st rt. Multi -> String -> String -> BackendFlow st rt Multi
-getHashKeyInMulti multi key field = wrap $ GetHashInMulti multi key field id
+getHashKeyInMulti :: forall st rt. String -> String -> Multi -> BackendFlow st rt Multi
+getHashKeyInMulti key field multi = wrap $ GetHashInMulti key field multi id
 
 getHashKey :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error String)
 getHashKey cacheName key field = do 
   cacheConn <- getCacheConn cacheName
   wrap $ GetHashKey cacheConn key field id 
 
-setWithOptionsInMulti :: forall st rt. Multi -> Array String -> BackendFlow st rt Multi
-setWithOptionsInMulti multi arr = wrap $ SetWithOptionsInMulti multi arr id
+setWithOptionsInMulti :: forall st rt. Array String -> Multi -> BackendFlow st rt Multi
+setWithOptionsInMulti arr multi = wrap $ SetWithOptionsInMulti  arr multi id
 
 setWithOptions :: forall st rt. String -> Array String -> BackendFlow st rt (Either Error String)
 setWithOptions cacheName arr = do
   cacheConn <- getCacheConn cacheName
   wrap $ SetWithOptions cacheConn arr id 
   
-publishToChannelInMulti :: forall st rt. Multi -> String -> String -> BackendFlow st rt Multi
-publishToChannelInMulti multi channel message = wrap $ PublishToChannelInMulti multi channel message id
+publishToChannelInMulti :: forall st rt. String -> String -> Multi -> BackendFlow st rt Multi
+publishToChannelInMulti channel message multi = wrap $ PublishToChannelInMulti channel message multi id
 
 publishToChannel :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error String)
 publishToChannel cacheName channel message = do
   cacheConn <- getCacheConn cacheName
   wrap $ PublishToChannel cacheConn channel message id
 
-subscribeToMulti :: forall st rt. Multi -> String -> BackendFlow st rt Multi
-subscribeToMulti multi channel = wrap $ SubscribeInMulti multi channel id
+subscribeToMulti :: forall st rt. String -> Multi -> BackendFlow st rt Multi
+subscribeToMulti channel multi = wrap $ SubscribeInMulti channel multi id
 
 subscribe :: forall st rt. String -> String -> BackendFlow st rt (Either Error String)
 subscribe cacheName channel = do
   cacheConn <- getCacheConn cacheName
   wrap $ Subscribe cacheConn channel id
 
-enqueueInMulti :: forall st rt. Multi -> String -> String -> BackendFlow st rt Multi
-enqueueInMulti multi listName value = wrap $ EnqueueInMulti multi listName value id
+enqueueInMulti :: forall st rt. String -> String -> Multi -> BackendFlow st rt Multi
+enqueueInMulti listName value multi = wrap $ EnqueueInMulti listName value multi id
 
 enqueue :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error Unit)
 enqueue cacheName listName value = do
   cacheConn <- getCacheConn cacheName
   wrap $ Enqueue cacheConn listName value id
 
-dequeueInMulti :: forall st rt. Multi -> String -> BackendFlow st rt Multi
-dequeueInMulti multi listName = wrap $ DequeueInMulti multi listName id
+dequeueInMulti :: forall st rt. String -> Multi -> BackendFlow st rt Multi
+dequeueInMulti listName multi = wrap $ DequeueInMulti listName multi id
 
 dequeue :: forall st rt. String -> String -> BackendFlow st rt (Either Error (Maybe String))
 dequeue cacheName listName = do
   cacheConn <- getCacheConn cacheName
   wrap $ Dequeue cacheConn listName id
 
-getQueueIdxInMulti :: forall st rt. Multi -> String -> Int -> BackendFlow st rt Multi
-getQueueIdxInMulti multi listName index = wrap $ GetQueueIdxInMulti multi listName index id
+getQueueIdxInMulti :: forall st rt. String -> Int -> Multi -> BackendFlow st rt Multi
+getQueueIdxInMulti listName index multi = wrap $ GetQueueIdxInMulti listName index multi id
 
 getQueueIdx :: forall st rt. String -> String -> Int -> BackendFlow st rt (Either Error String)
 getQueueIdx cacheName listName index = do
   cacheConn <- getCacheConn cacheName
   wrap $ GetQueueIdx cacheConn listName index id
+
+execMulti :: forall st rt. Multi -> BackendFlow st rt (Either Error (Array String))
+execMulti multi = wrap $ Exec multi id
 
 setMessageHandler :: forall st rt. String -> (forall eff. (String -> String -> Eff eff Unit)) -> BackendFlow st rt (Either Error String)
 setMessageHandler cacheName f = do
