@@ -34,6 +34,7 @@ import Data.Either (Either(..))
 import Data.Exists (runExists)
 import Data.Maybe (Maybe(..))
 import Data.StrMap (StrMap, lookup)
+import Data.Tuple (Tuple(..))
 import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), BackendFlowCommandsWrapper, BackendFlowWrapper(..))
 import Presto.Backend.SystemCommands (runSysCmd)
 import Presto.Backend.Types (BackendAff)
@@ -59,7 +60,7 @@ data Connection = Sequelize Conn | Redis CacheConn
 
 data BackendRuntime = BackendRuntime APIRunner (StrMap Connection) LogRunner
 
-forkF :: forall eff rt st a. BackendRuntime -> BackendFlow st rt a -> InterpreterMT rt st Error eff Unit
+forkF :: forall eff rt st a. BackendRuntime -> BackendFlow st rt a -> InterpreterMT rt st (Tuple Error st) eff Unit
 forkF runtime flow = do
   st <- R.lift $ S.get
   rt <- R.ask
@@ -67,7 +68,7 @@ forkF runtime flow = do
   R.lift $ S.lift $ E.lift $ forkAff m *> pure unit
 
 
-interpret :: forall st rt s eff a.  BackendRuntime -> BackendFlowCommandsWrapper st rt s a -> InterpreterMT rt st Error eff a
+interpret :: forall st rt s eff a.  BackendRuntime -> BackendFlowCommandsWrapper st rt s a -> InterpreterMT rt st (Tuple Error st) eff a
 interpret _ (Ask next) = R.ask >>= (pure <<< next)
 
 interpret _ (Get next) = R.lift (S.get) >>= (pure <<< next)
@@ -76,7 +77,7 @@ interpret _ (Put d next) = R.lift (S.put d) *> (pure <<< next) d
 
 interpret _ (Modify d next) = R.lift (S.modify d) *> S.get >>= (pure <<< next)
 
-interpret _ (ThrowException errorMessage next) = (R.lift $ S.lift $ E.ExceptT $ Left <$> (pure $ error errorMessage)) >>= pure <<< next
+interpret _ (ThrowException errorMessage next) = R.lift S.get >>= (R.lift <<< S.lift <<< E.ExceptT <<<  pure <<< Left <<< Tuple (error errorMessage)) >>= pure <<< next
 
 interpret _ (DoAff aff nextF) = (R.lift $ S.lift $ E.lift aff) >>= (pure <<< nextF)
 
@@ -179,7 +180,7 @@ interpret r (Fork flow nextF) = forkF r flow >>= (pure <<< nextF)
 
 interpret _ (RunSysCmd cmd next) = R.lift $ S.lift $ E.lift $ runSysCmd cmd >>= (pure <<< next)
 
-interpret _ _ = E.throwError $ error "Not implemented yet!"
+interpret _ _ = R.lift S.get >>= (E.throwError <<< Tuple (error "Not implemented yet!") )
 
-runBackend :: forall st rt eff a. BackendRuntime -> BackendFlow st rt a -> InterpreterMT rt st Error eff a
+runBackend :: forall st rt eff a. BackendRuntime -> BackendFlow st rt a -> InterpreterMT rt st (Tuple Error st) eff a
 runBackend backendRuntime = foldFree (\(BackendFlowWrapper x) -> runExists (interpret backendRuntime) x)
