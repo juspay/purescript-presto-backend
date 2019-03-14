@@ -87,6 +87,8 @@ interpret _ (SetCacheWithExpiry cacheConn key value ttl next) = (R.lift $ S.lift
 
 interpret _ (GetCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ getKey cacheConn key) >>= (pure <<< next)
 
+interpret _ (KeyExistsCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ exists cacheConn key) >>= (pure <<< next)
+
 interpret _ (DelCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ delKey cacheConn key) >>= (pure <<< next)
 
 interpret _ (Expire cacheConn key ttl next) = (R.lift $ S.lift $ E.lift $ expire cacheConn key ttl) >>= (pure <<< next)

@@ -63,6 +63,7 @@ data BackendFlowCommands next st rt s =
     | SetCache CacheConn String String (Either Error String -> next)
     | SetCacheWithExpiry CacheConn String String String (Either Error String -> next)
     | GetCache CacheConn String (Either Error String -> next)
+    | KeyExistsCache CacheConn String (Either Error Boolean -> next)
     | DelCache CacheConn String (Either Error String -> next)
     | Enqueue CacheConn String String (Either Error Unit -> next)
     | Dequeue CacheConn String (Either Error (Maybe String) -> next)
@@ -209,6 +210,11 @@ getCache :: forall st rt. String -> String -> BackendFlow st rt (Either Error St
 getCache cacheName key = do
   cacheConn <- getCacheConn cacheName
   wrap $ GetCache cacheConn key id
+
+keyExistsCache :: forall st rt. String -> String -> BackendFlow st rt (Either Error Boolean)
+keyExistsCache cacheName key = do
+  cacheConn <- getCacheConn cacheName
+  wrap $ KeyExistsCache cacheConn key id
 
 delCacheInMulti :: forall st rt. String -> Multi -> BackendFlow st rt Multi
 delCacheInMulti key multi = wrap $ DelCacheInMulti key multi id
