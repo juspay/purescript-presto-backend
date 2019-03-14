@@ -23,7 +23,7 @@ module Presto.Backend.Interpreter where
 
 import Prelude
 
-import Cache (CacheConn, delKey, exec, expire, expireMulti, getHashKey, getHashKeyMulti, getKey, getKeyMulti, getMulti, incr, incrMulti, lindex, lindexMulti, lpop, lpopMulti, publishToChannel, publishToChannelMulti, rpush, rpushMulti, set, setHash, setHashMulti, setKey, setKeyMulti, setMessageHandler, setMulti, setex, setexKeyMulti, subscribe, subscribeMulti)
+import Cache (CacheConn, delKey, exec, exists, expire, expireMulti, getHashKey, getHashKeyMulti, getKey, getKeyMulti, getMulti, incr, incrMulti, lindex, lindexMulti, lpop, lpopMulti, publishToChannel, publishToChannelMulti, rpush, rpushMulti, set, setHash, setHashMulti, setKey, setKeyMulti, setMessageHandler, setMulti, setex, setexKeyMulti, subscribe, subscribeMulti)
 import Control.Monad.Aff (Aff, forkAff)
 import Control.Monad.Eff.Exception (Error, error)
 import Control.Monad.Except.Trans (ExceptT(..), lift, throwError, runExceptT) as E
