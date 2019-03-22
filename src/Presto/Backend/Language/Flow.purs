@@ -73,8 +73,8 @@ data BackendFlowCommands next st rt exception s =
     | DelCache CacheConn String (Either Error String -> next)
     | Enqueue CacheConn String String (Either Error Unit -> next)
     | Dequeue CacheConn String (Either Error (Maybe String) -> next)
-    | GetQueueIdx CacheConn String Int (Either Error String -> next) 
     | Fork (BackendFlow st rt exception s) (Unit -> next)
+    | GetQueueIdx CacheConn String Int (Either Error (Maybe String) -> next)
     | Expire CacheConn String String (Either Error String -> next)
     | Incr CacheConn String (Either Error String -> next)
     | SetHash CacheConn String String String (Either Error String -> next)
@@ -317,7 +317,7 @@ dequeue cacheName listName = do
 getQueueIdxInMulti :: forall st rt exception. String -> Int -> Multi -> BackendFlow st rt exception Multi
 getQueueIdxInMulti listName index multi = wrap $ GetQueueIdxInMulti listName index multi id
 
-getQueueIdx :: forall st rt exception. String -> String -> Int -> BackendFlow st rt exception (Either Error String)
+getQueueIdx :: forall st rt exception. String -> String -> Int -> BackendFlow st rt exception (Either Error (Maybe String))
 getQueueIdx cacheName listName index = do
   cacheConn <- getCacheConn cacheName
   wrap $ GetQueueIdx cacheConn listName index id
