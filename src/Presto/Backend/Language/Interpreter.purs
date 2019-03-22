@@ -25,7 +25,6 @@ import Prelude
 
 import Cache (CacheConn, delKey, exec, exists, expire, expireMulti, getHashKey, getHashKeyMulti, getKey, getKeyMulti, getMulti, incr, incrMulti, lindex, lindexMulti, lpop, lpopMulti, publishToChannel, publishToChannelMulti, rpush, rpushMulti, set, setHash, setHashMulti, setKey, setKeyMulti, setMessageHandler, setMulti, setex, setexKeyMulti, subscribe, subscribeMulti)
 import Control.Monad.Aff (Aff, forkAff)
-import Control.Monad.Eff.Exception (Error, error)
 import Control.Monad.Except.Trans (ExceptT(..), lift, throwError, runExceptT) as E
 import Control.Monad.Free (foldFree)
 import Control.Monad.Reader.Trans (ReaderT, ask, lift, runReaderT) as R
@@ -68,7 +67,7 @@ forkF runtime flow = do
   R.lift $ S.lift $ E.lift $ forkAff m *> pure unit
 
 
-interpret :: forall st rt s eff a exception.  BackendRuntime -> BackendFlowCommandsWrapper st rt s exception a -> InterpreterMT rt st (Tuple (BackendException exception) st) eff a
+interpret :: forall st rt s eff a exception.  BackendRuntime -> BackendFlowCommandsWrapper st rt exception s a -> InterpreterMT rt st (Tuple (BackendException exception) st) eff a
 interpret _ (Ask next) = R.ask >>= (pure <<< next)
 
 interpret _ (Get next) = R.lift (S.get) >>= (pure <<< next)
@@ -77,7 +76,7 @@ interpret _ (Put d next) = R.lift (S.put d) *> (pure <<< next) d
 
 interpret _ (Modify d next) = R.lift (S.modify d) *> S.get >>= (pure <<< next)
 
-interpret _ (ThrowException errorMessage next) = R.lift S.get >>= (R.lift <<< S.lift <<< E.ExceptT <<<  pure <<< Left <<< Tuple (error errorMessage)) >>= pure <<< next
+interpret _ (ThrowException errorMessage next) = R.lift S.get >>= (R.lift <<< S.lift <<< E.ExceptT <<<  pure <<< Left <<< Tuple errorMessage) >>= pure <<< next
 
 interpret _ (DoAff aff nextF) = (R.lift $ S.lift $ E.lift aff) >>= (pure <<< nextF)
 
@@ -182,7 +181,7 @@ interpret r (Fork flow nextF) = forkF r flow >>= (pure <<< nextF)
 
 interpret _ (RunSysCmd cmd next) = R.lift $ S.lift $ E.lift $ runSysCmd cmd >>= (pure <<< next)
 
-interpret _ _ = R.lift S.get >>= (E.throwError <<< Tuple (error "Not implemented yet!") )
+interpret _ _ = R.lift S.get >>= (E.throwError <<< Tuple (Exception "Not implemented yet!") )
 
 runBackend :: forall st rt eff exception a. BackendRuntime -> BackendFlow st rt exception a -> InterpreterMT rt st (Tuple (BackendException exception) st) eff a
 runBackend backendRuntime = foldFree (\(BackendFlowWrapper x) -> runExists (interpret backendRuntime) x)
