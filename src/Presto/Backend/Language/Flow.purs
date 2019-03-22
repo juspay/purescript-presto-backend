@@ -41,14 +41,20 @@ import Presto.Core.Types.Language.Interaction (Interaction)
 import Sequelize.Class (class Model)
 import Sequelize.Types (Conn)
 
-data BackendFlowCommands next st rt s = 
+
+
+-- type APIResult s = Either ErrorResponse s
+-- newtype Control s = Control (AVar s)
+data BackendException err = CustomException err | Exception String
+
+data BackendFlowCommands next st rt exception s = 
       Ask (rt -> next)
     | Get (st -> next)
     | Put st (st -> next)
     | Modify (st -> st) (st -> next)
     | CallAPI (Interaction (APIResult s)) (APIResult s -> next)
     | DoAff (forall eff. BackendAff eff s) (s -> next)
-    | ThrowException String (s -> next)
+    | ThrowException (BackendException exception) (s -> next)
     | FindOne (Either Error (Maybe s)) (Either Error (Maybe s) -> next)
     | FindAll (Either Error (Array s)) (Either Error (Array s) -> next)
     | Create  (Either Error (Maybe s)) (Either Error (Maybe s) -> next)
@@ -68,7 +74,7 @@ data BackendFlowCommands next st rt s =
     | Enqueue CacheConn String String (Either Error Unit -> next)
     | Dequeue CacheConn String (Either Error (Maybe String) -> next)
     | GetQueueIdx CacheConn String Int (Either Error String -> next) 
-    | Fork (BackendFlow st rt s) (Unit -> next)
+    | Fork (BackendFlow st rt exception s) (Unit -> next)
     | Expire CacheConn String String (Either Error String -> next)
     | Incr CacheConn String (Either Error String -> next)
     | SetHash CacheConn String String String (Either Error String -> next)
@@ -93,238 +99,239 @@ data BackendFlowCommands next st rt s =
     | GetQueueIdxInMulti String Int Multi (Multi -> next) 
     | Exec Multi (Either Error (Array String) -> next) 
     | RunSysCmd String (String -> next)
+    | ReRoute (BackendException exception) (s -> next)
 
-    -- | HandleException 
-    -- | Await (Control s) (s -> next)
-    -- | Delay Milliseconds next
+type BackendFlowCommandsWrapper st rt exception s next = BackendFlowCommands next st rt exception s
 
-type BackendFlowCommandsWrapper st rt s next = BackendFlowCommands next st rt s
+newtype BackendFlowWrapper st rt exception next = BackendFlowWrapper (Exists (BackendFlowCommands next st rt exception))
 
-newtype BackendFlowWrapper st rt next = BackendFlowWrapper (Exists (BackendFlowCommands next st rt))
+type BackendFlow st rt exception next = Free (BackendFlowWrapper st rt exception) next
 
-type BackendFlow st rt next = Free (BackendFlowWrapper st rt) next
+instance showBackendException :: Show exception => Show (BackendException exception) where
+  show (CustomException exception) = show exception
+  show (Exception exception) = show exception
 
-wrap :: forall next st rt s. BackendFlowCommands next st rt s -> BackendFlow st rt next
+wrap :: forall next st rt exception s. BackendFlowCommands next st rt exception s -> BackendFlow st rt exception next
 wrap = liftF <<< BackendFlowWrapper <<< mkExists
 
-ask :: forall st rt. BackendFlow st rt rt
+ask :: forall st rt exception. BackendFlow st rt exception rt
 ask = wrap $ Ask id
 
-get :: forall st rt. BackendFlow st rt st
+get :: forall st rt exception. BackendFlow st rt exception st
 get = wrap $ Get id
 
-put :: forall st rt. st -> BackendFlow st rt st
+put :: forall st rt exception. st -> BackendFlow st rt exception st
 put st = wrap $ Put st id
 
-modify :: forall st rt. (st -> st) -> BackendFlow st rt st
+modify :: forall st rt exception. (st -> st) -> BackendFlow st rt exception st
 modify fst = wrap $ Modify fst id
 
-throwException :: forall st rt a. String -> BackendFlow st rt a
+throwException :: forall st rt exception a. BackendException exception -> BackendFlow st rt exception a
 throwException errorMessage = wrap $ ThrowException errorMessage id
 
-doAff :: forall st rt a. (forall eff. BackendAff eff a) -> BackendFlow st rt a
+doAff :: forall st rt exception a. (forall eff. BackendAff eff a) -> BackendFlow st rt exception a
 doAff aff = wrap $ DoAff aff id
 
-findOne :: forall model st rt. Model model => String -> Options model -> BackendFlow st rt (Either Error (Maybe model))
+findOne :: forall model st rt exception. Model model => String -> Options model -> BackendFlow st rt exception (Either Error (Maybe model))
 findOne dbName options = do
   conn <- getDBConn dbName
   model <- doAff do
         DB.findOne conn options
   wrap $ FindOne model id
 
-findAll :: forall model st rt. Model model => String -> Options model -> BackendFlow st rt (Either Error (Array model))
+findAll :: forall model st rt exception. Model model => String -> Options model -> BackendFlow st rt exception (Either Error (Array model))
 findAll dbName options = do
   conn <- getDBConn dbName
   model <- doAff do
         DB.findAll conn options
   wrap $ FindAll model id 
 
-query :: forall a st rt. String -> String -> BackendFlow st rt (Either Error (Array a))
+query :: forall a st rt exception. String -> String -> BackendFlow st rt exception (Either Error (Array a))
 query dbName rawq = do
   conn <- getDBConn dbName
   resp <- doAff do
         DB.query conn rawq
   wrap $ Query resp id
 
-create :: forall model st rt. Model model => String -> model -> BackendFlow st rt (Either Error (Maybe model))
+create :: forall model st rt exception. Model model => String -> model -> BackendFlow st rt exception (Either Error (Maybe model))
 create dbName model = do
   conn <- getDBConn dbName
   result <- doAff do
         DB.create conn model
   wrap $ Create result id
 
-createWithOpts :: forall model st rt. Model model => String -> model -> Options model -> BackendFlow st rt (Either Error (Maybe model))
+createWithOpts :: forall model st rt exception. Model model => String -> model -> Options model -> BackendFlow st rt exception (Either Error (Maybe model))
 createWithOpts dbName model options = do
   conn <- getDBConn dbName
   result <- doAff do
         DB.createWithOpts conn model options
   wrap $ Create result id
 
-findOrCreate :: forall model st rt. Model model => String -> Options model -> BackendFlow st rt (Either Error (Maybe model))
+findOrCreate :: forall model st rt exception. Model model => String -> Options model -> BackendFlow st rt exception (Either Error (Maybe model))
 findOrCreate dbName options = do
   conn <- getDBConn dbName
   wrap $ FindOrCreate (Right Nothing) id
 
-update :: forall model st rt. Model model => String -> Options model -> Options model -> BackendFlow st rt (Either Error (Array model))
+update :: forall model st rt exception. Model model => String -> Options model -> Options model -> BackendFlow st rt exception (Either Error (Array model))
 update dbName updateValues whereClause = do
   conn <- getDBConn dbName
   model <- doAff do
         DB.update conn updateValues whereClause
   wrap $ Update model id
 
-delete :: forall model st rt. Model model => String -> Options model -> BackendFlow st rt (Either Error Int)
+delete :: forall model st rt exception. Model model => String -> Options model -> BackendFlow st rt exception (Either Error Int)
 delete dbName options = do
   conn <- getDBConn dbName
   model <- doAff do
         DB.delete conn options
   wrap $ Delete model id
 
-getDBConn :: forall st rt. String -> BackendFlow st rt Conn
+getDBConn :: forall st rt exception. String -> BackendFlow st rt exception Conn
 getDBConn dbName = do
   wrap $ GetDBConn dbName id
 
-getCacheConn :: forall st rt. String -> BackendFlow st rt CacheConn
+getCacheConn :: forall st rt exception. String -> BackendFlow st rt exception CacheConn
 getCacheConn dbName = wrap $ GetCacheConn dbName id
 
-getMulti :: forall st rt. String -> BackendFlow st rt Multi
+getMulti :: forall st rt exception. String -> BackendFlow st rt exception Multi
 getMulti cacheName = do
     cacheConn <- getCacheConn cacheName
     wrap $ GetMulti cacheConn id
 
-callAPI :: forall st rt a b. Encode a => Decode b => RestEndpoint a b
-  => Headers -> a -> BackendFlow st rt (APIResult b)
+callAPI :: forall st rt exception a b. Encode a => Decode b => RestEndpoint a b
+  => Headers -> a -> BackendFlow st rt exception (APIResult b)
 callAPI headers a = wrap $ CallAPI (apiInteract a headers) id 
 
-setCacheInMulti :: forall st rt. String -> String -> Multi -> BackendFlow st rt Multi
+setCacheInMulti :: forall st rt exception. String -> String -> Multi -> BackendFlow st rt exception Multi
 setCacheInMulti key value multi = wrap $ SetCacheInMulti key value multi id
 
-setCache :: forall st rt. String -> String ->  String -> BackendFlow st rt (Either Error String)
+setCache :: forall st rt exception. String -> String ->  String -> BackendFlow st rt exception (Either Error String)
 setCache cacheName key value = do
   cacheConn <- getCacheConn cacheName
   wrap $ SetCache cacheConn key value id
 
-getCacheInMulti :: forall st rt. String -> Multi -> BackendFlow st rt Multi
+getCacheInMulti :: forall st rt exception. String -> Multi -> BackendFlow st rt exception Multi
 getCacheInMulti key multi = wrap $ GetCacheInMulti key multi id
 
-getCache :: forall st rt. String -> String -> BackendFlow st rt (Either Error String)
+getCache :: forall st rt exception. String -> String -> BackendFlow st rt exception (Either Error String)
 getCache cacheName key = do
   cacheConn <- getCacheConn cacheName
   wrap $ GetCache cacheConn key id
 
-keyExistsCache :: forall st rt. String -> String -> BackendFlow st rt (Either Error Boolean)
+keyExistsCache :: forall st rt exception. String -> String -> BackendFlow st rt exception (Either Error Boolean)
 keyExistsCache cacheName key = do
   cacheConn <- getCacheConn cacheName
   wrap $ KeyExistsCache cacheConn key id
 
-delCacheInMulti :: forall st rt. String -> Multi -> BackendFlow st rt Multi
+delCacheInMulti :: forall st rt exception. String -> Multi -> BackendFlow st rt exception Multi
 delCacheInMulti key multi = wrap $ DelCacheInMulti key multi id
 
-delCache :: forall st rt. String -> String -> BackendFlow st rt (Either Error String)
+delCache :: forall st rt exception. String -> String -> BackendFlow st rt exception (Either Error String)
 delCache cacheName key = do
   cacheConn <- getCacheConn cacheName
   wrap $ DelCache cacheConn key id
 
-setCacheWithExpireInMulti :: forall st rt. String -> String -> String -> Multi -> BackendFlow st rt Multi
+setCacheWithExpireInMulti :: forall st rt exception. String -> String -> String -> Multi -> BackendFlow st rt exception Multi
 setCacheWithExpireInMulti key value ttl multi = wrap $ SetCacheWithExpiryInMulti key value ttl multi id
 
-setCacheWithExpiry :: forall st rt. String -> String -> String -> String -> BackendFlow st rt (Either Error String)
+setCacheWithExpiry :: forall st rt exception. String -> String -> String -> String -> BackendFlow st rt exception (Either Error String)
 setCacheWithExpiry cacheName key value ttl = do
   cacheConn <- getCacheConn cacheName
   wrap $ SetCacheWithExpiry cacheConn key value ttl id
 
-log :: forall st rt a. String -> a -> BackendFlow st rt Unit
+log :: forall st rt exception a. String -> a -> BackendFlow st rt exception Unit
 log tag message = wrap $ Log tag message unit
 
-expireInMulti :: forall st rt. String -> String -> Multi -> BackendFlow st rt Multi
+expireInMulti :: forall st rt exception. String -> String -> Multi -> BackendFlow st rt exception Multi
 expireInMulti key ttl multi = wrap $ ExpireInMulti key ttl multi id
 
-expire :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error String)
+expire :: forall st rt exception. String -> String -> String -> BackendFlow st rt exception (Either Error String)
 expire cacheName key ttl = do 
   cacheConn <- getCacheConn cacheName
   wrap $ Expire cacheConn key ttl id
 
-incrInMulti :: forall st rt. String -> Multi -> BackendFlow st rt Multi
+incrInMulti :: forall st rt exception. String -> Multi -> BackendFlow st rt exception Multi
 incrInMulti key multi = wrap $ IncrInMulti key multi id
 
-incr :: forall st rt. String -> String -> BackendFlow st rt (Either Error String)
+incr :: forall st rt exception. String -> String -> BackendFlow st rt exception (Either Error String)
 incr cacheName key = do
   cacheConn <- getCacheConn cacheName
   wrap $ Incr cacheConn key id
 
-setHashInMulti :: forall st rt. String -> String -> String -> Multi -> BackendFlow st rt Multi
+setHashInMulti :: forall st rt exception. String -> String -> String -> Multi -> BackendFlow st rt exception Multi
 setHashInMulti key field value multi = wrap $ SetHashInMulti key field value multi id 
 
-setHash :: forall st rt. String -> String -> String -> String -> BackendFlow st rt (Either Error String)
+setHash :: forall st rt exception. String -> String -> String -> String -> BackendFlow st rt exception (Either Error String)
 setHash cacheName key field value = do
   cacheConn <- getCacheConn cacheName
   wrap $ SetHash cacheConn key field value id
 
-getHashKeyInMulti :: forall st rt. String -> String -> Multi -> BackendFlow st rt Multi
+getHashKeyInMulti :: forall st rt exception. String -> String -> Multi -> BackendFlow st rt exception Multi
 getHashKeyInMulti key field multi = wrap $ GetHashInMulti key field multi id
 
-getHashKey :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error String)
+getHashKey :: forall st rt exception. String -> String -> String -> BackendFlow st rt exception (Either Error String)
 getHashKey cacheName key field = do 
   cacheConn <- getCacheConn cacheName
   wrap $ GetHashKey cacheConn key field id 
 
-setWithOptionsInMulti :: forall st rt. Array String -> Multi -> BackendFlow st rt Multi
+setWithOptionsInMulti :: forall st rt exception. Array String -> Multi -> BackendFlow st rt exception Multi
 setWithOptionsInMulti arr multi = wrap $ SetWithOptionsInMulti  arr multi id
 
-setWithOptions :: forall st rt. String -> Array String -> BackendFlow st rt (Either Error String)
+setWithOptions :: forall st rt exception. String -> Array String -> BackendFlow st rt exception (Either Error String)
 setWithOptions cacheName arr = do
   cacheConn <- getCacheConn cacheName
   wrap $ SetWithOptions cacheConn arr id 
   
-publishToChannelInMulti :: forall st rt. String -> String -> Multi -> BackendFlow st rt Multi
+publishToChannelInMulti :: forall st rt exception. String -> String -> Multi -> BackendFlow st rt exception Multi
 publishToChannelInMulti channel message multi = wrap $ PublishToChannelInMulti channel message multi id
 
-publishToChannel :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error String)
+publishToChannel :: forall st rt exception. String -> String -> String -> BackendFlow st rt exception (Either Error String)
 publishToChannel cacheName channel message = do
   cacheConn <- getCacheConn cacheName
   wrap $ PublishToChannel cacheConn channel message id
 
-subscribeToMulti :: forall st rt. String -> Multi -> BackendFlow st rt Multi
+subscribeToMulti :: forall st rt exception. String -> Multi -> BackendFlow st rt exception Multi
 subscribeToMulti channel multi = wrap $ SubscribeInMulti channel multi id
 
-subscribe :: forall st rt. String -> String -> BackendFlow st rt (Either Error String)
+subscribe :: forall st rt exception. String -> String -> BackendFlow st rt exception (Either Error String)
 subscribe cacheName channel = do
   cacheConn <- getCacheConn cacheName
   wrap $ Subscribe cacheConn channel id
 
-enqueueInMulti :: forall st rt. String -> String -> Multi -> BackendFlow st rt Multi
+enqueueInMulti :: forall st rt exception. String -> String -> Multi -> BackendFlow st rt exception Multi
 enqueueInMulti listName value multi = wrap $ EnqueueInMulti listName value multi id
 
-enqueue :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error Unit)
+enqueue :: forall st rt exception. String -> String -> String -> BackendFlow st rt exception (Either Error Unit)
 enqueue cacheName listName value = do
   cacheConn <- getCacheConn cacheName
   wrap $ Enqueue cacheConn listName value id
 
-dequeueInMulti :: forall st rt. String -> Multi -> BackendFlow st rt Multi
+dequeueInMulti :: forall st rt exception. String -> Multi -> BackendFlow st rt exception Multi
 dequeueInMulti listName multi = wrap $ DequeueInMulti listName multi id
 
-dequeue :: forall st rt. String -> String -> BackendFlow st rt (Either Error (Maybe String))
+dequeue :: forall st rt exception. String -> String -> BackendFlow st rt exception (Either Error (Maybe String))
 dequeue cacheName listName = do
   cacheConn <- getCacheConn cacheName
   wrap $ Dequeue cacheConn listName id
 
-getQueueIdxInMulti :: forall st rt. String -> Int -> Multi -> BackendFlow st rt Multi
+getQueueIdxInMulti :: forall st rt exception. String -> Int -> Multi -> BackendFlow st rt exception Multi
 getQueueIdxInMulti listName index multi = wrap $ GetQueueIdxInMulti listName index multi id
 
-getQueueIdx :: forall st rt. String -> String -> Int -> BackendFlow st rt (Either Error String)
+getQueueIdx :: forall st rt exception. String -> String -> Int -> BackendFlow st rt exception (Either Error String)
 getQueueIdx cacheName listName index = do
   cacheConn <- getCacheConn cacheName
   wrap $ GetQueueIdx cacheConn listName index id
 
-execMulti :: forall st rt. Multi -> BackendFlow st rt (Either Error (Array String))
+execMulti :: forall st rt exception. Multi -> BackendFlow st rt exception (Either Error (Array String))
 execMulti multi = wrap $ Exec multi id
 
-setMessageHandler :: forall st rt. String -> (forall eff. (String -> String -> Eff eff Unit)) -> BackendFlow st rt (Either Error String)
+setMessageHandler :: forall st rt exception. String -> (forall eff. (String -> String -> Eff eff Unit)) -> BackendFlow st rt exception (Either Error String)
 setMessageHandler cacheName f = do
   cacheConn <- getCacheConn cacheName
   wrap $ SetMessageHandler cacheConn f id
 
-runSysCmd :: forall st rt. String -> BackendFlow st rt String
+runSysCmd :: forall st rt exception. String -> BackendFlow st rt exception String
 runSysCmd cmd = wrap $ RunSysCmd cmd id
 
-forkFlow :: forall st rt a. BackendFlow st rt a -> BackendFlow st rt Unit
+forkFlow :: forall st rt exception a. BackendFlow st rt exception a -> BackendFlow st rt exception Unit
 forkFlow flow = wrap $ Fork flow id
