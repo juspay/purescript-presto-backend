@@ -40,6 +40,7 @@ import Presto.Backend.Types (BackendAff)
 import Presto.Core.Flow (runAPIInteraction)
 import Presto.Core.Language.Runtime.API (APIRunner)
 import Sequelize.Types (Conn)
+import Control.Monad.Eff.Console (CONSOLE)
 
 type InterpreterMT rt st exception eff a = R.ReaderT rt (S.StateT st (E.ExceptT exception (BackendAff eff))) a
 
@@ -53,7 +54,7 @@ type DB = {
   , connection :: Conn
 }
 
-type LogRunner = forall e a. String -> a -> Aff e Unit
+type LogRunner = forall e a. String -> a -> Aff (console :: CONSOLE | e) Unit
 
 data Connection = Sequelize Conn | Redis CacheConn
 
@@ -76,7 +77,9 @@ interpret _ (Put d next) = R.lift (S.put d) *> (pure <<< next) d
 
 interpret _ (Modify d next) = R.lift (S.modify d) *> S.get >>= (pure <<< next)
 
-interpret _ (ThrowException errorMessage next) = R.lift S.get >>= (R.lift <<< S.lift <<< E.ExceptT <<<  pure <<< Left <<< Tuple errorMessage) >>= pure <<< next
+interpret _ (ThrowException exception next) = R.lift S.get >>= (R.lift <<< S.lift <<< E.ExceptT <<<  pure <<< Left <<< Tuple exception) >>= pure <<< next
+
+interpret _ (ReRoute exception next) = R.lift S.get >>= (R.lift <<< S.lift <<< E.ExceptT <<<  pure <<< Left <<< Tuple exception) >>= pure <<< next
 
 interpret _ (DoAff aff nextF) = (R.lift $ S.lift $ E.lift aff) >>= (pure <<< nextF)
 

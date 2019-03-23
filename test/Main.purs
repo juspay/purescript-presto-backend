@@ -19,17 +19,77 @@
  along with this program. If not, see <https://www.gnu.org/licenses/agpl.html>.
 -}
 
-module Main where
+module Test.Main where
 
 import Prelude
-import Control.Monad.Aff.Console (CONSOLE)
+import Control.Monad.Aff.Console (CONSOLE, log)
 import Control.Monad.Eff (Eff)
-import Control.Monad.Eff.Console (log)
+-- import Control.Monad.Eff.Console (log)
+import Control.Monad.Aff (Aff, launchAff)
+import Control.Monad.Eff.Class (liftEff)
+import Node.Express.App (AppM, listenHttp, use, useExternal, useOnError, get)
+import Node.Express.Response (sendJson, setResponseHeader, setStatus, send)
+import Presto.Backend.Flow (BackendFlow, BackendException)
+import Control.Monad.Aff.Class (liftAff)
+import Control.Monad.Except (runExcept)
+import Control.Monad.Except.Trans (runExceptT)
+import Control.Monad.Reader.Trans (runReaderT)
+import Control.Monad.State.Trans (runStateT)
+import Presto.Core.Types.API (Request) as API
+import Presto.Backend.Interpreter (BackendRuntime(BackendRuntime), Connection(..), runBackend)
+import Data.Options (options, (:=))
+import Cache (host, port, db, socketKeepAlive, getConn, CACHE) as C
+import Data.StrMap (StrMap, insert, singleton)
+import Control.Monad.Eff.Ref (REF, Ref, readRef)
+import Data.Either (Either(..))
+import Data.Tuple (Tuple(..))
+import Node.Express.Handler (HandlerM(HandlerM))
 
-apiWrapper :: forall t2. Applicative t2 => t2 Unit
-apiWrapper = do
+logger :: forall a. String -> a -> Aff _ Unit
+logger s a = log s
+
+apirunner :: forall e. API.Request -> Aff e String
+apirunner r = pure "response"
+
+class LocalState a where
+    getStateObjectInstance :: a
+
+newtype EmptyLocalState = EmptyLocalState Unit
+
+instance emptyLocalStateInstance :: LocalState EmptyLocalState where
+  getStateObjectInstance = EmptyLocalState unit
+
+type Config = {
+    "purescript-presto-backend" :: Boolean
+}
+
+upRoute :: BackendFlow EmptyLocalState Config (BackendException { context :: String }) String
+upRoute = pure "UP"
+
+apiWrapper :: forall st rt exception. LocalState st => StrMap Connection -> BackendFlow st Config exception String -> HandlerM _ Unit
+apiWrapper state api = do
+    let backendRuntime = BackendRuntime apirunner state logger
+    response <- liftAff $ runExceptT ( runStateT ( runReaderT ( runBackend backendRuntime (api)) { "purescript-presto-backend" : true }) getStateObjectInstance)
+    case response of
+        Left (Tuple y x) -> send "DOWN"
+        Right (Tuple y x) -> send y
     pure unit
 
-main :: forall t1. Eff ( console :: CONSOLE | t1) Unit
+appSetup :: StrMap Connection  -> AppM _ Unit
+appSetup state = do
+    get "/" (apiWrapper state upRoute)
+    pure unit
+
+initApp :: forall e. Aff _ Unit
+initApp = do
+    let cacheOpts = C.host := "127.0.0.1" <> C.port := 6379 <> C.db := 0 <> C.socketKeepAlive := true
+    cacheConn <- C.getConn cacheOpts
+    let conn = singleton "ECRRedis" (Redis cacheConn)
+    _ <- liftEff $ listenHttp (appSetup conn) 8081 (const (pure unit))
+    pure unit
+
+main :: forall t1. Eff _ Unit
 main = do
-    log "I am awesome"
+    _ <- launchAff initApp
+    pure unit
+    

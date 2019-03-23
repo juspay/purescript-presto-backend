@@ -32,5 +32,11 @@
     "zipkin-context-cls": "^0.13.0",
     "zipkin-instrumentation-axios": "git://github.com/juspay/zipkin-instrumentation-axios",
     "zipkin-transport-http": "^0.13.0"
+  },
+  "devDependencies": {
+    "redis": "^2.8.0",
+    "cls-bluebird": "^2.1.0",
+    "cls-hooked": "^4.2.2",
+    "bluebird": "^3.5.0"
   }
 }
