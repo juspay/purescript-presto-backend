@@ -45,7 +45,7 @@ import Sequelize.Types (Conn)
 
 -- type APIResult s = Either ErrorResponse s
 -- newtype Control s = Control (AVar s)
-data BackendException err = CustomException err | Exception String
+data BackendException exception = CustomException exception | Exception String
 
 data BackendFlowCommands next st rt exception s = 
       Ask (rt -> next)
@@ -127,7 +127,10 @@ modify :: forall st rt exception. (st -> st) -> BackendFlow st rt exception st
 modify fst = wrap $ Modify fst id
 
 throwException :: forall st rt exception a. BackendException exception -> BackendFlow st rt exception a
-throwException errorMessage = wrap $ ThrowException errorMessage id
+throwException exception = wrap $ ThrowException exception id
+
+reRoute :: forall st rt exception a. BackendException exception -> BackendFlow st rt exception a
+reRoute exception = wrap $ ReRoute exception id
 
 doAff :: forall st rt exception a. (forall eff. BackendAff eff a) -> BackendFlow st rt exception a
 doAff aff = wrap $ DoAff aff id

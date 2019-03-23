@@ -29,7 +29,7 @@ import Control.Monad.Aff (Aff, launchAff)
 import Control.Monad.Eff.Class (liftEff)
 import Node.Express.App (AppM, listenHttp, use, useExternal, useOnError, get)
 import Node.Express.Response (sendJson, setResponseHeader, setStatus, send)
-import Presto.Backend.Flow (BackendFlow, BackendException)
+import Presto.Backend.Flow (BackendFlow, BackendException(..), reRoute)
 import Control.Monad.Aff.Class (liftAff)
 import Control.Monad.Except (runExcept)
 import Control.Monad.Except.Trans (runExceptT)
@@ -63,21 +63,25 @@ type Config = {
     "purescript-presto-backend" :: Boolean
 }
 
-upRoute :: BackendFlow EmptyLocalState Config (BackendException { context :: String }) String
+upRoute :: BackendFlow EmptyLocalState Config { context :: String } String
 upRoute = pure "UP"
+
+testReRoute :: BackendFlow EmptyLocalState Config { context :: String }  String
+testReRoute = reRoute (CustomException {context : "what is it"})
 
 apiWrapper :: forall st rt exception. LocalState st => StrMap Connection -> BackendFlow st Config exception String -> HandlerM _ Unit
 apiWrapper state api = do
     let backendRuntime = BackendRuntime apirunner state logger
     response <- liftAff $ runExceptT ( runStateT ( runReaderT ( runBackend backendRuntime (api)) { "purescript-presto-backend" : true }) getStateObjectInstance)
     case response of
-        Left (Tuple y x) -> send "DOWN"
+        Left (Tuple y x) -> send y
         Right (Tuple y x) -> send y
     pure unit
 
 appSetup :: StrMap Connection  -> AppM _ Unit
 appSetup state = do
     get "/" (apiWrapper state upRoute)
+    get "/testReRoute" (apiWrapper state testReRoute)
     pure unit
 
 initApp :: forall e. Aff _ Unit
