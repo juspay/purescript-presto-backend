@@ -67,7 +67,7 @@ upRoute :: BackendFlow EmptyLocalState Config { context :: String } String
 upRoute = pure "UP"
 
 testReRoute :: BackendFlow EmptyLocalState Config { context :: String }  String
-testReRoute = reRoute (CustomException {context : "what is it"})
+testReRoute = reRoute (CustomException {context : "testReRoute"})
 
 apiWrapper :: forall st rt exception. LocalState st => StrMap Connection -> BackendFlow st Config exception String -> HandlerM _ Unit
 apiWrapper state api = do
