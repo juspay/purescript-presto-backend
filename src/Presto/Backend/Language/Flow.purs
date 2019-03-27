@@ -93,6 +93,7 @@ data BackendFlowCommands next st rt s =
     | GetQueueIdxInMulti String Int Multi (Multi -> next) 
     | Exec Multi (Either Error (Array String) -> next) 
     | RunSysCmd String (String -> next)
+    | ReRoute String (s -> next)
 
     -- | HandleException 
     -- | Await (Control s) (s -> next)
@@ -328,3 +329,6 @@ runSysCmd cmd = wrap $ RunSysCmd cmd id
 
 forkFlow :: forall st rt a. BackendFlow st rt a -> BackendFlow st rt Unit
 forkFlow flow = wrap $ Fork flow id
+
+reRoute :: forall st rt a rr. String -> BackendFlow { reRoute :: rr | st} rt a
+reRoute flag = wrap $ ReRoute flag id
