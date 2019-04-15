@@ -22,14 +22,11 @@
 module Presto.Backend.SystemCommands where
 
 import Prelude
-import Data.Function.Uncurried (Fn3)
-import Control.Monad.Eff.Exception (Error)
-import Control.Monad.Eff (Eff)
-import Control.Monad.Aff (makeAff, Aff)
-import Data.Function.Uncurried (runFn3)
 
-foreign import runSysCmdImpl :: forall a e. Fn3 (Error -> Eff e Unit) (a -> Eff e Unit) String (Eff e Unit)
+import Control.Monad.Aff (Aff)
+import Control.Monad.Aff.Compat (EffFnAff, fromEffFnAff)
+
+foreign import runSysCmdImpl :: forall e. String -> EffFnAff e String
 
 runSysCmd :: forall eff. String -> Aff eff String
-runSysCmd cmd = do
-	makeAff $ (\err sc -> runFn3 runSysCmdImpl err sc cmd)
+runSysCmd = fromEffFnAff <<< runSysCmdImpl
