@@ -21,10 +21,14 @@
 
 module Presto.Backend.Interpreter where
 
+import Cache (CacheConn, SetOptions(..), del, exists, expire, get, incr, publish, set, setMessageHandler, subscribe)
 import Prelude
 
-import Cache (CacheConn, delKey, exec, exists, expire, expireMulti, getHashKey, getHashKeyMulti, getKey, getKeyMulti, getMulti, incr, incrMulti, lindex, lindexMulti, lpop, lpopMulti, publishToChannel, publishToChannelMulti, rpush, rpushMulti, set, setHash, setHashMulti, setKey, setKeyMulti, setMessageHandler, setMulti, setex, setexKeyMulti, subscribe, subscribeMulti)
+import Cache.Hash (hget, hset)
+import Cache.List (lindex, lpop, rpush)
+import Cache.Multi (execMulti, expireMulti, getMulti, hgetMulti, hsetMulti, incrMulti, lindexMulti, lpopMulti, newMulti, publishMulti, rpushMulti, setMulti, subscribeMulti)
 import Control.Monad.Aff (Aff, forkAff)
+import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Eff.Exception (Error, error)
 import Control.Monad.Except.Trans (ExceptT(..), lift, throwError, runExceptT) as E
 import Control.Monad.Free (foldFree)
@@ -81,31 +85,31 @@ interpret _ (ThrowException errorMessage next) = R.lift S.get >>= (R.lift <<< S.
 
 interpret _ (DoAff aff nextF) = (R.lift $ S.lift $ E.lift aff) >>= (pure <<< nextF)
 
-interpret _ (SetCache cacheConn key value next) = (R.lift $ S.lift $ E.lift $ setKey cacheConn key value) >>= (pure <<< next )
+interpret _ (SetCache cacheConn key value next) = (R.lift $ S.lift $ E.lift $ set cacheConn key value Nothing NoOptions) >>= (pure <<< next )
 
-interpret _ (SetCacheWithExpiry cacheConn key value ttl next) = (R.lift $ S.lift $ E.lift $ setex cacheConn key value ttl) >>= (pure <<< next)
+interpret _ (SetCacheWithExpiry cacheConn key value ttl next) = (R.lift $ S.lift $ E.lift $ set cacheConn key value (Just ttl) NoOptions) >>= (pure <<< next)
 
-interpret _ (GetCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ getKey cacheConn key) >>= (pure <<< next)
+interpret _ (GetCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ get cacheConn key) >>= (pure <<< next)
 
 interpret _ (KeyExistsCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ exists cacheConn key) >>= (pure <<< next)
 
-interpret _ (DelCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ delKey cacheConn key) >>= (pure <<< next)
+interpret _ (DelCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ del cacheConn key) >>= (pure <<< next)
 
 interpret _ (Expire cacheConn key ttl next) = (R.lift $ S.lift $ E.lift $ expire cacheConn key ttl) >>= (pure <<< next)
-    
-interpret _ (Incr cacheConn key next) = (R.lift $ S.lift $ E.lift $ incr cacheConn key) >>= (pure <<< next) 
 
-interpret _ (SetHash cacheConn key field value next) = (R.lift $ S.lift $ E.lift $ setHash cacheConn key field value) >>= (pure <<< next) 
+interpret _ (Incr cacheConn key next) = (R.lift $ S.lift $ E.lift $ incr cacheConn key) >>= (pure <<< next)
 
-interpret _ (GetHashKey cacheConn key field next) = (R.lift $ S.lift $ E.lift $ getHashKey cacheConn key field) >>= (pure <<< next) 
+interpret _ (SetHash cacheConn key field value next) = (R.lift $ S.lift $ E.lift $ hset cacheConn key field value) >>= (pure <<< next)
 
-interpret _ (SetWithOptions cacheConn arr next) = (R.lift $ S.lift $ E.lift $ set cacheConn arr) >>= (pure <<< next) 
+interpret _ (GetHashKey cacheConn key field next) = (R.lift $ S.lift $ E.lift $ hget cacheConn key field) >>= (pure <<< next)
 
-interpret _ (PublishToChannel cacheConn channel message next) = (R.lift $ S.lift $ E.lift $ publishToChannel cacheConn channel message) >>= (pure <<< next) 
+{-- interpret _ (SetWithOptions cacheConn arr next) = (R.lift $ S.lift $ E.lift $ set cacheConn arr) >>= (pure <<< next) --}
 
-interpret _ (Subscribe cacheConn channel next) = (R.lift $ S.lift $ E.lift $ subscribe cacheConn channel) >>= (pure <<< next) 
+interpret _ (PublishToChannel cacheConn channel message next) = (R.lift $ S.lift $ E.lift $ publish cacheConn channel message) >>= (pure <<< next)
 
-interpret _ (SetMessageHandler cacheConn f next) = (R.lift $ S.lift $ E.lift $ setMessageHandler cacheConn f) >>= (pure <<< next) 
+interpret _ (Subscribe cacheConn channel next) = (R.lift $ S.lift $ E.lift $ subscribe cacheConn channel) >>= (pure <<< next)
+
+interpret _ (SetMessageHandler cacheConn f next) = (R.lift $ S.lift $ E.lift $ liftEff $ setMessageHandler cacheConn f) >>= (pure <<< next)
 
 interpret _ (Enqueue cacheConn listName value next) = (R.lift $ S.lift $ E.lift $ void <$> rpush cacheConn listName value) >>= (pure <<< next)
 
@@ -113,37 +117,37 @@ interpret _ (Dequeue cacheConn listName next) = (R.lift $ S.lift $ E.lift $ lpop
 
 interpret _ (GetQueueIdx cacheConn listName index next) = (R.lift $ S.lift $ E.lift $ lindex cacheConn listName index) >>= (pure <<< next)
 
-interpret _ (GetMulti cacheConn next) = (R.lift $ S.lift $ E.lift $ getMulti cacheConn) >>= (pure <<< next)
+interpret _ (GetMulti cacheConn next) = (R.lift $ S.lift $ E.lift $ liftEff $ newMulti cacheConn) >>= (pure <<< next)
 
-interpret _ (SetCacheInMulti key val multi next) = (R.lift <<< S.lift <<< E.lift <<< setKeyMulti key val $ multi ) >>= (pure <<< next)
+interpret _ (SetCacheInMulti key val multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< setMulti key val Nothing NoOptions $ multi ) >>= (pure <<< next)
 
 interpret _ (GetCacheInMulti key multi next) = (R.lift <<< S.lift <<< E.lift <<< pure <<< next $ multi)
 
-interpret _ (DelCacheInMulti key multi next) = (R.lift <<< S.lift <<< E.lift <<< getKeyMulti key$ multi) >>= (pure <<< next )
+interpret _ (DelCacheInMulti key multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< getMulti key$ multi) >>= (pure <<< next )
 
-interpret _ (SetCacheWithExpiryInMulti key val ttl multi next) = (R.lift <<< S.lift <<< E.lift <<< setexKeyMulti key val ttl $ multi )>>= (pure <<< next )
+interpret _ (SetCacheWithExpiryInMulti key val ttl multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< setMulti key val (Just ttl) NoOptions $ multi )>>= (pure <<< next )
 
-interpret _ (ExpireInMulti key ttl multi next) = (R.lift <<< S.lift <<< E.lift <<< expireMulti key ttl $ multi) >>= (pure <<< next)
+interpret _ (ExpireInMulti key ttl multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< expireMulti key ttl $ multi) >>= (pure <<< next)
 
-interpret _ (IncrInMulti key multi next) = (R.lift <<< S.lift <<< E.lift <<< incrMulti key $ multi) >>= (pure <<< next)
+interpret _ (IncrInMulti key multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< incrMulti key $ multi) >>= (pure <<< next)
 
-interpret _ (SetHashInMulti key field value multi next) = (R.lift <<< S.lift <<< E.lift <<< setHashMulti key field value $ multi) >>= (pure <<< next )
+interpret _ (SetHashInMulti key field value multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< hsetMulti key field value $ multi) >>= (pure <<< next )
 
-interpret _ (GetHashInMulti key value multi next) = (R.lift <<< S.lift <<< E.lift <<< getHashKeyMulti key value $ multi) >>= (pure <<< next )
+interpret _ (GetHashInMulti key value multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< hgetMulti key value $ multi) >>= (pure <<< next )
 
-interpret _ (SetWithOptionsInMulti key multi next) = (R.lift <<< S.lift <<< E.lift <<< setMulti key $ multi) >>= (pure <<< next) 
+{-- interpret _ (SetWithOptionsInMulti key multi next) = (R.lift <<< S.lift <<< E.lift <<< setMulti key $ multi) >>= (pure <<< next) --}
 
-interpret _ (PublishToChannelInMulti channel message multi next) = (R.lift <<< S.lift <<< E.lift <<< publishToChannelMulti channel message $ multi) >>= (pure <<< next) 
+interpret _ (PublishToChannelInMulti channel message multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< publishMulti channel message $ multi) >>= (pure <<< next)
 
-interpret _ (SubscribeInMulti channel multi next) = (R.lift <<< S.lift <<< E.lift <<< subscribeMulti channel $ multi) >>= (pure <<< next)
+interpret _ (SubscribeInMulti channel multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< subscribeMulti channel $ multi) >>= (pure <<< next)
 
-interpret _ (EnqueueInMulti listName val multi next) = (R.lift <<< S.lift <<< E.lift <<< rpushMulti listName val $ multi) >>= (pure <<< next)
+interpret _ (EnqueueInMulti listName val multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< rpushMulti listName val $ multi) >>= (pure <<< next)
 
-interpret _ (DequeueInMulti listName multi next) = (R.lift <<< S.lift <<< E.lift <<< lpopMulti listName $ multi) >>= (pure <<< next)
+interpret _ (DequeueInMulti listName multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< lpopMulti listName $ multi) >>= (pure <<< next)
 
-interpret _ (GetQueueIdxInMulti listName index multi next) = (R.lift <<< S.lift <<< E.lift <<< lindexMulti listName index $ multi) >>= (pure <<< next)
+interpret _ (GetQueueIdxInMulti listName index multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< lindexMulti listName index $ multi) >>= (pure <<< next)
 
-interpret _ (Exec multi next) = (R.lift <<< S.lift <<< E.lift <<< exec $ multi) >>= (pure <<< next)
+interpret _ (Exec multi next) = (R.lift <<< S.lift <<< E.lift <<< execMulti $ multi) >>= (pure <<< next)
 
 interpret (BackendRuntime a connections c) (GetCacheConn cacheName next) = do
   maybeCache <- pure $ lookup cacheName connections
