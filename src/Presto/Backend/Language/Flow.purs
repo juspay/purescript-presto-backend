@@ -31,6 +31,7 @@ import Control.Monad.Free (Free, liftF)
 import Data.Array.NonEmpty (NonEmptyArray)
 import Data.Either (Either(..))
 import Data.Exists (Exists, mkExists)
+import Data.Foreign (Foreign)
 import Data.Foreign.Class (class Decode, class Encode)
 import Data.Maybe (Maybe(..))
 import Data.Options (Options)
@@ -94,7 +95,7 @@ data BackendFlowCommands next st rt s =
     | EnqueueInMulti String String Multi (Multi -> next)
     | DequeueInMulti String Multi (Multi -> next)
     | GetQueueIdxInMulti String Int Multi (Multi -> next) 
-    | Exec Multi (Either Error (Array String) -> next) 
+    | Exec Multi (Either Error (Array Foreign) -> next) 
     | RunSysCmd String (String -> next)
 
     -- | HandleException 
@@ -318,7 +319,7 @@ getQueueIdx cacheName listName index = do
   cacheConn <- getCacheConn cacheName
   wrap $ GetQueueIdx cacheConn listName index id
 
-execMulti :: forall st rt. Multi -> BackendFlow st rt (Either Error (Array String))
+execMulti :: forall st rt. Multi -> BackendFlow st rt (Either Error (Array Foreign))
 execMulti multi = wrap $ Exec multi id
 
 setMessageHandler :: forall st rt. String -> (forall eff. (String -> String -> Eff eff Unit)) -> BackendFlow st rt Unit
