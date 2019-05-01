@@ -25,19 +25,21 @@
 
 var exec = require("child_process").exec;
 
-exports.runSysCmdImpl = function(err,sc,cmd) {
-    return function() {
-        var pid = exec(cmd,function(e,stdout,stderr) {
+exports.runSysCmdImpl = function(cmd) {
+    return function(err, sc) {
+        var pid = exec(cmd, function(e, stdout, stderr) {
             if (e instanceof Error) {
                 console.error(e);
-                err(e)();
-                return;
+                err(e);
+            } else if (typeof(stderr) == "undefined" && stderr != "") {
+                err(new Error(stderr));
+            } else {
+              sc(stdout);
             }
-            if(typeof(stderr)=="undefined" && stderr!="") {
-                err(new Error(stderr))();
-                return;
-            }
-            sc(stdout)();
         });
+
+        return function(cancelErr, onCancelErr, onCancelSc) {
+            // FIXME: can we stop the child process?
+        };
     };
 };

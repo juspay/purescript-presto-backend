@@ -20,20 +20,24 @@
     "tests"
   ],
   "dependencies": {
-    "purescript-express": "^0.5.0",
-    "purescript-presto": "^0.2.3",
-    "purescript-sequelize": "https://github.com/juspay/purescript-sequelize.git#0.1.2",
+    "purescript-express": "85ee5261a6cf3e8e2b5cd6b167f6c0fdd29d6f14",
+    "purescript-presto": "67dbec28260b39407eb528542f7fd7dbc32f0536",
+    "purescript-sequelize": "https://github.com/juspay/purescript-sequelize.git#cfc0c9245322520115eca7b2c1fa0d6bbcebf315",
     "purescript-body-parser": "https://github.com/juspay/purescript-body-parser.git#0.1.0",
     "purescript-uuid": "^4.0.0",
-    "purescript-redis": "https://github.com/juspay/purescript-redis.git#c1834956ed8e495d6e58a9935a58f9004452bcaf",
-    "purescript-now": "3.0.0"
+    "purescript-redis": "https://github.com/juspay/purescript-redis.git#e7ee80d99751588f74531802acd724d68bb5d1af",
+    "purescript-now": "3.0.0",
+    "purescript-node-fs": "^4.0.0",
+    "purescript-node-process": "^5.0.0"
   },
   "devDependencies": {
     "purescript-psci-support": "^3.0.0"
   },
+  "version": "0.0.1",
   "resolutions": {
-    "purescript-aff-promise": "^0.7.0",
-    "purescript-foreign-generic": "5.0.0"
-  },
-  "version": "0.0.1"
+    "purescript-aff": "~4.0.0",
+    "purescript-foreign-generic": "^6.0.0",
+    "purescript-express": "85ee5261a6cf3e8e2b5cd6b167f6c0fdd29d6f14",
+    "purescript-test-unit": "^13.0.0"
+  }
 }
