@@ -23,7 +23,7 @@ module Presto.Backend.Interpreter where
 
 import Prelude
 
-import Cache (CacheConn, SetOptions(..), del, exists, expire, get, incr, publish, set, setMessageHandler, subscribe)
+import Cache (SetOptions(..), SimpleConn, del, exists, expire, get, incr, publish, set, setMessageHandler, subscribe)
 import Cache.Hash (hget, hset)
 import Cache.List (lindex, lpop, rpush)
 import Cache.Multi (execMulti, expireMulti, getMulti, hgetMulti, hsetMulti, incrMulti, lindexMulti, lpopMulti, newMulti, publishMulti, rpushMulti, setMulti, subscribeMulti)
@@ -51,7 +51,7 @@ type InterpreterMT rt st err eff a = R.ReaderT rt (S.StateT st (E.ExceptT err (B
 
 type Cache = {
     name :: String
-  , connection :: CacheConn
+  , connection :: SimpleConn
 }
 
 type DB = {
@@ -61,7 +61,7 @@ type DB = {
 
 type LogRunner = forall e a. String -> a -> Aff e Unit
 
-data Connection = Sequelize Conn | Redis CacheConn
+data Connection = Sequelize Conn | Redis SimpleConn
 
 data BackendRuntime = BackendRuntime APIRunner (StrMap Connection) LogRunner
 

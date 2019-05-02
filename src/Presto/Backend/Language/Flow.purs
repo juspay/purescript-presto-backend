@@ -23,7 +23,7 @@ module Presto.Backend.Flow where
 
 import Prelude
 
-import Cache (CacheConn)
+import Cache (SimpleConn)
 import Cache.Multi (Multi)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (Error)
@@ -60,25 +60,25 @@ data BackendFlowCommands next st rt s =
     | Update (Either Error (Array s)) (Either Error (Array s) -> next)
     | Delete (Either Error Int) (Either Error Int -> next)
     | GetDBConn String (Conn -> next)
-    | GetCacheConn String (CacheConn -> next)
+    | GetCacheConn String (SimpleConn -> next)
     | Log String s next
-    | SetCache CacheConn String String (Either Error Unit -> next)
-    | SetCacheWithExpiry CacheConn String String Milliseconds (Either Error Unit -> next)
-    | GetCache CacheConn String (Either Error (Maybe String) -> next)
-    | KeyExistsCache CacheConn String (Either Error Boolean -> next)
-    | DelCache CacheConn String (Either Error Int -> next)
-    | Enqueue CacheConn String String (Either Error Unit -> next)
-    | Dequeue CacheConn String (Either Error (Maybe String) -> next)
-    | GetQueueIdx CacheConn String Int (Either Error (Maybe String) -> next)
+    | SetCache SimpleConn String String (Either Error Unit -> next)
+    | SetCacheWithExpiry SimpleConn String String Milliseconds (Either Error Unit -> next)
+    | GetCache SimpleConn String (Either Error (Maybe String) -> next)
+    | KeyExistsCache SimpleConn String (Either Error Boolean -> next)
+    | DelCache SimpleConn String (Either Error Int -> next)
+    | Enqueue SimpleConn String String (Either Error Unit -> next)
+    | Dequeue SimpleConn String (Either Error (Maybe String) -> next)
+    | GetQueueIdx SimpleConn String Int (Either Error (Maybe String) -> next)
     | Fork (BackendFlow st rt s) (Unit -> next)
-    | Expire CacheConn String Seconds (Either Error Boolean -> next)
-    | Incr CacheConn String (Either Error Int -> next)
-    | SetHash CacheConn String String String (Either Error Boolean -> next)
-    | GetHashKey CacheConn String String (Either Error (Maybe String) -> next)
-    | PublishToChannel CacheConn String String (Either Error Int -> next)
-    | Subscribe CacheConn String (Either Error Unit -> next)
-    | SetMessageHandler CacheConn (forall eff. (String -> String -> Eff eff Unit)) (Unit -> next)
-    | GetMulti CacheConn (Multi -> next)
+    | Expire SimpleConn String Seconds (Either Error Boolean -> next)
+    | Incr SimpleConn String (Either Error Int -> next)
+    | SetHash SimpleConn String String String (Either Error Boolean -> next)
+    | GetHashKey SimpleConn String String (Either Error (Maybe String) -> next)
+    | PublishToChannel SimpleConn String String (Either Error Int -> next)
+    | Subscribe SimpleConn String (Either Error Unit -> next)
+    | SetMessageHandler SimpleConn (forall eff. (String -> String -> Eff eff Unit)) (Unit -> next)
+    | GetMulti SimpleConn (Multi -> next)
     | SetCacheInMulti String String Multi (Multi -> next)
     | GetCacheInMulti String Multi (Multi -> next)
     | DelCacheInMulti String Multi (Multi -> next)
@@ -184,7 +184,7 @@ getDBConn :: forall st rt. String -> BackendFlow st rt Conn
 getDBConn dbName = do
   wrap $ GetDBConn dbName id
 
-getCacheConn :: forall st rt. String -> BackendFlow st rt CacheConn
+getCacheConn :: forall st rt. String -> BackendFlow st rt SimpleConn
 getCacheConn dbName = wrap $ GetCacheConn dbName id
 
 newMulti :: forall st rt. String -> BackendFlow st rt Multi
