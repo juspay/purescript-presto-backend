@@ -35,14 +35,14 @@ import Data.Foreign.Class (class Decode, class Encode)
 import Data.Maybe (Maybe(..))
 import Data.Options (Options)
 import Data.Time.Duration (Milliseconds, Seconds)
-import Presto.Backend.DB (findOne, findAll, create, createWithOpts, query, update, delete) as DB
+import Presto.Backend.DB (findOne, findAll, create, createWithOpts, query, update, delete, update') as DB
 import Presto.Backend.Types (BackendAff)
 import Presto.Core.Types.API (class RestEndpoint, Headers)
 import Presto.Core.Types.Language.APIInteract (apiInteract)
 import Presto.Core.Types.Language.Flow (APIResult)
 import Presto.Core.Types.Language.Interaction (Interaction)
 import Sequelize.Class (class Model)
-import Sequelize.Types (Conn)
+import Sequelize.Types (Conn, Instance)
 
 data BackendFlowCommands next st rt s =
       Ask (rt -> next)
@@ -171,6 +171,13 @@ update dbName updateValues whereClause = do
   conn <- getDBConn dbName
   model <- doAff do
         DB.update conn updateValues whereClause
+  wrap $ Update model id
+
+update' :: forall model st rt. Model model => String -> Options model -> Options model -> BackendFlow st rt (Either Error (Array (Instance model)))
+update' dbName updateValues whereClause = do
+  conn <- getDBConn dbName
+  model <- doAff do
+        DB.update' conn updateValues whereClause
   wrap $ Update model id
 
 delete :: forall model st rt. Model model => String -> Options model -> BackendFlow st rt (Either Error Int)
