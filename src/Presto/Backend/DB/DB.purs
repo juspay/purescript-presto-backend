@@ -130,13 +130,11 @@ update conn updateValues whereClause = do
     model <- getModelByName conn :: (Aff (sequelize :: SEQUELIZE | e) (Either Error (ModelOf a)))
     case model of
         Right m -> do
-            val <- attempt $ updateModel m updateValues whereClause
+            val <- update' conn updateValues whereClause
             recs <- findAll' m (whereClause <> useMasterClause)
-            case val of 
-                Right {affectedCount : 0, affectedRows } -> pure <<< Right $ recs
-                Right {affectedCount , affectedRows : Nothing } -> pure <<< Right $ recs
-                Right {affectedCount , affectedRows : Just x } -> pure <<< Right $ recs
-                Left err -> pure <<< Left $ error $ show err
+            case val of
+                Right _ -> pure <<< Right $ recs
+                Left err -> pure <<< Left $ err
         Left err -> pure $ Left $ error $ show err
 
 update' :: forall a e . Model a => Conn -> Options a -> Options a -> Aff (sequelize :: SEQUELIZE | e) (Either Error (Array (Instance a)))
@@ -146,9 +144,8 @@ update' conn updateValues whereClause = do
         Right m -> do
             val <- attempt $ updateModel m updateValues whereClause
             case val of
-                Right {affectedCount : 0, affectedRows } -> pure <<< Right $ mempty
-                Right {affectedCount , affectedRows : Nothing } -> pure <<< Right $ mempty
-                Right {affectedCount , affectedRows : Just x } -> pure <<< Right $ x
+                Right {affectedRows : Just x} -> pure <<< Right $ x
+                Right _  -> pure <<< Right $ mempty
                 Left err -> pure <<< Left $ error $ show err
         Left err -> pure $ Left $ error $ show err
 -- updateE :: forall a e . Model a => Options a -> Options a -> FlowES Configs _ (Array a)
@@ -175,4 +172,4 @@ delete conn whereClause = do
       case val of
         Right { affectedCount : count } -> pure <<< Right $ count
         Left err ->pure $ Left $ error $ show err
-    Left err -> pure $ Left $ error $ show err  
+    Left err -> pure $ Left $ error $ show err
