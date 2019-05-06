@@ -40,12 +40,13 @@ import Data.Exists (runExists)
 import Data.Maybe (Maybe(..))
 import Data.StrMap (StrMap, lookup)
 import Data.Tuple (Tuple(..))
-import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), BackendFlowCommandsWrapper, BackendFlowWrapper(..))
+import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), BackendFlowCommandsWrapper, BackendFlowWrapper(..), RedisConn(..))
 import Presto.Backend.SystemCommands (runSysCmd)
 import Presto.Backend.Types (BackendAff)
 import Presto.Core.Flow (runAPIInteraction)
 import Presto.Core.Language.Runtime.API (APIRunner)
 import Sequelize.Types (Conn)
+import Unsafe.Coerce (unsafeCoerce)
 
 type InterpreterMT rt st err eff a = R.ReaderT rt (S.StateT st (E.ExceptT err (BackendAff eff))) a
 
@@ -61,7 +62,7 @@ type DB = {
 
 type LogRunner = forall e a. String -> a -> Aff e Unit
 
-data Connection = Sequelize Conn | Redis SimpleConn
+data Connection = Sequelize Conn | Redis RedisConn
 
 data BackendRuntime = BackendRuntime APIRunner (StrMap Connection) LogRunner
 
@@ -72,6 +73,9 @@ forkF runtime flow = do
   let m = E.runExceptT ( S.runStateT ( R.runReaderT ( runBackend runtime flow ) rt) st)
   R.lift $ S.lift $ E.lift $ forkAff m *> pure unit
 
+coerceSimpleConn :: RedisConn -> SimpleConn
+coerceSimpleConn (Simple s) = s
+coerceSimpleConn (Cluster c) = unsafeCoerce c
 
 interpret :: forall st rt s eff a.  BackendRuntime -> BackendFlowCommandsWrapper st rt s a -> InterpreterMT rt st (Tuple Error st) eff a
 interpret _ (Ask next) = R.ask >>= (pure <<< next)
@@ -86,37 +90,37 @@ interpret _ (ThrowException errorMessage next) = R.lift S.get >>= (R.lift <<< S.
 
 interpret _ (DoAff aff nextF) = (R.lift $ S.lift $ E.lift aff) >>= (pure <<< nextF)
 
-interpret _ (SetCache cacheConn key value next) = (R.lift $ S.lift $ E.lift $ set cacheConn key value Nothing NoOptions) >>= (pure <<< next)
+interpret _ (SetCache cacheConn key value next) = (R.lift $ S.lift $ E.lift $ set (coerceSimpleConn cacheConn) key value Nothing NoOptions) >>= (pure <<< next)
 
-interpret _ (SetCacheWithExpiry cacheConn key value ttl next) = (R.lift $ S.lift $ E.lift $ set cacheConn key value (Just ttl) NoOptions) >>= (pure <<< next)
+interpret _ (SetCacheWithExpiry cacheConn key value ttl next) = (R.lift $ S.lift $ E.lift $ set (coerceSimpleConn cacheConn) key value (Just ttl) NoOptions) >>= (pure <<< next)
 
-interpret _ (GetCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ get cacheConn key) >>= (pure <<< next)
+interpret _ (GetCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ get (coerceSimpleConn cacheConn) key) >>= (pure <<< next)
 
-interpret _ (KeyExistsCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ exists cacheConn key) >>= (pure <<< next)
+interpret _ (KeyExistsCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ exists (coerceSimpleConn cacheConn) key) >>= (pure <<< next)
 
-interpret _ (DelCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ del cacheConn (NEArray.singleton key)) >>= (pure <<< next)
+interpret _ (DelCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ del (coerceSimpleConn cacheConn) (NEArray.singleton key)) >>= (pure <<< next)
 
-interpret _ (Expire cacheConn key ttl next) = (R.lift $ S.lift $ E.lift $ expire cacheConn key ttl) >>= (pure <<< next)
+interpret _ (Expire cacheConn key ttl next) = (R.lift $ S.lift $ E.lift $ expire (coerceSimpleConn cacheConn) key ttl) >>= (pure <<< next)
 
-interpret _ (Incr cacheConn key next) = (R.lift $ S.lift $ E.lift $ incr cacheConn key) >>= (pure <<< next)
+interpret _ (Incr cacheConn key next) = (R.lift $ S.lift $ E.lift $ incr (coerceSimpleConn cacheConn) key) >>= (pure <<< next)
 
-interpret _ (SetHash cacheConn key field value next) = (R.lift $ S.lift $ E.lift $ hset cacheConn key field value) >>= (pure <<< next)
+interpret _ (SetHash cacheConn key field value next) = (R.lift $ S.lift $ E.lift $ hset (coerceSimpleConn cacheConn) key field value) >>= (pure <<< next)
 
-interpret _ (GetHashKey cacheConn key field next) = (R.lift $ S.lift $ E.lift $ hget cacheConn key field) >>= (pure <<< next)
+interpret _ (GetHashKey cacheConn key field next) = (R.lift $ S.lift $ E.lift $ hget (coerceSimpleConn cacheConn) key field) >>= (pure <<< next)
 
-interpret _ (PublishToChannel cacheConn channel message next) = (R.lift $ S.lift $ E.lift $ publish cacheConn channel message) >>= (pure <<< next)
+interpret _ (PublishToChannel cacheConn channel message next) = (R.lift $ S.lift $ E.lift $ publish (coerceSimpleConn cacheConn) channel message) >>= (pure <<< next)
 
-interpret _ (Subscribe cacheConn channel next) = (R.lift $ S.lift $ E.lift $ subscribe cacheConn (NEArray.singleton channel)) >>= (pure <<< next)
+interpret _ (Subscribe cacheConn channel next) = (R.lift $ S.lift $ E.lift $ subscribe (coerceSimpleConn cacheConn) (NEArray.singleton channel)) >>= (pure <<< next)
 
-interpret _ (SetMessageHandler cacheConn f next) = (R.lift $ S.lift $ E.lift $ liftEff $ setMessageHandler cacheConn f) >>= (pure <<< next)
+interpret _ (SetMessageHandler cacheConn f next) = (R.lift $ S.lift $ E.lift $ liftEff $ setMessageHandler (coerceSimpleConn cacheConn) f) >>= (pure <<< next)
 
-interpret _ (Enqueue cacheConn listName value next) = (R.lift $ S.lift $ E.lift $ void <$> rpush cacheConn listName value) >>= (pure <<< next)
+interpret _ (Enqueue cacheConn listName value next) = (R.lift $ S.lift $ E.lift $ void <$> rpush (coerceSimpleConn cacheConn) listName value) >>= (pure <<< next)
 
-interpret _ (Dequeue cacheConn listName next) = (R.lift $ S.lift $ E.lift $ lpop cacheConn listName) >>= (pure <<< next)
+interpret _ (Dequeue cacheConn listName next) = (R.lift $ S.lift $ E.lift $ lpop (coerceSimpleConn cacheConn) listName) >>= (pure <<< next)
 
-interpret _ (GetQueueIdx cacheConn listName index next) = (R.lift $ S.lift $ E.lift $ lindex cacheConn listName index) >>= (pure <<< next)
+interpret _ (GetQueueIdx cacheConn listName index next) = (R.lift $ S.lift $ E.lift $ lindex (coerceSimpleConn cacheConn) listName index) >>= (pure <<< next)
 
-interpret _ (GetMulti cacheConn next) = (R.lift $ S.lift $ E.lift $ liftEff $ newMulti cacheConn) >>= (pure <<< next)
+interpret _ (GetMulti cacheConn next) = (R.lift $ S.lift $ E.lift $ liftEff $ newMulti (coerceSimpleConn cacheConn)) >>= (pure <<< next)
 
 interpret _ (SetCacheInMulti key val multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< setMulti key val Nothing NoOptions $ multi ) >>= (pure <<< next)
 

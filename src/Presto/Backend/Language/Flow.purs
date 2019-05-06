@@ -23,8 +23,8 @@ module Presto.Backend.Flow where
 
 import Prelude
 
-import Cache (SimpleConn)
 import Cache.Multi (Multi)
+import Cache.Types (ClusterConn, SimpleConn)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (Error)
 import Control.Monad.Free (Free, liftF)
@@ -44,6 +44,8 @@ import Presto.Core.Types.Language.Interaction (Interaction)
 import Sequelize.Class (class Model)
 import Sequelize.Types (Conn)
 
+data RedisConn = Simple SimpleConn | Cluster ClusterConn
+
 data BackendFlowCommands next st rt s =
       Ask (rt -> next)
     | Get (st -> next)
@@ -60,25 +62,25 @@ data BackendFlowCommands next st rt s =
     | Update (Either Error (Array s)) (Either Error (Array s) -> next)
     | Delete (Either Error Int) (Either Error Int -> next)
     | GetDBConn String (Conn -> next)
-    | GetCacheConn String (SimpleConn -> next)
+    | GetCacheConn String (RedisConn -> next)
     | Log String s next
-    | SetCache SimpleConn String String (Either Error Unit -> next)
-    | SetCacheWithExpiry SimpleConn String String Milliseconds (Either Error Unit -> next)
-    | GetCache SimpleConn String (Either Error (Maybe String) -> next)
-    | KeyExistsCache SimpleConn String (Either Error Boolean -> next)
-    | DelCache SimpleConn String (Either Error Int -> next)
-    | Enqueue SimpleConn String String (Either Error Unit -> next)
-    | Dequeue SimpleConn String (Either Error (Maybe String) -> next)
-    | GetQueueIdx SimpleConn String Int (Either Error (Maybe String) -> next)
+    | SetCache RedisConn String String (Either Error Unit -> next)
+    | SetCacheWithExpiry RedisConn String String Milliseconds (Either Error Unit -> next)
+    | GetCache RedisConn String (Either Error (Maybe String) -> next)
+    | KeyExistsCache RedisConn String (Either Error Boolean -> next)
+    | DelCache RedisConn String (Either Error Int -> next)
+    | Enqueue RedisConn String String (Either Error Unit -> next)
+    | Dequeue RedisConn String (Either Error (Maybe String) -> next)
+    | GetQueueIdx RedisConn String Int (Either Error (Maybe String) -> next)
     | Fork (BackendFlow st rt s) (Unit -> next)
-    | Expire SimpleConn String Seconds (Either Error Boolean -> next)
-    | Incr SimpleConn String (Either Error Int -> next)
-    | SetHash SimpleConn String String String (Either Error Boolean -> next)
-    | GetHashKey SimpleConn String String (Either Error (Maybe String) -> next)
-    | PublishToChannel SimpleConn String String (Either Error Int -> next)
-    | Subscribe SimpleConn String (Either Error Unit -> next)
-    | SetMessageHandler SimpleConn (forall eff. (String -> String -> Eff eff Unit)) (Unit -> next)
-    | GetMulti SimpleConn (Multi -> next)
+    | Expire RedisConn String Seconds (Either Error Boolean -> next)
+    | Incr RedisConn String (Either Error Int -> next)
+    | SetHash RedisConn String String String (Either Error Boolean -> next)
+    | GetHashKey RedisConn String String (Either Error (Maybe String) -> next)
+    | PublishToChannel RedisConn String String (Either Error Int -> next)
+    | Subscribe RedisConn String (Either Error Unit -> next)
+    | SetMessageHandler RedisConn (forall eff. (String -> String -> Eff eff Unit)) (Unit -> next)
+    | GetMulti RedisConn (Multi -> next)
     | SetCacheInMulti String String Multi (Multi -> next)
     | GetCacheInMulti String Multi (Multi -> next)
     | DelCacheInMulti String Multi (Multi -> next)
@@ -184,7 +186,7 @@ getDBConn :: forall st rt. String -> BackendFlow st rt Conn
 getDBConn dbName = do
   wrap $ GetDBConn dbName id
 
-getCacheConn :: forall st rt. String -> BackendFlow st rt SimpleConn
+getCacheConn :: forall st rt. String -> BackendFlow st rt RedisConn
 getCacheConn dbName = wrap $ GetCacheConn dbName id
 
 newMulti :: forall st rt. String -> BackendFlow st rt Multi
