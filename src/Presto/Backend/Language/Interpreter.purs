@@ -86,9 +86,9 @@ interpret _ (ThrowException errorMessage next) = R.lift S.get >>= (R.lift <<< S.
 
 interpret _ (DoAff aff nextF) = (R.lift $ S.lift $ E.lift aff) >>= (pure <<< nextF)
 
-interpret _ (SetCache cacheConn key value next) = (R.lift $ S.lift $ E.lift $ set cacheConn key value Nothing NoOptions) >>= (pure <<< next)
+interpret _ (SetCache cacheConn key value next) = (R.lift $ S.lift $ E.lift $ void <$> set cacheConn key value Nothing NoOptions) >>= (pure <<< next)
 
-interpret _ (SetCacheWithExpiry cacheConn key value ttl next) = (R.lift $ S.lift $ E.lift $ set cacheConn key value (Just ttl) NoOptions) >>= (pure <<< next)
+interpret _ (SetCacheWithExpiry cacheConn key value ttl next) = (R.lift $ S.lift $ E.lift $ void <$> set cacheConn key value (Just ttl) NoOptions) >>= (pure <<< next)
 
 interpret _ (GetCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ get cacheConn key) >>= (pure <<< next)
 
