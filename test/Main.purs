@@ -36,10 +36,10 @@ import Control.Monad.State.Trans (runStateT)
 import Data.Either (Either(..))
 import Data.Options ((:=), Options)
 import Data.StrMap (StrMap, singleton)
-import Presto.Backend.Flow (BackendFlow, log)
+import Debug.Trace (spy)
+import Presto.Backend.Flow (BackendFlow, RedisConn(..), log)
 import Presto.Backend.Interpreter (BackendRuntime(..), Connection(..), runBackend)
 import Presto.Core.Types.API (Request(..))
-import Debug.Trace (spy)
 
 type Config = {
     test :: Boolean
@@ -82,6 +82,6 @@ main = launchAff_ start *> pure unit
 start :: forall t1. Aff _ Unit
 start = do
     conn <- tryRedisConn redisOptions
-    let backendRuntime = BackendRuntime apiRunner (connections (Redis conn)) logRunner
+    let backendRuntime = BackendRuntime apiRunner (connections (Redis $ Simple conn)) logRunner
     response  <- liftAff $ runExceptT ( runStateT ( runReaderT ( runBackend backendRuntime (foo)) configs) fooState)
     pure unit
