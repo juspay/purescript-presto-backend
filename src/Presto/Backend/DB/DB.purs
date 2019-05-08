@@ -30,6 +30,7 @@ module Presto.Backend.DB
     create,
     createWithOpts,
     update,
+    update',
     delete
   ) where
 
@@ -53,13 +54,14 @@ import Sequelize.CRUD.Read (findAll', findOne', query')
 import Sequelize.CRUD.Update (updateModel)
 import Sequelize.Class (class Model, modelName)
 import Sequelize.Instance (instanceToModelE)
-import Sequelize.Types (Conn, ModelOf, SEQUELIZE)
+import Sequelize.Types (Conn, Instance, ModelOf, SEQUELIZE)
 import Type.Proxy (Proxy(..))
 
 foreign import _getModelByName :: forall a e. Fn2 Conn String (Eff (sequelize :: SEQUELIZE | e) (ModelOf a))
 
 
 -- Add this clause if you want to force a query to be executed on Master DB
+useMasterClause :: forall t7. Options t7
 useMasterClause = (maybe mempty (assoc (opt "useMaster")) $ Just true)
 
 getModelByName :: forall a e. Model a => Conn -> Aff (sequelize :: SEQUELIZE | e) (Either Error (ModelOf a))
@@ -130,12 +132,22 @@ update conn updateValues whereClause = do
     model <- getModelByName conn :: (Aff (sequelize :: SEQUELIZE | e) (Either Error (ModelOf a)))
     case model of
         Right m -> do
-            val <- attempt $ updateModel m updateValues whereClause
+            val <- update' conn updateValues whereClause
             recs <- findAll' m (whereClause <> useMasterClause)
-            case val of 
-                Right {affectedCount : 0, affectedRows } -> pure <<< Right $ recs
-                Right {affectedCount , affectedRows : Nothing } -> pure <<< Right $ recs
-                Right {affectedCount , affectedRows : Just x } -> pure <<< Right $ recs
+            case val of
+                Right _ -> pure <<< Right $ recs
+                Left err -> pure <<< Left $ err
+        Left err -> pure $ Left $ error $ show err
+
+update' :: forall a e . Model a => Conn -> Options a -> Options a -> Aff (sequelize :: SEQUELIZE | e) (Either Error (Array (Instance a)))
+update' conn updateValues whereClause = do
+    model <- getModelByName conn :: (Aff (sequelize :: SEQUELIZE | e) (Either Error (ModelOf a)))
+    case model of
+        Right m -> do
+            val <- attempt $ updateModel m updateValues whereClause
+            case val of
+                Right {affectedRows : Just x} -> pure <<< Right $ x
+                Right _  -> pure <<< Right $ mempty
                 Left err -> pure <<< Left $ error $ show err
         Left err -> pure $ Left $ error $ show err
 
