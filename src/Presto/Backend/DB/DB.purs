@@ -139,15 +139,14 @@ update conn updateValues whereClause = do
                 Left err -> pure <<< Left $ err
         Left err -> pure $ Left $ error $ show err
 
-update' :: forall a e . Model a => Conn -> Options a -> Options a -> Aff (sequelize :: SEQUELIZE | e) (Either Error (Array (Instance a)))
+update' :: forall a e . Model a => Conn -> Options a -> Options a -> Aff (sequelize :: SEQUELIZE | e) (Either Error Int)
 update' conn updateValues whereClause = do
     model <- getModelByName conn :: (Aff (sequelize :: SEQUELIZE | e) (Either Error (ModelOf a)))
     case model of
         Right m -> do
             val <- attempt $ updateModel m updateValues whereClause
             case val of
-                Right {affectedRows : Just x} -> pure <<< Right $ x
-                Right _  -> pure <<< Right $ mempty
+                Right {affectedCount} -> pure <<< Right $ affectedCount
                 Left err -> pure <<< Left $ error $ show err
         Left err -> pure $ Left $ error $ show err
 
