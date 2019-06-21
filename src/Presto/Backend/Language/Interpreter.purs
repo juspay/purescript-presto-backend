@@ -28,24 +28,34 @@ import Cache.Hash (hget, hset)
 import Cache.List (lindex, lpop, rpush)
 import Cache.Multi (execMulti, expireMulti, getMulti, hgetMulti, hsetMulti, incrMulti, lindexMulti, lpopMulti, newMulti, publishMulti, rpushMulti, setMulti, subscribeMulti)
 import Control.Monad.Aff (Aff, forkAff)
+import Control.Monad.Aff.AVar (AVAR, AVar, AVarEff, takeVar, putVar)
+import Control.Monad.Eff.Ref (REF, Ref, newRef, readRef, writeRef, modifyRef)
 import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Eff.Exception (Error, error)
+import Control.Monad.Except (runExcept) as E
 import Control.Monad.Except.Trans (ExceptT(..), lift, throwError, runExceptT) as E
 import Control.Monad.Free (foldFree)
 import Control.Monad.Reader.Trans (ReaderT, ask, lift, runReaderT) as R
 import Control.Monad.State.Trans (StateT, get, lift, modify, put, runStateT) as S
+import Control.Monad.Trans.Class (class MonadTrans, lift)
 import Data.Array.NonEmpty (singleton) as NEArray
-import Data.Either (Either(..))
+import Data.Array as Array
+import Data.Either (Either(..), note, hush, isLeft)
 import Data.Exists (runExists)
 import Data.Maybe (Maybe(..))
 import Data.StrMap (StrMap, lookup)
 import Data.Tuple (Tuple(..))
+import Data.Foreign.Generic as G
+import Foreign (Foreign, F)
 import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), BackendFlowCommandsWrapper, BackendFlowWrapper(..))
 import Presto.Backend.SystemCommands (runSysCmd)
 import Presto.Backend.Types (BackendAff)
+import Presto.Backend.Playback.Common (unsafeStringify)
 import Presto.Core.Flow (runAPIInteraction)
 import Presto.Core.Language.Runtime.API (APIRunner)
+import Presto.Core.Utils.Encoding as Enc
 import Sequelize.Types (Conn)
+import Type.Proxy (Proxy(..))
 
 type InterpreterMT rt st err eff a = R.ReaderT rt (S.StateT st (E.ExceptT err (BackendAff eff))) a
 
@@ -63,7 +73,55 @@ type LogRunner = forall e a. String -> a -> Aff e Unit
 
 data Connection = Sequelize Conn | Redis SimpleConn
 
-data BackendRuntime = BackendRuntime APIRunner (StrMap Connection) LogRunner
+newtype RecordingEntry = RecordingEntry
+  { tag  :: String
+  , body :: String
+  }
+
+data LogEntry = LogEntry
+  { tag     :: String
+  , message :: String
+  }
+
+
+mkLogEntry :: Unit -> String -> String -> LogEntry
+mkLogEntry _ t m = LogEntry {tag: t, message: m}
+
+-- TODO: it might be Data.Sequence.Ordered is better
+type Recording =
+  { entries :: Array RecordingEntry
+  }
+
+type RecorderRuntime =
+  { recordingRef :: Ref Recording
+  }
+
+type PlayerRuntime =
+  { recording :: Recording
+  , stepRef   :: Ref Int
+  }
+
+data PlaybackErrorType
+  = UnexpectedRecordingEnd
+  | UnknownRRItem
+
+newtype PlaybackError = PlaybackError
+  { errorType :: PlaybackErrorType
+  , errorMessage :: String
+  }
+
+data RunningMode
+  = RegularMode
+  | RecordingMode RecorderRuntime
+  | ReplayingMode PlayerRuntime
+
+
+newtype BackendRuntime = BackendRuntime
+  { apiRunner   :: APIRunner
+  , connections :: StrMap Connection
+  , logRunner   :: LogRunner
+  , mode        :: RunningMode
+  }
 
 forkF :: forall eff rt st a. BackendRuntime -> BackendFlow st rt a -> InterpreterMT rt st (Tuple Error st) eff Unit
 forkF runtime flow = do
@@ -71,6 +129,118 @@ forkF runtime flow = do
   rt <- R.ask
   let m = E.runExceptT ( S.runStateT ( R.runReaderT ( runBackend runtime flow ) rt) st)
   R.lift $ S.lift $ E.lift $ forkAff m *> pure unit
+
+lift3 :: forall eff err rt st a. BackendAff eff a -> InterpreterMT rt st err eff a
+lift3 m = R.lift (S.lift (E.lift m))
+
+lift4 :: forall eff err rt st a. Eff eff a -> InterpreterMT rt st err eff a
+lift4 m = R.lift (S.lift (E.lift $ liftEff m))
+
+unexpectedRecordingEnd msg = PlaybackError
+  { errorType: UnexpectedRecordingEnd
+  , errorMessage: msg
+  }
+
+unknownRRItem msg = PlaybackError
+  { errorType: UnknownRRItem
+  , errorMessage: msg
+  }
+
+
+mockDecodingFailed msg = PlaybackError
+  { errorType: MockDecodingFailed
+  , errorMessage: msg
+  }
+
+
+
+pushRecordingEntry
+  :: forall eff
+   . RecorderRuntime
+  -> RecordingEntry
+  -> Eff eff Unit
+pushRecordingEntry recorderRt entry = do
+  entries <- readRef recorderRt.recordingRef
+  writeRef recorderRt.recordingRef $ Array.snoc entries entry
+
+popNextRecordingEntry
+  :: forall eff
+   . PlayerRuntime
+  -> Eff eff (Maybe RecordingEntry)
+popNextRecordingEntry playerRt = do
+  cur <- readRef playerRt.stepRef
+  mbItem = Array.index playerRt.recording.entries cur
+  when (isJust mbItem) $ writeRef playerRt.stepRef $ cur + 1
+  pure mbItem
+
+popNextRRItem
+  :: forall eff rrItem
+   . RRItem rrItem
+  => PlayerRuntime
+  -> Proxy rrItem
+  -> Eff eff (Either PlaybackError rrItem)
+popNextRRItem playerRt proxy = do
+  mbRecordingEntry <- popNextRecordingEntry playerRt
+  let expected = getTag proxy
+  pure $ do
+    -- TODO: do not drop decoding errors
+    recordingEntry <- note (unexpectedRecordingEnd expected) mbRecordingEntry
+    note (unknownRRItem expected) $ hush $ E.runExcept $ G.decodeJSON recordingEntry.body
+
+popNextRRItemAndResult
+  :: forall eff rrItem a
+   . RRItem rrItem
+  => PlayerRuntime
+  -> Proxy rrItem
+  -> Eff eff (Either PlaybackError (Tuple rrItem a))
+popNextRRItemAndResult playerRt proxy = do
+    let expected = getTag proxy
+    eNextRRItem <- popNextRRItem playerRt proxy
+    pure $ do
+      nextRRItem <- eNextRRItem
+      nextResult <- note (mockDecodingFailed expected) $ hush $ decodeMockedResult nextRRItem
+
+
+replay
+  :: forall eff err rt st rrItem a
+   . RRItem rrItem
+  => PlayerRuntime
+  -> InterpreterMT rt st err eff a
+  -> (a -> rrItem)
+  -> InterpreterMT rt st err eff (Either PlaybackError a)
+replay playerRt act rrItemF = do
+  let proxy = Proxy :: Proxy rrItem
+
+  nextVal <- case eNextRRItem of
+    Left err -> pure $ Left err
+    Right nextRRItem -> case isMocked proxy of
+      false -> act
+      true  ->
+
+
+record
+  :: forall eff err rt st a rrItem
+   . RRItem rrItem
+  => RecorderRuntime
+  -> InterpreterMT rt st err eff a
+  -> (a -> rrItem)
+  -> InterpreterMT rt st err eff a
+record recorderRt act rrItemF = do
+  val <- act
+  lift4 $ pushRecordingEntry recorderRt $ toRecordingEntry $ rrItemF val
+  pure val
+
+withRunMode
+  :: forall eff err rt st a rrItem
+   . RRItem rrItem
+  => BackendRuntime
+  -> InterpreterMT rt st err eff a
+  -> (a -> rrItem)
+  -> InterpreterMT rt st err eff a
+withRunMode brt@(BackendRuntime rt) act rrItemF = case rt.mode of
+  RegularMode              -> act
+  RecordingMode recorderRt -> record recorderRt act rrItemF
+  ReplayingMode playerRt   -> replay playerRt act rrItemF
 
 
 interpret :: forall st rt s eff a.  BackendRuntime -> BackendFlowCommandsWrapper st rt s a -> InterpreterMT rt st (Tuple Error st) eff a
@@ -146,12 +316,12 @@ interpret _ (GetQueueIdxInMulti listName index multi next) = (R.lift <<< S.lift 
 
 interpret _ (Exec multi next) = (R.lift <<< S.lift <<< E.lift <<< execMulti $ multi) >>= (pure <<< next)
 
-interpret (BackendRuntime a connections c) (GetCacheConn cacheName next) = do
-  maybeCache <- pure $ lookup cacheName connections
+interpret brt@(BackendRuntime rt) (GetCacheConn cacheName next) = do
+  let maybeCache = lookup cacheName rt.connections
   case maybeCache of
     Just (Redis cache) -> (pure <<< next) cache
-    Just _ -> interpret (BackendRuntime a connections c) (ThrowException "No DB found" next)
-    Nothing -> interpret (BackendRuntime a connections c) (ThrowException "No DB found" next)
+    Just _  -> interpret brt (ThrowException "No DB found" next)
+    Nothing -> interpret brt (ThrowException "No DB found" next)
 
 interpret _ (FindOne model next) = (pure <<< next) model
 
@@ -165,19 +335,23 @@ interpret _ (Update model next) = (pure <<< next) model
 
 interpret _ (Delete model next) = (pure <<< next) model
 
-interpret ((BackendRuntime a connections c)) (GetDBConn dbName next) = do
-  maybedb <- pure $ lookup dbName connections
+interpret brt@(BackendRuntime rt) (GetDBConn dbName next) = do
+  let maybedb = lookup dbName rt.connections
   case maybedb of
     Just (Sequelize db) -> (pure <<< next) db
-    Just _ -> interpret (BackendRuntime a connections c) (ThrowException "No DB found" next)
-    Nothing -> interpret (BackendRuntime a connections c) (ThrowException "No DB found" next)
+    Just _  -> interpret brt (ThrowException "No DB found" next)
+    Nothing -> interpret brt (ThrowException "No DB found" next)
 
-
-interpret (BackendRuntime apiRunner _ _) (CallAPI apiInteractionF nextF) = do
-  R.lift $ S.lift $ E.lift $ runAPIInteraction apiRunner apiInteractionF
+interpret brt@(BackendRuntime rt) (CallAPI apiInteractionF nextF) = do
+  R.lift $ S.lift $ E.lift $ runAPIInteraction rt.apiRunner apiInteractionF
     >>= (pure <<< nextF)
 
-interpret (BackendRuntime _ _ logRunner) (Log tag message next) = (R.lift ( S.lift ( E.lift (logRunner tag message)))) *> pure next
+interpret brt@(BackendRuntime rt) (Log tag message next) =
+  res <- withRunMode brt
+            (lift3 (rt.logRunner tag message))       -- is lazy evaluation needed?
+            (mkLogEntry (unsafeStringify tag) message)
+            -- (\(LogEntry entry) -> (message == entry.message) && (unsafeStringify tag == entry.tag))
+  pure $ next res
 
 interpret r (Fork flow nextF) = forkF r flow >>= (pure <<< nextF)
 

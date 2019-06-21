@@ -61,7 +61,7 @@ data BackendFlowCommands next st rt s =
     | Delete (Either Error Int) (Either Error Int -> next)
     | GetDBConn String (Conn -> next)
     | GetCacheConn String (SimpleConn -> next)
-    | Log String s next
+    | Log String s (Unit -> next)
     | SetCache SimpleConn String String (Either Error Unit -> next)
     | SetCacheWithExpiry SimpleConn String String Milliseconds (Either Error Unit -> next)
     | GetCache SimpleConn String (Either Error (Maybe String) -> next)
@@ -234,7 +234,7 @@ setCacheWithExpiry cacheName key value ttl = do
   wrap $ SetCacheWithExpiry cacheConn key value ttl id
 
 log :: forall st rt a. String -> a -> BackendFlow st rt Unit
-log tag message = wrap $ Log tag message unit
+log tag message = wrap $ Log tag message id
 
 expireInMulti :: forall st rt. String -> Seconds -> Multi -> BackendFlow st rt Multi
 expireInMulti key ttl multi = wrap $ ExpireInMulti key ttl multi id
