@@ -25,6 +25,7 @@ import Control.Monad.Aff (Aff)
 import Control.Monad.Aff.AVar (AVAR)
 import Control.Monad.Aff.Console (CONSOLE)
 import Control.Monad.Eff.Exception (EXCEPTION)
+import Control.Monad.Eff.Ref (REF)
 import Cache (CACHE)
 import Presto.Core.Types.API (URL)
 import Presto.Core.Types.App (NETWORK)
@@ -34,7 +35,20 @@ import Node.Process (PROCESS)
 import Data.UUID (GENUUID)
 import Control.Monad.Eff.Now (NOW)
 
-type BackendEffects eff = (avar :: AVAR, exception :: EXCEPTION, network :: NETWORK, console :: CONSOLE, sequelize :: SEQUELIZE, cache :: CACHE, fs :: FS, process :: PROCESS, uuid :: GENUUID, now :: NOW | eff)
+type BackendEffects eff =
+  ( avar :: AVAR
+  , ref  :: REF
+  , exception :: EXCEPTION
+  , network :: NETWORK
+  , console :: CONSOLE
+  , sequelize :: SEQUELIZE
+  , cache :: CACHE
+  , fs :: FS
+  , process :: PROCESS
+  , uuid :: GENUUID
+  , now :: NOW
+  | eff
+  )
 type BackendAff eff = Aff (BackendEffects eff)
 
 type ZipkinConfig =

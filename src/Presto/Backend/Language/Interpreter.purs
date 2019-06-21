@@ -28,8 +28,8 @@ import Cache.Hash (hget, hset)
 import Cache.List (lindex, lpop, rpush)
 import Cache.Multi (execMulti, expireMulti, getMulti, hgetMulti, hsetMulti, incrMulti, lindexMulti, lpopMulti, newMulti, publishMulti, rpushMulti, setMulti, subscribeMulti)
 import Control.Monad.Aff (Aff, forkAff)
-import Control.Monad.Aff.AVar (AVAR, AVar, AVarEff, takeVar, putVar)
 import Control.Monad.Eff.Ref (REF, Ref, newRef, readRef, writeRef, modifyRef)
+import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Eff.Exception (Error, error)
 import Control.Monad.Except (runExcept) as E
@@ -42,15 +42,14 @@ import Data.Array.NonEmpty (singleton) as NEArray
 import Data.Array as Array
 import Data.Either (Either(..), note, hush, isLeft)
 import Data.Exists (runExists)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), isJust)
 import Data.StrMap (StrMap, lookup)
 import Data.Tuple (Tuple(..))
 import Data.Foreign.Generic as G
-import Foreign (Foreign, F)
 import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), BackendFlowCommandsWrapper, BackendFlowWrapper(..))
 import Presto.Backend.SystemCommands (runSysCmd)
 import Presto.Backend.Types (BackendAff)
-import Presto.Backend.Playback.Common (unsafeStringify)
+import Presto.Backend.Playback.Common (jsonStringify)
 import Presto.Core.Flow (runAPIInteraction)
 import Presto.Core.Language.Runtime.API (APIRunner)
 import Presto.Core.Utils.Encoding as Enc
@@ -58,6 +57,7 @@ import Sequelize.Types (Conn)
 import Type.Proxy (Proxy(..))
 
 type InterpreterMT rt st err eff a = R.ReaderT rt (S.StateT st (E.ExceptT err (BackendAff eff))) a
+type InterpreterMT' rt st eff a = InterpreterMT rt st (Tuple Error st) eff a
 
 type Cache = {
     name :: String
@@ -104,6 +104,7 @@ type PlayerRuntime =
 data PlaybackErrorType
   = UnexpectedRecordingEnd
   | UnknownRRItem
+  | MockDecodingFailed
 
 newtype PlaybackError = PlaybackError
   { errorType :: PlaybackErrorType
@@ -123,6 +124,14 @@ newtype BackendRuntime = BackendRuntime
   , mode        :: RunningMode
   }
 
+
+class Eq a <= RRItem a where
+  toRecordingEntry :: a -> RecordingEntry
+  getEncodedResult :: a -> String
+  getTag           :: Proxy a -> String
+  isMocked         :: Proxy a -> Boolean
+
+
 forkF :: forall eff rt st a. BackendRuntime -> BackendFlow st rt a -> InterpreterMT rt st (Tuple Error st) eff Unit
 forkF runtime flow = do
   st <- R.lift $ S.get
@@ -130,11 +139,8 @@ forkF runtime flow = do
   let m = E.runExceptT ( S.runStateT ( R.runReaderT ( runBackend runtime flow ) rt) st)
   R.lift $ S.lift $ E.lift $ forkAff m *> pure unit
 
-lift3 :: forall eff err rt st a. BackendAff eff a -> InterpreterMT rt st err eff a
+lift3 :: forall eff err rt st a. BackendAff eff a -> InterpreterMT rt st (Tuple Error st) eff a
 lift3 m = R.lift (S.lift (E.lift m))
-
-lift4 :: forall eff err rt st a. Eff eff a -> InterpreterMT rt st err eff a
-lift4 m = R.lift (S.lift (E.lift $ liftEff m))
 
 unexpectedRecordingEnd msg = PlaybackError
   { errorType: UnexpectedRecordingEnd
@@ -152,24 +158,29 @@ mockDecodingFailed msg = PlaybackError
   , errorMessage: msg
   }
 
-
+decodeMockedResult
+  :: forall rrItem a
+   . RRItem rrItem
+  => rrItem
+  -> Maybe a
+decodeMockedResult = hush <<< E.runExcept <<< G.decodeJSON <<< getEncodedResult
 
 pushRecordingEntry
   :: forall eff
    . RecorderRuntime
   -> RecordingEntry
-  -> Eff eff Unit
+  -> Eff (ref :: REF | eff) Unit
 pushRecordingEntry recorderRt entry = do
-  entries <- readRef recorderRt.recordingRef
-  writeRef recorderRt.recordingRef $ Array.snoc entries entry
+  recording <- readRef recorderRt.recordingRef
+  writeRef recorderRt.recordingRef { entries : Array.snoc recording.entries entry }
 
 popNextRecordingEntry
   :: forall eff
    . PlayerRuntime
-  -> Eff eff (Maybe RecordingEntry)
+  -> Eff (ref :: REF | eff) (Maybe RecordingEntry)
 popNextRecordingEntry playerRt = do
   cur <- readRef playerRt.stepRef
-  mbItem = Array.index playerRt.recording.entries cur
+  let mbItem = Array.index playerRt.recording.entries cur
   when (isJust mbItem) $ writeRef playerRt.stepRef $ cur + 1
   pure mbItem
 
@@ -178,72 +189,92 @@ popNextRRItem
    . RRItem rrItem
   => PlayerRuntime
   -> Proxy rrItem
-  -> Eff eff (Either PlaybackError rrItem)
+  -> Eff (ref :: REF | eff) (Either PlaybackError rrItem)
 popNextRRItem playerRt proxy = do
   mbRecordingEntry <- popNextRecordingEntry playerRt
   let expected = getTag proxy
   pure $ do
     -- TODO: do not drop decoding errors
-    recordingEntry <- note (unexpectedRecordingEnd expected) mbRecordingEntry
-    note (unknownRRItem expected) $ hush $ E.runExcept $ G.decodeJSON recordingEntry.body
+    (RecordingEntry re) <- note (unexpectedRecordingEnd expected) mbRecordingEntry
+    note (unknownRRItem expected) $ hush $ E.runExcept $ G.decodeJSON re.body
 
 popNextRRItemAndResult
   :: forall eff rrItem a
    . RRItem rrItem
   => PlayerRuntime
   -> Proxy rrItem
-  -> Eff eff (Either PlaybackError (Tuple rrItem a))
+  -> Eff (ref :: REF | eff) (Either PlaybackError (Tuple rrItem a))
 popNextRRItemAndResult playerRt proxy = do
-    let expected = getTag proxy
-    eNextRRItem <- popNextRRItem playerRt proxy
-    pure $ do
-      nextRRItem <- eNextRRItem
-      nextResult <- note (mockDecodingFailed expected) $ hush $ decodeMockedResult nextRRItem
+  let expected = getTag proxy
+  eNextRRItem <- popNextRRItem playerRt proxy
+  pure $ do
+    nextRRItem <- eNextRRItem
+    nextResult <- note (mockDecodingFailed expected) $ decodeMockedResult nextRRItem
+    pure $ Tuple nextRRItem nextResult
 
+replayWithMock
+  :: forall eff rt st rrItem a
+   . RRItem rrItem
+  => InterpreterMT' rt st eff a
+  -> Proxy rrItem
+  -> a
+  -> InterpreterMT' rt st eff a
+replayWithMock act proxy nextRes | isMocked proxy = pure nextRes
+replayWithMock act proxy nextRes = act
+
+compareRRItems
+  :: forall eff rt st rrItem
+   . RRItem rrItem
+  => rrItem
+  -> rrItem
+  -> InterpreterMT' rt st eff Unit
+compareRRItems nextRRItem rrItem | nextRRItem == rrItem = pure unit
+compareRRItems nextRRItem rrItem
+  = R.lift S.get >>= (E.throwError <<< Tuple (error "Replaying failed") )   -- TODO: error message
 
 replay
-  :: forall eff err rt st rrItem a
+  :: forall eff rt st rrItem a
    . RRItem rrItem
   => PlayerRuntime
-  -> InterpreterMT rt st err eff a
+  -> InterpreterMT' rt st eff a
   -> (a -> rrItem)
-  -> InterpreterMT rt st err eff (Either PlaybackError a)
+  -> InterpreterMT' rt st eff a
 replay playerRt act rrItemF = do
   let proxy = Proxy :: Proxy rrItem
-
-  nextVal <- case eNextRRItem of
-    Left err -> pure $ Left err
-    Right nextRRItem -> case isMocked proxy of
-      false -> act
-      true  ->
-
+  eNextRRItemRes <- lift3 $ liftEff $ popNextRRItemAndResult playerRt proxy
+  case eNextRRItemRes of
+    Left err -> R.lift S.get >>= (E.throwError <<< Tuple (error "Replaying failed") )   -- TODO: error message
+    Right (Tuple nextRRItem nextRes) -> do
+      res <- replayWithMock act proxy nextRes
+      compareRRItems nextRRItem (rrItemF res)
+      pure res
 
 record
-  :: forall eff err rt st a rrItem
+  :: forall eff rt st a rrItem
    . RRItem rrItem
   => RecorderRuntime
-  -> InterpreterMT rt st err eff a
+  -> InterpreterMT' rt st eff a
   -> (a -> rrItem)
-  -> InterpreterMT rt st err eff a
+  -> InterpreterMT' rt st eff a
 record recorderRt act rrItemF = do
-  val <- act
-  lift4 $ pushRecordingEntry recorderRt $ toRecordingEntry $ rrItemF val
-  pure val
+  res <- act
+  R.lift $ S.lift $ E.lift $ liftEff $ pushRecordingEntry recorderRt $ toRecordingEntry $ rrItemF res
+  pure res
 
 withRunMode
-  :: forall eff err rt st a rrItem
+  :: forall eff rt st a rrItem
    . RRItem rrItem
   => BackendRuntime
-  -> InterpreterMT rt st err eff a
+  -> InterpreterMT' rt st eff a
   -> (a -> rrItem)
-  -> InterpreterMT rt st err eff a
+  -> InterpreterMT' rt st eff a
 withRunMode brt@(BackendRuntime rt) act rrItemF = case rt.mode of
   RegularMode              -> act
   RecordingMode recorderRt -> record recorderRt act rrItemF
-  ReplayingMode playerRt   -> replay playerRt act rrItemF
+  ReplayingMode playerRt   -> replay playerRt   act rrItemF
 
 
-interpret :: forall st rt s eff a.  BackendRuntime -> BackendFlowCommandsWrapper st rt s a -> InterpreterMT rt st (Tuple Error st) eff a
+interpret :: forall st rt s eff a.  BackendRuntime -> BackendFlowCommandsWrapper st rt s a -> InterpreterMT' rt st eff a
 interpret _ (Ask next) = R.ask >>= (pure <<< next)
 
 interpret _ (Get next) = R.lift (S.get) >>= (pure <<< next)
@@ -346,11 +377,10 @@ interpret brt@(BackendRuntime rt) (CallAPI apiInteractionF nextF) = do
   R.lift $ S.lift $ E.lift $ runAPIInteraction rt.apiRunner apiInteractionF
     >>= (pure <<< nextF)
 
-interpret brt@(BackendRuntime rt) (Log tag message next) =
+interpret brt@(BackendRuntime rt) (Log tag message next) = do
   res <- withRunMode brt
             (lift3 (rt.logRunner tag message))       -- is lazy evaluation needed?
-            (mkLogEntry (unsafeStringify tag) message)
-            -- (\(LogEntry entry) -> (message == entry.message) && (unsafeStringify tag == entry.tag))
+            (mkLogEntry (jsonStringify tag) message)
   pure $ next res
 
 interpret r (Fork flow nextF) = forkF r flow >>= (pure <<< nextF)
@@ -359,5 +389,5 @@ interpret _ (RunSysCmd cmd next) = R.lift $ S.lift $ E.lift $ runSysCmd cmd >>= 
 
 interpret _ _ = R.lift S.get >>= (E.throwError <<< Tuple (error "Not implemented yet!") )
 
-runBackend :: forall st rt eff a. BackendRuntime -> BackendFlow st rt a -> InterpreterMT rt st (Tuple Error st) eff a
+runBackend :: forall st rt eff a. BackendRuntime -> BackendFlow st rt a -> InterpreterMT' rt st eff a
 runBackend backendRuntime = foldFree (\(BackendFlowWrapper x) -> runExists (interpret backendRuntime) x)
