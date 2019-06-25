@@ -37,6 +37,9 @@ import Data.Options (Options)
 import Data.Time.Duration (Milliseconds, Seconds)
 import Presto.Backend.DB (findOne, findAll, create, createWithOpts, query, update, delete) as DB
 import Presto.Backend.Types (BackendAff)
+import Presto.Backend.APIInteractEx (ExtendedAPIResultEx, apiInteractEx)
+import Presto.Backend.Playback.Types as Playback
+import Presto.Backend.Playback.Entries as Playback
 import Presto.Core.Types.API (class RestEndpoint, Headers)
 import Presto.Core.Types.Language.APIInteract (apiInteract)
 import Presto.Core.Types.Language.Flow (APIResult)
@@ -49,7 +52,9 @@ data BackendFlowCommands next st rt s =
     | Get (st -> next)
     | Put st (st -> next)
     | Modify (st -> st) (st -> next)
-    | CallAPI (Interaction (APIResult s)) (APIResult s -> next)
+    | CallAPI (Interaction (ExtendedAPIResultEx s))
+        (Playback.RRItemDict Playback.CallAPIEntry (ExtendedAPIResultEx s))
+        (APIResult s -> next)
     | DoAff (forall eff. BackendAff eff s) (s -> next)
     | ThrowException String (s -> next)
     | FindOne (Either Error (Maybe s)) (Either Error (Maybe s) -> next)
@@ -192,9 +197,26 @@ newMulti cacheName = do
     cacheConn <- getCacheConn cacheName
     wrap $ GetMulti cacheConn id
 
-callAPI :: forall st rt a b. Encode a => Decode b => RestEndpoint a b
+callAPI
+  :: forall st rt a b
+   . Encode a
+  => Encode b
+  => Decode b
+  => RestEndpoint a b
   => Headers -> a -> BackendFlow st rt (APIResult b)
-callAPI headers a = wrap $ CallAPI (apiInteract a headers) id
+callAPI headers a = wrap
+  $ CallAPI
+    (apiInteractEx a headers)
+    (Playback.RRItemDict
+       { toRecordingEntry   : Playback.toRecordingEntry
+       , fromRecordingEntry : Playback.fromRecordingEntry
+       , getTag             : Playback.getTag
+       , isMocked           : Playback.isMocked
+       , parseRRItem        : Playback.parseRRItem
+       , mkEntry            : Playback.mkCallAPIEntry
+       , compare            : (==)
+       })
+    id
 
 setCacheInMulti :: forall st rt. String -> String -> Multi -> BackendFlow st rt Multi
 setCacheInMulti key value multi = wrap $ SetCacheInMulti key value multi id

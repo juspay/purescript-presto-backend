@@ -20,6 +20,8 @@
     "tests"
   ],
   "dependencies": {
+    "purescript-foreign-generic": "^5.0.1",
+    "purescript-generics-rep": "^5.0.0",
     "purescript-express": "85ee5261a6cf3e8e2b5cd6b167f6c0fdd29d6f14",
     "purescript-presto": "67dbec28260b39407eb528542f7fd7dbc32f0536",
     "purescript-sequelize": "https://github.com/juspay/purescript-sequelize.git#cfc0c9245322520115eca7b2c1fa0d6bbcebf315",
@@ -28,7 +30,8 @@
     "purescript-redis": "https://github.com/juspay/purescript-redis.git#a7e76a31eaee72bb17d80b694cb20f620a03984d",
     "purescript-now": "3.0.0",
     "purescript-node-fs": "^4.0.0",
-    "purescript-node-process": "^5.0.0"
+    "purescript-node-process": "^5.0.0",
+    "purescript-lazy": "^4.0.0"
   },
   "devDependencies": {
     "purescript-psci-support": "^3.0.0",
