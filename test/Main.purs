@@ -23,7 +23,7 @@ module Test.Main where
 
 import Prelude
 
-import Cache (CACHE, SimpleConn, CacheConnOpts, newConn, host, port, socketKeepAlive, db)
+import Cache (CACHE, SimpleConn, SimpleConnOpts, newConn, host, port, socketKeepAlive, db)
 import Control.Monad.Aff (Aff, launchAff_)
 import Control.Monad.Aff.Class (liftAff)
 import Control.Monad.Aff.Console (CONSOLE)
@@ -37,7 +37,7 @@ import Data.Either (Either(..))
 import Data.Options ((:=), Options)
 import Data.StrMap (StrMap, singleton)
 import Presto.Backend.Flow (BackendFlow, log)
-import Presto.Backend.Interpreter (BackendRuntime(..), Connection(..), runBackend)
+import Presto.Backend.Interpreter (BackendRuntime(..), Connection(..), RunningMode (..), runBackend)
 import Presto.Core.Types.API (Request(..))
 import Debug.Trace (spy)
 
@@ -54,7 +54,7 @@ fooState = FooState { test : true}
 apiRunner :: ∀ e. Request → Aff e String
 apiRunner r = pure "add working api runner!"
 
-redisOptions :: Options CacheConnOpts
+redisOptions :: Options SimpleConnOpts
 redisOptions = host := "127.0.0.1"
          <> port := 6379
          <> db := 0
@@ -69,7 +69,7 @@ logRunner tag value = pure (spy tag) *> pure (spy value) *> pure unit
 foo :: BackendFlow FooState Config Unit
 foo = log "foo" "ran" *> pure unit
 
-tryRedisConn :: forall e. Options CacheConnOpts -> Aff _ SimpleConn
+tryRedisConn :: forall e. Options SimpleConnOpts -> Aff _ SimpleConn
 tryRedisConn opts = do
     eCacheConn <- newConn opts
     case eCacheConn of
@@ -82,6 +82,11 @@ main = launchAff_ start *> pure unit
 start :: forall t1. Aff _ Unit
 start = do
     conn <- tryRedisConn redisOptions
-    let backendRuntime = BackendRuntime apiRunner (connections (Redis conn)) logRunner
+    let backendRuntime = BackendRuntime
+          { apiRunner   : apiRunner
+          , connections : (connections (Redis conn))
+          , logRunner   : logRunner
+          , mode        : RegularMode
+          }
     response  <- liftAff $ runExceptT ( runStateT ( runReaderT ( runBackend backendRuntime (foo)) configs) fooState)
     pure unit
