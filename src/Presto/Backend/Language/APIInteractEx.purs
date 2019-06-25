@@ -25,6 +25,8 @@ import Presto.Core.Utils.Encoding (defaultDecodeJSON)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
 
 -- This is done because of lack of instances.
+-- TODO: update Presto.Core instead (ErrorResponse should be original)
+-- But it might be ErrorResponseEx would also work (it's a Newtype)
 
 newtype ErrorResponseEx = ErrorResponseEx (Response ErrorPayload)
 

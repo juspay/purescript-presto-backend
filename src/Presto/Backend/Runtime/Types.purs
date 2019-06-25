@@ -20,6 +20,7 @@ type InterpreterMT' rt st eff a = InterpreterMT rt st (Tuple Error st) eff a
 
 type LogRunner = forall e a. String -> a -> Aff e Unit
 
+-- Running mode.
 data RunningMode
   = RegularMode
   | RecordingMode RecorderRuntime

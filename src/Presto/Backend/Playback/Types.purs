@@ -20,6 +20,9 @@ type Recording =
   { entries :: Array RecordingEntry
   }
 
+-- N.B. Async and parallel computations are not properly supported.
+-- For now, Ref is used, but it's not thread safe.
+-- So having a sequential flow is preferred.
 type RecorderRuntime =
   { recordingRef :: Ref Recording
   }
