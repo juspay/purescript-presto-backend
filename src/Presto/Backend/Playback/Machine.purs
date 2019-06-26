@@ -12,6 +12,7 @@ import Control.Monad.Except.Trans (ExceptT(..), lift, throwError, runExceptT) as
 import Control.Monad.Reader.Trans (ReaderT, ask, lift, runReaderT) as R
 import Control.Monad.State.Trans (StateT, get, lift, modify, put, runStateT) as S
 import Control.Monad.Trans.Class (class MonadTrans, lift)
+import Data.Foreign.Generic (encodeJSON)
 import Data.Array as Array
 import Data.Either (Either(..), note, hush, isLeft)
 import Data.Maybe (Maybe(..), isJust)
@@ -46,4 +47,5 @@ withRunMode brt lAct rrItemF = withRunModeClassless brt rrDict lAct
         , parseRRItem        : parseRRItem
         , mkEntry            : rrItemF
         , compare            : (==)
+        , encodeJSON         : encodeJSON
         }

@@ -6,27 +6,33 @@ import Control.Monad.Aff (Aff)
 import Control.Monad.Aff.Class (liftAff)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (liftEff)
+import Control.Monad.Eff.Ref (REF, Ref, newRef, readRef, writeRef, modifyRef)
 import Control.Monad.Except.Trans (runExceptT)
 import Control.Monad.Reader.Trans (runReaderT)
 import Control.Monad.State.Trans (runStateT)
+import Control.Monad.Error.Class (throwError)
+import Control.Monad.Eff.Exception (error)
+import Data.Array (length, index)
 import Data.Tuple (Tuple(..))
+import Data.Maybe (Maybe(..), isJust)
+import Data.Either (Either(..), isLeft, isRight)
 import Data.Foreign.Generic (defaultOptions, genericDecode, genericDecodeJSON, genericEncode, genericEncodeJSON, encodeJSON, decodeJSON)
 import Data.Foreign.Generic.Class (class GenericDecode, class GenericEncode)
 import Data.Foreign.Class (class Encode, class Decode, encode, decode)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq as GEq
 import Data.Generic.Rep.Show as GShow
+import Data.Generic.Rep.Ord as GOrd
 import Data.Map as Map
-import Data.Either (Either(..), isLeft, isRight)
 import Data.StrMap as StrMap
 import Debug.Trace (spy)
 import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual, fail)
 
 import Presto.Backend.Flow (BackendFlow, log, callAPI)
-import Presto.Backend.Interpreter (BackendRuntime(..), Connection(..), RunningMode (..), runBackend)
+import Presto.Backend.Interpreter (BackendRuntime(..), Connection(..), RunningMode(..), runBackend)
 import Presto.Backend.APIInteractEx (ErrorResponseEx (..))
-
+import Presto.Backend.Playback.Types (RecordingEntry(..), PlaybackError(..), PlaybackErrorType(..))
 import Presto.Core.Types.Language.Flow (APIResult)
 import Presto.Core.Types.API (class RestEndpoint, Request(..), Headers(..), ErrorResponse, Response(..), ErrorPayload(..), Method(..), defaultDecodeResponse)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
@@ -66,6 +72,12 @@ instance someRestEndpoint :: RestEndpoint SomeRequest SomeResponse where
 logRunner :: forall a. String -> a -> Aff _ Unit
 logRunner tag value = pure (spy tag) *> pure (spy value) *> pure unit
 
+failingLogRunner :: forall a. String -> a -> Aff _ Unit
+failingLogRunner tag value = throwError $ error "Logger should not be called."
+
+failingApiRunner :: forall e. Request -> Aff e String
+failingApiRunner _ = throwError $ error "API Runner should not be called."
+
 apiRunner :: forall e. Request -> Aff e String
 apiRunner r@(Request req)
   | req.url == "1" = pure $ encodeJSON $ SomeResponse { code: 1, string: "Hello there!" }
@@ -94,32 +106,129 @@ callAPIScript = do
   eRes2 <- callAPI emptyHeaders $ SomeRequest { code: 2, number: 2.0 }
   pure $ Tuple eRes1 eRes2
 
+logAndCallAPIScript :: BackendFlow Unit Unit (Tuple (APIResult SomeResponse) (APIResult SomeResponse))
+logAndCallAPIScript = do
+  logScript
+  callAPIScript
+
 
 runTests :: Spec _ Unit
 runTests = do
+  let backendRuntime mode = BackendRuntime
+        { apiRunner   : apiRunner
+        , connections : StrMap.empty
+        , logRunner   : logRunner
+        , mode        : mode
+        }
+  let backendRuntimeRegular = backendRuntime RegularMode
+
   describe "Regular mode tests" do
     it "Log regular mode test" $ do
-      let backendRuntime = BackendRuntime
-            { apiRunner   : apiRunner
-            , connections : StrMap.empty
-            , logRunner   : logRunner
-            , mode        : RegularMode
-            }
-      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntime logScript) unit) unit)
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRegular logScript) unit) unit)
       case eResult of
         Left err -> fail $ show err
         Right _  -> pure unit
 
     it "CallAPI regular mode test" $ do
-      let backendRuntime = BackendRuntime
-            { apiRunner   : apiRunner
-            , connections : StrMap.empty
-            , logRunner   : logRunner
-            , mode        : RegularMode
-            }
-      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntime callAPIScript) unit) unit)
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRegular callAPIScript) unit) unit)
       case eResult of
         Left err -> fail $ show err
         Right (Tuple (Tuple eRes1 eRes2) _) -> do
           isRight eRes1 `shouldEqual` true    -- TODO: check particular results
           isRight eRes2 `shouldEqual` false   -- TODO: check particular results
+
+  describe "Recording/replaying mode tests" do
+    it "Record test" $ do
+      recordingRef <- liftEff $ newRef { entries : [] }
+      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording logAndCallAPIScript) unit) unit)
+      case eResult of
+        Left err -> fail $ show err
+        Right _  -> do
+          recording <- liftEff $ readRef recordingRef
+          length recording.entries `shouldEqual` 4
+          index recording.entries 0 `shouldEqual` (Just $ RecordingEntry "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}")
+          index recording.entries 1 `shouldEqual` (Just $ RecordingEntry "{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}")
+          index recording.entries 2 `shouldEqual` (Just $ RecordingEntry "{\"jsonResult\":{\"contents\":\"{\\\"string\\\":\\\"Hello there!\\\",\\\"code\\\":1}\",\"tag\":\"APIRight\"},\"jsonRequest\":\"{\\\"url\\\":\\\"1\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":1,\\\\\\\"code\\\\\\\":1}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\"}"
+            )
+          index recording.entries 3 `shouldEqual` (Just $ RecordingEntry "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"APILeft\"},\"jsonRequest\":\"{\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\"}"
+            )
+
+    it "Record / replay test: success" $ do
+      recordingRef <- liftEff $ newRef { entries : [] }
+      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording logAndCallAPIScript) unit) unit)
+      isRight eResult `shouldEqual` true
+
+      stepRef   <- liftEff $ newRef 0
+      errorRef  <- liftEff $ newRef Nothing
+      recording <- liftEff $ readRef recordingRef
+      let replayingBackendRuntime = BackendRuntime
+            { apiRunner   : failingApiRunner
+            , connections : StrMap.empty
+            , logRunner   : failingLogRunner
+            , mode        : ReplayingMode
+              { recording
+              , stepRef
+              , errorRef
+              }
+            }
+      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
+      curStep  <- liftEff $ readRef stepRef
+      isRight eResult `shouldEqual` true
+      curStep `shouldEqual` 4
+
+    it "Record / replay test: index out of range" $ do
+      recordingRef <- liftEff $ newRef { entries : [] }
+      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording logAndCallAPIScript) unit) unit)
+      isRight eResult `shouldEqual` true
+
+      stepRef   <- liftEff $ newRef 10
+      errorRef  <- liftEff $ newRef Nothing
+      recording <- liftEff $ readRef recordingRef
+      let replayingBackendRuntime = BackendRuntime
+            { apiRunner   : failingApiRunner
+            , connections : StrMap.empty
+            , logRunner   : failingLogRunner
+            , mode        : ReplayingMode
+              { recording
+              , stepRef
+              , errorRef
+              }
+            }
+      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
+      curStep  <- liftEff $ readRef stepRef
+      pbError  <- liftEff $ readRef errorRef
+      isRight eResult `shouldEqual` true
+      pbError `shouldEqual` (Just $ PlaybackError
+        { errorMessage: "Expected: LogEntry"
+        , errorType: UnexpectedRecordingEnd
+        })
+      curStep `shouldEqual` 10
+
+    it "Record / replay test: started from the middle" $ do
+      recordingRef <- liftEff $ newRef { entries : [] }
+      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording logAndCallAPIScript) unit) unit)
+      isRight eResult `shouldEqual` true
+
+      stepRef   <- liftEff $ newRef 2
+      errorRef  <- liftEff $ newRef Nothing
+      recording <- liftEff $ readRef recordingRef
+      let replayingBackendRuntime = BackendRuntime
+            { apiRunner   : failingApiRunner
+            , connections : StrMap.empty
+            , logRunner   : failingLogRunner
+            , mode        : ReplayingMode
+              { recording
+              , stepRef
+              , errorRef
+              }
+            }
+      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
+      curStep  <- liftEff $ readRef stepRef
+      pbError  <- liftEff $ readRef errorRef
+      isRight eResult `shouldEqual` true
+      pbError `shouldEqual` (Just $ PlaybackError { errorMessage: "Expected: LogEntry", errorType: UnknownRRItem })
+      curStep `shouldEqual` 3
