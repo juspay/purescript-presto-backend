@@ -31,7 +31,7 @@
     "purescript-now": "3.0.0",
     "purescript-node-fs": "^4.0.0",
     "purescript-node-process": "^5.0.0",
-    "purescript-lazy": "^4.0.0"
+    "purescript-lazy": "^3.0.0"
   },
   "devDependencies": {
     "purescript-psci-support": "^3.0.0",
