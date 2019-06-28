@@ -177,7 +177,7 @@ runTests = do
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
       curStep  <- liftEff $ readRef stepRef
-      isRight eResult `shouldEqual` true
+      isRight eResult2 `shouldEqual` true
       curStep `shouldEqual` 4
 
     it "Record / replay test: index out of range" $ do
@@ -202,7 +202,7 @@ runTests = do
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
       curStep  <- liftEff $ readRef stepRef
       pbError  <- liftEff $ readRef errorRef
-      isRight eResult `shouldEqual` true
+      isRight eResult2 `shouldEqual` false
       pbError `shouldEqual` (Just $ PlaybackError
         { errorMessage: "Expected: LogEntry"
         , errorType: UnexpectedRecordingEnd
@@ -231,7 +231,7 @@ runTests = do
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
       curStep  <- liftEff $ readRef stepRef
       pbError  <- liftEff $ readRef errorRef
-      isRight eResult `shouldEqual` true
+      isRight eResult2 `shouldEqual` false
       pbError `shouldEqual` (Just $ PlaybackError { errorMessage: "Expected: LogEntry", errorType: UnknownRRItem })
       curStep `shouldEqual` 3
 
@@ -256,7 +256,9 @@ runTests = do
               , errorRef
               }
             }
-      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
+      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime runSysCmdScript) unit) unit)
       curStep  <- liftEff $ readRef stepRef
-      isRight eResult `shouldEqual` true
+      case eResult2 of
+        Right (Tuple n unit) -> n `shouldEqual` "ABC\n"
+        Left err -> fail $ show err
       curStep `shouldEqual` 1
