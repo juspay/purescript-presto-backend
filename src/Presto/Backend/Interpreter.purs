@@ -179,14 +179,17 @@ interpret brt@(BackendRuntime rt) (CallAPI apiAct rrItemDict next) = do
     (defer $ \_ -> lift3 $ runAPIInteraction rt.apiRunner apiAct)
   pure $ next $ fromAPIResultEx resultEx.resultEx
 
+interpret brt (RunSysCmd cmd rrItemDict next) = do
+    res <- withRunModeClassless brt rrItemDict
+      (defer $ \_ -> lift3 $ runSysCmd cmd)
+    pure $ next res
+
 interpret brt@(BackendRuntime rt) (Log tag message next) = do
   next <$> withRunMode brt
     (defer $ \_ -> lift3 (rt.logRunner tag message))
     (mkLogEntry tag (jsonStringify message))
 
 interpret r (Fork flow next) = forkF r flow >>= (pure <<< next)
-
-interpret _ (RunSysCmd cmd next) = lift3 $ runSysCmd cmd >>= (pure <<< next)
 
 interpret _ _ = R.lift S.get >>= (E.throwError <<< Tuple (error "Not implemented yet!") )
 

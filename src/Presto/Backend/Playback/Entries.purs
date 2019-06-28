@@ -33,6 +33,13 @@ data CallAPIEntry = CallAPIEntry
   , jsonResult  :: APIResultEx String
   }
 
+data RunSysCmdEntry = RunSysCmdEntry
+  { cmd :: String
+  , result :: String
+  }
+
+mkRunSysCmdEntry :: String -> String -> RunSysCmdEntry
+mkRunSysCmdEntry cmd result = RunSysCmdEntry { cmd, result }
 
 mkLogEntry :: String -> String -> Unit -> LogEntry
 mkLogEntry t m _ = LogEntry {tag: t, message: m}
@@ -89,3 +96,18 @@ instance mockedResultCallAPIEntry
         { mkJsonRequest: defer $ \_ -> ce.jsonRequest
         , resultEx: eResultEx
         }
+
+derive instance genericRunSysCmdEntry :: Generic RunSysCmdEntry _
+derive instance eqRunSysCmdEntry :: Eq RunSysCmdEntry
+
+instance decodeRunSysCmdEntry :: Decode RunSysCmdEntry where decode = defaultDecode
+instance encodeRunSysCmdEntry :: Encode RunSysCmdEntry where encode = defaultEncode
+
+instance rrItemRunSysCmdEntry :: RRItem RunSysCmdEntry where
+  toRecordingEntry = RecordingEntry  <<< encodeJSON
+  fromRecordingEntry (RecordingEntry re) =  hush $ E.runExcept $ decodeJSON re
+  getTag   _ = "RunSysCmdEntry"
+  isMocked _ = true
+
+instance mockedResultRunSysCmdEntry :: MockedResult RunSysCmdEntry String where
+  parseRRItem (RunSysCmdEntry e) = Just e.result

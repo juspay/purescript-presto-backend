@@ -29,7 +29,7 @@ import Debug.Trace (spy)
 import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual, fail)
 
-import Presto.Backend.Flow (BackendFlow, log, callAPI)
+import Presto.Backend.Flow (BackendFlow, log, callAPI, runSysCmd)
 import Presto.Backend.Interpreter (BackendRuntime(..), Connection(..), RunningMode(..), runBackend)
 import Presto.Backend.APIInteractEx (ErrorResponseEx (..))
 import Presto.Backend.Playback.Types (RecordingEntry(..), PlaybackError(..), PlaybackErrorType(..))
@@ -111,6 +111,8 @@ logAndCallAPIScript = do
   logScript
   callAPIScript
 
+runSysCmdScript :: BackendFlow Unit Unit String
+runSysCmdScript = runSysCmd "echo 'ABC'"
 
 runTests :: Spec _ Unit
 runTests = do
@@ -232,3 +234,29 @@ runTests = do
       isRight eResult `shouldEqual` true
       pbError `shouldEqual` (Just $ PlaybackError { errorMessage: "Expected: LogEntry", errorType: UnknownRRItem })
       curStep `shouldEqual` 3
+
+    it "Record / replay test: success" $ do
+      recordingRef <- liftEff $ newRef { entries : [] }
+      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording runSysCmdScript) unit) unit)
+      case eResult of
+        Right (Tuple n unit) -> n `shouldEqual` "ABC\n"
+        _ -> fail $ show eResult
+
+      stepRef   <- liftEff $ newRef 0
+      errorRef  <- liftEff $ newRef Nothing
+      recording <- liftEff $ readRef recordingRef
+      let replayingBackendRuntime = BackendRuntime
+            { apiRunner   : failingApiRunner
+            , connections : StrMap.empty
+            , logRunner   : failingLogRunner
+            , mode        : ReplayingMode
+              { recording
+              , stepRef
+              , errorRef
+              }
+            }
+      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
+      curStep  <- liftEff $ readRef stepRef
+      isRight eResult `shouldEqual` true
+      curStep `shouldEqual` 1
