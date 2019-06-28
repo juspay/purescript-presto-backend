@@ -40,6 +40,7 @@ import Presto.Backend.Types (BackendAff)
 import Presto.Backend.APIInteractEx (ExtendedAPIResultEx, apiInteractEx)
 import Presto.Backend.Playback.Types as Playback
 import Presto.Backend.Playback.Entries as Playback
+import Data.Foreign.Generic (encodeJSON)
 import Presto.Core.Types.API (class RestEndpoint, Headers)
 import Presto.Core.Types.Language.APIInteract (apiInteract)
 import Presto.Core.Types.Language.Flow (APIResult)
@@ -215,6 +216,7 @@ callAPI headers a = wrap
        , parseRRItem        : Playback.parseRRItem
        , mkEntry            : Playback.mkCallAPIEntry
        , compare            : (==)
+       , encodeJSON         : encodeJSON
        })
     id
 

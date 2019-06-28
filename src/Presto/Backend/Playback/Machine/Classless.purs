@@ -12,6 +12,7 @@ import Control.Monad.Except.Trans (ExceptT(..), lift, throwError, runExceptT) as
 import Control.Monad.Reader.Trans (ReaderT, ask, lift, runReaderT) as R
 import Control.Monad.State.Trans (StateT, get, lift, modify, put, runStateT) as S
 import Control.Monad.Trans.Class (class MonadTrans, lift)
+import Data.Foreign.Generic (encodeJSON)
 import Data.Array as Array
 import Data.Either (Either(..), note, hush, isLeft)
 import Data.Maybe (Maybe(..), isJust)
@@ -28,22 +29,37 @@ import Presto.Backend.APIInteractEx (ExtendedAPIResultEx, apiInteractEx)
 import Type.Proxy (Proxy(..))
 
 unexpectedRecordingEnd :: String -> PlaybackError
-unexpectedRecordingEnd msg = PlaybackError
+unexpectedRecordingEnd expected = PlaybackError
   { errorType: UnexpectedRecordingEnd
-  , errorMessage: msg
+  , errorMessage: "Expected: " <> expected
   }
 
 unknownRRItem :: String -> PlaybackError
-unknownRRItem msg = PlaybackError
+unknownRRItem expected = PlaybackError
   { errorType: UnknownRRItem
-  , errorMessage: msg
+  , errorMessage: "Expected: " <> expected
   }
 
 mockDecodingFailed :: String -> PlaybackError
-mockDecodingFailed msg = PlaybackError
+mockDecodingFailed expected = PlaybackError
   { errorType: MockDecodingFailed
-  , errorMessage: msg
+  , errorMessage: "Expected: " <> expected
   }
+
+itemMismatch :: String -> String -> PlaybackError
+itemMismatch expected actual = PlaybackError
+  { errorType: ItemMismatch
+  , errorMessage: "Expected: " <> expected <> ", Actual: " <> actual
+  }
+
+replayError
+  :: forall eff rt st rrItem native
+   . PlayerRuntime
+  -> PlaybackError
+  -> InterpreterMT' rt st eff native
+replayError playerRt err = do
+  lift3 $ liftEff $ writeRef playerRt.errorRef $ Just err
+  R.lift S.get >>= (E.throwError <<< Tuple (error $ show err))
 
 pushRecordingEntry
   :: forall eff
@@ -106,14 +122,17 @@ replayWithMock rrItemDict lAct proxy nextRes = force lAct
 
 compareRRItems
   :: forall eff rt st rrItem native
-   . RRItemDict rrItem native
+   . PlayerRuntime
+  -> RRItemDict rrItem native
   -> rrItem
   -> rrItem
   -> InterpreterMT' rt st eff Unit
-compareRRItems rrItemDict nextRRItem rrItem
+compareRRItems playerRt rrItemDict nextRRItem rrItem
   | compare' rrItemDict nextRRItem rrItem = pure unit
-compareRRItems rrItemDict nextRRItem rrItem
-  = R.lift S.get >>= (E.throwError <<< Tuple (error "Replaying failed") )   -- TODO: error message
+compareRRItems playerRt rrItemDict nextRRItem rrItem = do
+  let expected = encodeJSON' rrItemDict nextRRItem
+  let actual   = encodeJSON' rrItemDict rrItem
+  replayError playerRt $ itemMismatch expected actual
 
 replay
   :: forall eff rt st rrItem native
@@ -125,10 +144,10 @@ replay playerRt rrItemDict lAct = do
   let proxy = Proxy :: Proxy rrItem
   eNextRRItemRes <- lift3 $ liftEff $ popNextRRItemAndResult playerRt rrItemDict proxy
   case eNextRRItemRes of
-    Left err -> R.lift S.get >>= (E.throwError <<< Tuple (error "Replaying failed") )   -- TODO: error message
+    Left err -> replayError playerRt err
     Right (Tuple nextRRItem nextRes) -> do
       res <- replayWithMock rrItemDict lAct proxy nextRes
-      compareRRItems rrItemDict nextRRItem $ mkEntry' rrItemDict res
+      compareRRItems playerRt rrItemDict nextRRItem $ mkEntry' rrItemDict res
       pure res
 
 record
