@@ -15,7 +15,7 @@ import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
 import Presto.Backend.Runtime.Common (jsonStringify)
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Playback.Types
-import Presto.Backend.APIInteractEx (ExtendedAPIResultEx (..), APIResultEx (..))
+import Presto.Backend.APIInteract (ExtendedAPIResultEx (..), APIResultEx (..))
 
 
 

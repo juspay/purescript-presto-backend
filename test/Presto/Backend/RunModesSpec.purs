@@ -31,7 +31,7 @@ import Test.Spec.Assertions (shouldEqual, fail)
 
 import Presto.Backend.Flow (BackendFlow, log, callAPI, runSysCmd)
 import Presto.Backend.Interpreter (BackendRuntime(..), Connection(..), RunningMode(..), runBackend)
-import Presto.Backend.APIInteractEx (ErrorResponseEx (..))
+import Presto.Backend.APIInteract (ErrorResponseEx (..))
 import Presto.Backend.Playback.Types (RecordingEntry(..), PlaybackError(..), PlaybackErrorType(..))
 import Presto.Backend.Types.API (class RestEndpoint, APIResult, Request(..), Headers(..), ErrorResponse, Response(..), ErrorPayload(..), Method(..), defaultDecodeResponse)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)

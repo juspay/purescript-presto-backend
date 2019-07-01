@@ -1,8 +1,8 @@
-module Presto.Backend.APIInteractEx
+module Presto.Backend.APIInteract
   ( ErrorResponseEx (..)
   , APIResultEx (..)
   , ExtendedAPIResultEx(..)
-  , apiInteractEx
+  , apiInteract
   , fromErrorResponseEx
   , fromAPIResultEx
   ) where
@@ -36,16 +36,16 @@ newtype ExtendedAPIResultEx b = ExtendedAPIResultEx
   , resultEx      :: APIResultEx b
   }
 
-apiInteractEx :: forall a b.
+apiInteract :: forall a b.
   Encode a => Encode b => Decode b => RestEndpoint a b
   => a -> Headers -> Interaction (ExtendedAPIResultEx b)
-apiInteractEx a headers = do
+apiInteract a headers = do
   (resultEx :: APIResultEx b) <- apiInteract' a headers
   let mkJsonRequest = defer $ \_ -> encodeJSON $ makeRequest a headers
   pure $ ExtendedAPIResultEx { mkJsonRequest, resultEx }
 
 -- Interact function for API.
--- Differs from @apiInteract@ by the only thing - @Encode@ constraint for @b@.
+-- Differs from core @apiInteract@ by the only thing - @Encode@ constraint for @b@.
 apiInteract' :: forall a b.
   Encode a => Encode b => Decode b => RestEndpoint a b
   => a -> Headers -> Interaction (APIResultEx b)

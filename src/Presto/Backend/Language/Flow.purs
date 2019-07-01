@@ -37,7 +37,7 @@ import Data.Options (Options)
 import Data.Time.Duration (Milliseconds, Seconds)
 import Presto.Backend.DB (findOne, findAll, create, createWithOpts, query, update, delete) as DB
 import Presto.Backend.Types (BackendAff)
-import Presto.Backend.APIInteractEx (ExtendedAPIResultEx, apiInteractEx)
+import Presto.Backend.APIInteract (ExtendedAPIResultEx, apiInteract)
 import Presto.Backend.Playback.Types as Playback
 import Presto.Backend.Playback.Entries as Playback
 import Data.Foreign.Generic (encodeJSON)
@@ -207,7 +207,7 @@ callAPI
   => Headers -> a -> BackendFlow st rt (APIResult b)
 callAPI headers a = wrap
   $ CallAPI
-    (apiInteractEx a headers)
+    (apiInteract a headers)
     (Playback.RRItemDict
        { toRecordingEntry   : Playback.toRecordingEntry
        , fromRecordingEntry : Playback.fromRecordingEntry
