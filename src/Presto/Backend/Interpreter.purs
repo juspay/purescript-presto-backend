@@ -62,8 +62,6 @@ import Presto.Backend.Playback.Machine.Classless
 import Presto.Backend.Playback.Entries
 import Presto.Backend.APIInteractEx (ExtendedAPIResultEx (..), APIResultEx(..), fromAPIResultEx)
 import Presto.Core.Flow (runAPIInteraction)
-import Presto.Core.Language.Runtime.API (APIRunner)
-import Presto.Core.Utils.Encoding as Enc
 import Sequelize.Types (Conn)
 import Type.Proxy (Proxy(..))
 

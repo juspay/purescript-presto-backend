@@ -2,7 +2,6 @@ module Presto.Backend.APIInteractEx
   ( ErrorResponseEx (..)
   , APIResultEx (..)
   , ExtendedAPIResultEx(..)
-  , APIResultEx(..)
   , apiInteractEx
   , fromErrorResponseEx
   , fromAPIResultEx
@@ -21,8 +20,7 @@ import Presto.Core.Types.Language.Flow (APIResult)
 import Data.Either (Either(..))
 import Presto.Core.Types.Language.Interaction (Interaction, request)
 import Presto.Core.Types.API (class RestEndpoint, ErrorPayload(..), ErrorResponse, Response(..), Headers, decodeResponse, makeRequest)
-import Presto.Core.Utils.Encoding (defaultDecodeJSON)
-import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
+import Presto.Core.Utils.Encoding (defaultDecodeJSON, defaultEncode, defaultDecode)
 
 -- This is done because of lack of instances.
 -- TODO: update Presto.Core instead (ErrorResponse should be original)
