@@ -24,7 +24,6 @@ import Presto.Backend.Runtime.Common (jsonStringify, lift3)
 import Presto.Backend.Runtime.Types
 import Presto.Backend.Playback.Types
 import Presto.Backend.Playback.Entries
-import Presto.Core.Utils.Encoding as Enc
 import Type.Proxy (Proxy(..))
 import Presto.Backend.Playback.Machine.Classless (withRunModeClassless)
 

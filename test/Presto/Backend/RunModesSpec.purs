@@ -29,12 +29,11 @@ import Debug.Trace (spy)
 import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual, fail)
 
-import Presto.Backend.Flow (BackendFlow, log, callAPI)
+import Presto.Backend.Flow (BackendFlow, log, callAPI, runSysCmd)
 import Presto.Backend.Interpreter (BackendRuntime(..), Connection(..), RunningMode(..), runBackend)
 import Presto.Backend.APIInteractEx (ErrorResponseEx (..))
 import Presto.Backend.Playback.Types (RecordingEntry(..), PlaybackError(..), PlaybackErrorType(..))
-import Presto.Core.Types.Language.Flow (APIResult)
-import Presto.Core.Types.API (class RestEndpoint, Request(..), Headers(..), ErrorResponse, Response(..), ErrorPayload(..), Method(..), defaultDecodeResponse)
+import Presto.Backend.Types.API (class RestEndpoint, APIResult, Request(..), Headers(..), ErrorResponse, Response(..), ErrorPayload(..), Method(..), defaultDecodeResponse)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
 
 data SomeRequest = SomeRequest
@@ -111,6 +110,8 @@ logAndCallAPIScript = do
   logScript
   callAPIScript
 
+runSysCmdScript :: BackendFlow Unit Unit String
+runSysCmdScript = runSysCmd "echo 'ABC'"
 
 runTests :: Spec _ Unit
 runTests = do
@@ -175,7 +176,7 @@ runTests = do
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
       curStep  <- liftEff $ readRef stepRef
-      isRight eResult `shouldEqual` true
+      isRight eResult2 `shouldEqual` true
       curStep `shouldEqual` 4
 
     it "Record / replay test: index out of range" $ do
@@ -200,7 +201,7 @@ runTests = do
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
       curStep  <- liftEff $ readRef stepRef
       pbError  <- liftEff $ readRef errorRef
-      isRight eResult `shouldEqual` true
+      isRight eResult2 `shouldEqual` false
       pbError `shouldEqual` (Just $ PlaybackError
         { errorMessage: "Expected: LogEntry"
         , errorType: UnexpectedRecordingEnd
@@ -229,6 +230,34 @@ runTests = do
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
       curStep  <- liftEff $ readRef stepRef
       pbError  <- liftEff $ readRef errorRef
-      isRight eResult `shouldEqual` true
+      isRight eResult2 `shouldEqual` false
       pbError `shouldEqual` (Just $ PlaybackError { errorMessage: "Expected: LogEntry", errorType: UnknownRRItem })
       curStep `shouldEqual` 3
+
+    it "Record / replay test: success" $ do
+      recordingRef <- liftEff $ newRef { entries : [] }
+      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording runSysCmdScript) unit) unit)
+      case eResult of
+        Right (Tuple n unit) -> n `shouldEqual` "ABC\n"
+        _ -> fail $ show eResult
+
+      stepRef   <- liftEff $ newRef 0
+      errorRef  <- liftEff $ newRef Nothing
+      recording <- liftEff $ readRef recordingRef
+      let replayingBackendRuntime = BackendRuntime
+            { apiRunner   : failingApiRunner
+            , connections : StrMap.empty
+            , logRunner   : failingLogRunner
+            , mode        : ReplayingMode
+              { recording
+              , stepRef
+              , errorRef
+              }
+            }
+      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime runSysCmdScript) unit) unit)
+      curStep  <- liftEff $ readRef stepRef
+      case eResult2 of
+        Right (Tuple n unit) -> n `shouldEqual` "ABC\n"
+        Left err -> fail $ show err
+      curStep `shouldEqual` 1

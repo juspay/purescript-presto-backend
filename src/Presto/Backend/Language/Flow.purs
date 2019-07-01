@@ -41,9 +41,7 @@ import Presto.Backend.APIInteractEx (ExtendedAPIResultEx, apiInteractEx)
 import Presto.Backend.Playback.Types as Playback
 import Presto.Backend.Playback.Entries as Playback
 import Data.Foreign.Generic (encodeJSON)
-import Presto.Core.Types.API (class RestEndpoint, Headers)
-import Presto.Core.Types.Language.APIInteract (apiInteract)
-import Presto.Core.Types.Language.Flow (APIResult)
+import Presto.Backend.Types.API (class RestEndpoint,APIResult, Headers)
 import Presto.Core.Types.Language.Interaction (Interaction)
 import Sequelize.Class (class Model)
 import Sequelize.Types (Conn, Instance)
@@ -53,9 +51,7 @@ data BackendFlowCommands next st rt s =
     | Get (st -> next)
     | Put st (st -> next)
     | Modify (st -> st) (st -> next)
-    | CallAPI (Interaction (ExtendedAPIResultEx s))
-        (Playback.RRItemDict Playback.CallAPIEntry (ExtendedAPIResultEx s))
-        (APIResult s -> next)
+
     | DoAff (forall eff. BackendAff eff s) (s -> next)
     | ThrowException String (s -> next)
     | FindOne (Either Error (Maybe s)) (Either Error (Maybe s) -> next)
@@ -99,8 +95,12 @@ data BackendFlowCommands next st rt s =
     | DequeueInMulti String Multi (Multi -> next)
     | GetQueueIdxInMulti String Int Multi (Multi -> next)
     | Exec Multi (Either Error (Array Foreign) -> next)
-    | RunSysCmd String (String -> next)
-
+    | RunSysCmd String
+        (Playback.RRItemDict Playback.RunSysCmdEntry String)
+        (String -> next)
+    | CallAPI (Interaction (ExtendedAPIResultEx s))
+        (Playback.RRItemDict Playback.CallAPIEntry (ExtendedAPIResultEx s))
+        (APIResult s -> next)
     -- | HandleException
     -- | Await (Control s) (s -> next)
     -- | Delay Milliseconds next
@@ -341,7 +341,19 @@ setMessageHandler cacheName f = do
   wrap $ SetMessageHandler cacheConn f id
 
 runSysCmd :: forall st rt. String -> BackendFlow st rt String
-runSysCmd cmd = wrap $ RunSysCmd cmd id
+runSysCmd cmd = wrap $ RunSysCmd
+  cmd
+  (Playback.RRItemDict
+    { toRecordingEntry   : Playback.toRecordingEntry
+    , fromRecordingEntry : Playback.fromRecordingEntry
+    , getTag             : Playback.getTag
+    , isMocked           : Playback.isMocked
+    , parseRRItem        : Playback.parseRRItem
+    , mkEntry            : Playback.mkRunSysCmdEntry cmd
+    , compare            : (==)
+    , encodeJSON         : encodeJSON
+    })
+  id
 
 forkFlow :: forall st rt a. BackendFlow st rt a -> BackendFlow st rt Unit
 forkFlow flow = wrap $ Fork flow id
