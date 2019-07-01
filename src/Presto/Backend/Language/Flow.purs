@@ -41,8 +41,7 @@ import Presto.Backend.APIInteractEx (ExtendedAPIResultEx, apiInteractEx)
 import Presto.Backend.Playback.Types as Playback
 import Presto.Backend.Playback.Entries as Playback
 import Data.Foreign.Generic (encodeJSON)
-import Presto.Core.Types.API (class RestEndpoint, Headers)
-import Presto.Core.Types.Language.Flow (APIResult)
+import Presto.Backend.Types.API (class RestEndpoint,APIResult, Headers)
 import Presto.Core.Types.Language.Interaction (Interaction)
 import Sequelize.Class (class Model)
 import Sequelize.Types (Conn, Instance)

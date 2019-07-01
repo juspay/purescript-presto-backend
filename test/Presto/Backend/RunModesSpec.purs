@@ -33,8 +33,7 @@ import Presto.Backend.Flow (BackendFlow, log, callAPI, runSysCmd)
 import Presto.Backend.Interpreter (BackendRuntime(..), Connection(..), RunningMode(..), runBackend)
 import Presto.Backend.APIInteractEx (ErrorResponseEx (..))
 import Presto.Backend.Playback.Types (RecordingEntry(..), PlaybackError(..), PlaybackErrorType(..))
-import Presto.Core.Types.Language.Flow (APIResult)
-import Presto.Core.Types.API (class RestEndpoint, Request(..), Headers(..), ErrorResponse, Response(..), ErrorPayload(..), Method(..), defaultDecodeResponse)
+import Presto.Backend.Types.API (class RestEndpoint, APIResult, Request(..), Headers(..), ErrorResponse, Response(..), ErrorPayload(..), Method(..), defaultDecodeResponse)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
 
 data SomeRequest = SomeRequest

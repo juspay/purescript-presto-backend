@@ -16,10 +16,9 @@ import Data.Foreign.Class (class Decode, class Encode, decode, encode)
 import Data.Generic.Rep (class Generic)
 import Data.Foreign.Generic (encodeJSON)
 import Data.Foreign.Class (class Decode, class Encode, decode, encode)
-import Presto.Core.Types.Language.Flow (APIResult)
 import Data.Either (Either(..))
 import Presto.Core.Types.Language.Interaction (Interaction, request)
-import Presto.Core.Types.API (class RestEndpoint, ErrorPayload(..), ErrorResponse, Response(..), Headers, decodeResponse, makeRequest)
+import Presto.Backend.Types.API (class RestEndpoint, APIResult, ErrorPayload(..), ErrorResponse, Response(..), Headers, decodeResponse, makeRequest)
 import Presto.Core.Utils.Encoding (defaultDecodeJSON, defaultEncode, defaultDecode)
 
 -- This is done because of lack of instances.
