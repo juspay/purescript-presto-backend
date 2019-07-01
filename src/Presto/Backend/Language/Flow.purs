@@ -51,16 +51,13 @@ data BackendFlowCommands next st rt s =
     | Get (st -> next)
     | Put st (st -> next)
     | Modify (st -> st) (st -> next)
-
-    | DoAff (forall eff. BackendAff eff s) (s -> next)
+    | CallAPI (Interaction (ExtendedAPIResultEx s))
+        (Playback.RRItemDict Playback.CallAPIEntry (ExtendedAPIResultEx s))
+        (APIResult s -> next)
+    | DoAff (forall eff. BackendAff eff s)
+        (Playback.RRItemDict Playback.DoAffEntry s)
+        (s -> next)
     | ThrowException String (s -> next)
-    | FindOne (Either Error (Maybe s)) (Either Error (Maybe s) -> next)
-    | FindAll (Either Error (Array s)) (Either Error (Array s) -> next)
-    | Create  (Either Error (Maybe s)) (Either Error (Maybe s) -> next)
-    | FindOrCreate (Either Error (Maybe s)) (Either Error (Maybe s) -> next)
-    | Query (Either Error s) (Either Error s -> next)
-    | Update (Either Error (Array s)) (Either Error (Array s) -> next)
-    | Delete (Either Error Int) (Either Error Int -> next)
     | GetDBConn String (Conn -> next)
     | GetCacheConn String (SimpleConn -> next)
     | Log String s (Unit -> next)
@@ -98,12 +95,6 @@ data BackendFlowCommands next st rt s =
     | RunSysCmd String
         (Playback.RRItemDict Playback.RunSysCmdEntry String)
         (String -> next)
-    | CallAPI (Interaction (ExtendedAPIResultEx s))
-        (Playback.RRItemDict Playback.CallAPIEntry (ExtendedAPIResultEx s))
-        (APIResult s -> next)
-    -- | HandleException
-    -- | Await (Control s) (s -> next)
-    -- | Delay Milliseconds next
 
 type BackendFlowCommandsWrapper st rt s next = BackendFlowCommands next st rt s
 
@@ -129,74 +120,75 @@ modify fst = wrap $ Modify fst id
 throwException :: forall st rt a. String -> BackendFlow st rt a
 throwException errorMessage = wrap $ ThrowException errorMessage id
 
-doAff :: forall st rt a. (forall eff. BackendAff eff a) -> BackendFlow st rt a
-doAff aff = wrap $ DoAff aff id
+doAff
+  :: forall st rt a
+   . Encode a
+  => Decode a
+  => (forall eff. BackendAff eff a)
+  -> BackendFlow st rt a
+doAff aff = wrap $ DoAff aff (Playback.mkEntryDict Playback.mkDoAffEntry) id
 
-findOne :: forall model st rt. Model model => String -> Options model -> BackendFlow st rt (Either Error (Maybe model))
-findOne dbName options = do
-  conn <- getDBConn dbName
-  model <- doAff do
-        DB.findOne conn options
-  wrap $ FindOne model id
+-- TODO: FIXME: these functions should not be used because they work with doAff
+-- instead of being abstracted.
+-- For more details, see:
+--  https://docs.google.com/document/d/1c9HggT8Y5D_A_YohILbjxiz15PikBXCKGMWa0JlqdpI/edit
+-- findOne :: forall model st rt. Model model => String -> Options model -> BackendFlow st rt (Either Error (Maybe model))
+-- findOne dbName options = do
+--   conn <- getDBConn dbName
+--   model <- doAff $ DB.findOne conn options
+--   wrap $ FindOne model id
+--
+-- findAll :: forall model st rt. Model model => String -> Options model -> BackendFlow st rt (Either Error (Array model))
+-- findAll dbName options = do
+--   conn <- getDBConn dbName
+--   model <- doAff $ DB.findAll conn options
+--   wrap $ FindAll model id
 
-findAll :: forall model st rt. Model model => String -> Options model -> BackendFlow st rt (Either Error (Array model))
-findAll dbName options = do
-  conn <- getDBConn dbName
-  model <- doAff do
-        DB.findAll conn options
-  wrap $ FindAll model id
+-- TODO: rework these methods. DB interaction is designed wrongly.
+-- query
+--   :: forall a st rt
+--    . Encode a
+--   => Decode a
+--   => String -> String -> BackendFlow st rt (Either Error (Array a))
+-- query dbName rawq = do
+--   conn <- getDBConn dbName
+--   doAff $ DB.query conn rawq
+--
+-- create :: forall model st rt. Model model => String -> model -> BackendFlow st rt (Either Error (Maybe model))
+-- create dbName model = do
+--   conn <- getDBConn dbName
+--   doAff $ DB.create conn model
 
-query :: forall a st rt. String -> String -> BackendFlow st rt (Either Error (Array a))
-query dbName rawq = do
-  conn <- getDBConn dbName
-  resp <- doAff do
-        DB.query conn rawq
-  wrap $ Query resp id
+-- createWithOpts :: forall model st rt. Model model => String -> model -> Options model -> BackendFlow st rt (Either Error (Maybe model))
+-- createWithOpts dbName model options = do
+--   conn <- getDBConn dbName
+--   doAff $ DB.createWithOpts conn model options
 
-create :: forall model st rt. Model model => String -> model -> BackendFlow st rt (Either Error (Maybe model))
-create dbName model = do
-  conn <- getDBConn dbName
-  result <- doAff do
-        DB.create conn model
-  wrap $ Create result id
+-- findOrCreate :: forall model st rt. Model model => String -> Options model -> BackendFlow st rt (Either Error (Maybe model))
+-- findOrCreate dbName options = do
+--   conn <- getDBConn dbName
+--   wrap $ FindOrCreate (Right Nothing) id
 
-createWithOpts :: forall model st rt. Model model => String -> model -> Options model -> BackendFlow st rt (Either Error (Maybe model))
-createWithOpts dbName model options = do
-  conn <- getDBConn dbName
-  result <- doAff do
-        DB.createWithOpts conn model options
-  wrap $ Create result id
-
-findOrCreate :: forall model st rt. Model model => String -> Options model -> BackendFlow st rt (Either Error (Maybe model))
-findOrCreate dbName options = do
-  conn <- getDBConn dbName
-  wrap $ FindOrCreate (Right Nothing) id
-
-update :: forall model st rt. Model model => String -> Options model -> Options model -> BackendFlow st rt (Either Error (Array model))
-update dbName updateValues whereClause = do
-  conn <- getDBConn dbName
-  model <- doAff do
-        DB.update conn updateValues whereClause
-  wrap $ Update model id
-
-delete :: forall model st rt. Model model => String -> Options model -> BackendFlow st rt (Either Error Int)
-delete dbName options = do
-  conn <- getDBConn dbName
-  model <- doAff do
-        DB.delete conn options
-  wrap $ Delete model id
+-- update :: forall model st rt. Model model => String -> Options model -> Options model -> BackendFlow st rt (Either Error (Array model))
+-- update dbName updateValues whereClause = do
+--   conn <- getDBConn dbName
+--   doAff $ DB.update conn updateValues whereClause
+--
+-- delete :: forall model st rt. Model model => String -> Options model -> BackendFlow st rt (Either Error Int)
+-- delete dbName options = do
+--   conn <- getDBConn dbName
+--   doAff $ DB.delete conn options
 
 getDBConn :: forall st rt. String -> BackendFlow st rt Conn
-getDBConn dbName = do
-  wrap $ GetDBConn dbName id
+getDBConn dbName = wrap $ GetDBConn dbName id
 
 getCacheConn :: forall st rt. String -> BackendFlow st rt SimpleConn
 getCacheConn dbName = wrap $ GetCacheConn dbName id
 
 newMulti :: forall st rt. String -> BackendFlow st rt Multi
 newMulti cacheName = do
-    cacheConn <- getCacheConn cacheName
-    wrap $ GetMulti cacheConn id
+  cacheConn <- getCacheConn cacheName
+  wrap $ GetMulti cacheConn id
 
 callAPI
   :: forall st rt a b
@@ -205,20 +197,10 @@ callAPI
   => Decode b
   => RestEndpoint a b
   => Headers -> a -> BackendFlow st rt (APIResult b)
-callAPI headers a = wrap
-  $ CallAPI
-    (apiInteract a headers)
-    (Playback.RRItemDict
-       { toRecordingEntry   : Playback.toRecordingEntry
-       , fromRecordingEntry : Playback.fromRecordingEntry
-       , getTag             : Playback.getTag
-       , isMocked           : Playback.isMocked
-       , parseRRItem        : Playback.parseRRItem
-       , mkEntry            : Playback.mkCallAPIEntry
-       , compare            : (==)
-       , encodeJSON         : encodeJSON
-       })
-    id
+callAPI headers a = wrap $ CallAPI
+  (apiInteractEx a headers)
+  (Playback.mkEntryDict Playback.mkCallAPIEntry)
+  id
 
 setCacheInMulti :: forall st rt. String -> String -> Multi -> BackendFlow st rt Multi
 setCacheInMulti key value multi = wrap $ SetCacheInMulti key value multi id
@@ -341,19 +323,7 @@ setMessageHandler cacheName f = do
   wrap $ SetMessageHandler cacheConn f id
 
 runSysCmd :: forall st rt. String -> BackendFlow st rt String
-runSysCmd cmd = wrap $ RunSysCmd
-  cmd
-  (Playback.RRItemDict
-    { toRecordingEntry   : Playback.toRecordingEntry
-    , fromRecordingEntry : Playback.fromRecordingEntry
-    , getTag             : Playback.getTag
-    , isMocked           : Playback.isMocked
-    , parseRRItem        : Playback.parseRRItem
-    , mkEntry            : Playback.mkRunSysCmdEntry cmd
-    , compare            : (==)
-    , encodeJSON         : encodeJSON
-    })
-  id
+runSysCmd cmd = wrap $ RunSysCmd cmd (Playback.mkEntryDict $ Playback.mkRunSysCmdEntry cmd) id
 
 forkFlow :: forall st rt a. BackendFlow st rt a -> BackendFlow st rt Unit
 forkFlow flow = wrap $ Fork flow id

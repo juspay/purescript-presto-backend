@@ -19,7 +19,6 @@ import Presto.Backend.APIInteract (ExtendedAPIResultEx (..), APIResultEx (..))
 
 
 
-
 data LogEntry = LogEntry
   { tag     :: String
   , message :: String
@@ -35,11 +34,22 @@ data RunSysCmdEntry = RunSysCmdEntry
   , result :: String
   }
 
+data DoAffEntry = DoAffEntry
+  { jsonResult :: String
+  }
+
 mkRunSysCmdEntry :: String -> String -> RunSysCmdEntry
 mkRunSysCmdEntry cmd result = RunSysCmdEntry { cmd, result }
 
 mkLogEntry :: String -> String -> Unit -> LogEntry
 mkLogEntry t m _ = LogEntry {tag: t, message: m}
+
+mkDoAffEntry
+  :: forall b
+   . Encode b
+  => Decode b
+  => b -> DoAffEntry
+mkDoAffEntry result = DoAffEntry { jsonResult: encodeJSON result }
 
 mkCallAPIEntry
   :: forall b
@@ -80,6 +90,7 @@ instance rrItemCallAPIEntry :: RRItem CallAPIEntry where
   getTag   _ = "CallAPIEntry"
   isMocked _ = true
 
+
 instance mockedResultCallAPIEntry
   :: Decode b
   => MockedResult CallAPIEntry (ExtendedAPIResultEx b) where
@@ -101,10 +112,26 @@ instance decodeRunSysCmdEntry :: Decode RunSysCmdEntry where decode = defaultDec
 instance encodeRunSysCmdEntry :: Encode RunSysCmdEntry where encode = defaultEncode
 
 instance rrItemRunSysCmdEntry :: RRItem RunSysCmdEntry where
-  toRecordingEntry = RecordingEntry  <<< encodeJSON
-  fromRecordingEntry (RecordingEntry re) =  hush $ E.runExcept $ decodeJSON re
+  toRecordingEntry = RecordingEntry <<< encodeJSON
+  fromRecordingEntry (RecordingEntry re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "RunSysCmdEntry"
   isMocked _ = true
 
 instance mockedResultRunSysCmdEntry :: MockedResult RunSysCmdEntry String where
   parseRRItem (RunSysCmdEntry e) = Just e.result
+
+
+derive instance genericDoAffEntry :: Generic DoAffEntry _
+derive instance eqDoAffEntry :: Eq DoAffEntry
+
+instance decodeDoAffEntry :: Decode DoAffEntry where decode = defaultDecode
+instance encodeDoAffEntry :: Encode DoAffEntry where encode = defaultEncode
+
+instance rrItemDoAffEntry :: RRItem DoAffEntry where
+  toRecordingEntry = RecordingEntry <<< encodeJSON
+  fromRecordingEntry (RecordingEntry re) = hush $ E.runExcept $ decodeJSON re
+  getTag   _ = "DoAffEntry"
+  isMocked _ = true
+
+instance mockedResultDoAffEntry :: Decode b => MockedResult DoAffEntry b where
+  parseRRItem (DoAffEntry r) = hush $ E.runExcept $ decodeJSON r.jsonResult

@@ -84,7 +84,15 @@ interpret _ (Modify d next) = R.lift (S.modify d) *> S.get >>= (pure <<< next)
 
 interpret _ (ThrowException errorMessage next) = R.lift S.get >>= (R.lift <<< S.lift <<< E.ExceptT <<<  pure <<< Left <<< Tuple (error errorMessage)) >>= pure <<< next
 
-interpret _ (DoAff aff nextF) = (R.lift $ S.lift $ E.lift aff) >>= (pure <<< nextF)
+interpret brt@(BackendRuntime rt) (DoAff aff rrItemDict next) = do
+  res <- withRunModeClassless brt rrItemDict
+    (defer $ \_ -> lift3 $ rt.affRunner aff)
+  pure $ next res
+
+interpret brt (RunSysCmd cmd rrItemDict next) = do
+    res <- withRunModeClassless brt rrItemDict
+      (defer $ \_ -> lift3 $ runSysCmd cmd)
+    pure $ next res
 
 interpret _ (SetCache cacheConn key value next) = (R.lift $ S.lift $ E.lift $ void <$> set cacheConn key value Nothing NoOptions) >>= (pure <<< next)
 
@@ -153,18 +161,6 @@ interpret brt@(BackendRuntime rt) (GetCacheConn cacheName next) = do
     Just _  -> interpret brt (ThrowException "No DB found" next)
     Nothing -> interpret brt (ThrowException "No DB found" next)
 
-interpret _ (FindOne model next) = (pure <<< next) model
-
-interpret _ (FindAll models next) = (pure <<< next) models
-
-interpret _ (Query models next) = (pure <<< next) models
-
-interpret _ (Create model next) = (pure <<< next) model
-
-interpret _ (Update model next) = (pure <<< next) model
-
-interpret _ (Delete model next) = (pure <<< next) model
-
 interpret brt@(BackendRuntime rt) (GetDBConn dbName next) = do
   let maybedb = lookup dbName rt.connections
   case maybedb of
@@ -177,17 +173,17 @@ interpret brt@(BackendRuntime rt) (CallAPI apiAct rrItemDict next) = do
     (defer $ \_ -> lift3 $ runAPIInteraction rt.apiRunner apiAct)
   pure $ next $ fromAPIResultEx resultEx.resultEx
 
-interpret brt (RunSysCmd cmd rrItemDict next) = do
-    res <- withRunModeClassless brt rrItemDict
-      (defer $ \_ -> lift3 $ runSysCmd cmd)
-    pure $ next res
-
 interpret brt@(BackendRuntime rt) (Log tag message next) = do
   next <$> withRunMode brt
     (defer $ \_ -> lift3 (rt.logRunner tag message))
     (mkLogEntry tag (jsonStringify message))
 
 interpret r (Fork flow next) = forkF r flow >>= (pure <<< next)
+
+interpret brt (RunSysCmd cmd rrItemDict next) = do
+    res <- withRunModeClassless brt rrItemDict
+      (defer $ \_ -> lift3 $ runSysCmd cmd)
+    pure $ next res
 
 interpret _ _ = R.lift S.get >>= (E.throwError <<< Tuple (error "Not implemented yet!") )
 
