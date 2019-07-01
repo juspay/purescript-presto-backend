@@ -16,7 +16,7 @@ import Data.Newtype (class Newtype)
 import Data.Eq (class Eq, eq)
 import Data.Enum (class Enum, succ, pred)
 import Data.Bounded (class Bounded, top, bottom)
-import Data.Foreign.Generic (defaultOptions, genericDecode, genericDecodeJSON, genericEncode, genericEncodeJSON)
+import Data.Foreign.Generic (defaultOptions, genericDecode, genericDecodeJSON, genericEncode, genericEncodeJSON, encodeJSON)
 import Data.Foreign.Generic.Class (class GenericDecode, class GenericEncode)
 import Data.Foreign.Class (class Encode, class Decode, encode, decode)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
@@ -129,3 +129,21 @@ compare' (RRItemDict d) = d.compare
 
 encodeJSON' :: forall rrItem native. RRItemDict rrItem native -> rrItem -> String
 encodeJSON' (RRItemDict d) = d.encodeJSON
+
+
+mkEntryDict
+  :: forall rrItem native
+   . RRItem rrItem
+  => MockedResult rrItem native
+  => (native -> rrItem)
+  -> RRItemDict rrItem native
+mkEntryDict mkEntry = RRItemDict
+  { toRecordingEntry   : toRecordingEntry
+  , fromRecordingEntry : fromRecordingEntry
+  , getTag             : getTag
+  , isMocked           : isMocked
+  , parseRRItem        : parseRRItem
+  , mkEntry            : mkEntry
+  , compare            : (==)
+  , encodeJSON         : encodeJSON
+  }
