@@ -11,8 +11,8 @@ import Control.Monad.State.Trans (StateT) as S
 import Data.Tuple (Tuple)
 import Data.StrMap (StrMap)
 import Presto.Backend.Types (BackendAff)
+import Presto.Backend.Types.API (APIRunner)
 import Presto.Backend.Playback.Types (RecorderRuntime, PlayerRuntime)
-import Presto.Core.Language.Runtime.API (APIRunner)
 import Sequelize.Types (Conn)
 
 type InterpreterMT rt st err eff a = R.ReaderT rt (S.StateT st (E.ExceptT err (BackendAff eff))) a

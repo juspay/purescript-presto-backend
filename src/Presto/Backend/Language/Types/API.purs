@@ -1,5 +1,7 @@
 module Presto.Backend.Types.API
   ( class RestEndpoint
+  , APIResult(..)
+  , APIRunner(..)
   , ErrorPayload(..)
   , ErrorResponse
   , Method(..)
@@ -21,12 +23,18 @@ module Presto.Backend.Types.API
 
 import Prelude
 
+import Control.Monad.Aff (Aff)
+import Data.Either (Either)
 import Data.Foreign (F)
 import Data.Foreign.Class (class Decode, class Encode)
 import Data.Foreign.Generic.Class (class GenericDecode, class GenericEncode)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show (genericShow)
 import Presto.Core.Utils.Encoding (defaultDecode, defaultDecodeJSON, defaultEncode, defaultEncodeJSON, defaultEnumDecode, defaultEnumEncode)
+
+type APIRunner = forall e. Request -> Aff e String
+
+type APIResult s = Either ErrorResponse s
 
 class RestEndpoint a b | a -> b, b -> a where
   makeRequest :: a -> Headers -> Request
@@ -93,9 +101,9 @@ type ErrorResponse = Response ErrorPayload
 
 derive instance genericMethod :: Generic Method _
 instance encodeMethod :: Encode Method where
-  encode = defaultEnumEncode
+  encode = defaultEncode
 instance decodeMethod :: Decode Method where
-  decode = defaultEnumDecode
+  decode = defaultDecode
 instance showMethod :: Show Method where
   show = genericShow
 
@@ -118,6 +126,7 @@ instance decodeRequestG :: Decode Request where
   decode = defaultDecode
   
 derive instance genericErrorPayload :: Generic ErrorPayload _
+derive instance eqErrorPayload :: Eq ErrorPayload
 instance encodeErrorPayload :: Encode ErrorPayload where
   encode = defaultEncode
 instance decodeErrorPayload :: Decode ErrorPayload where
@@ -126,6 +135,7 @@ instance showErrorPayload :: Show ErrorPayload where
   show (ErrorPayload payload) = payload.userMessage
 
 derive instance genericResponse :: Generic (Response a) _
+derive instance eqResponse :: Eq a => Eq (Response a)
 instance decodeResponseG :: Decode a => Decode (Response a) where
   decode = defaultDecode
 instance encodeResponseG :: Encode a => Encode (Response a) where

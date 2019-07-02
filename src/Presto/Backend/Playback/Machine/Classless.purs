@@ -24,8 +24,7 @@ import Presto.Backend.Runtime.Common (jsonStringify, lift3)
 import Presto.Backend.Runtime.Types
 import Presto.Backend.Playback.Types
 import Presto.Backend.Playback.Entries
-import Presto.Core.Utils.Encoding as Enc
-import Presto.Backend.APIInteractEx (ExtendedAPIResultEx, apiInteractEx)
+import Presto.Backend.APIInteract (apiInteract)
 import Type.Proxy (Proxy(..))
 
 unexpectedRecordingEnd :: String -> PlaybackError
