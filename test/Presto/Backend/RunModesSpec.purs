@@ -29,7 +29,7 @@ import Debug.Trace (spy)
 import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual, fail)
 
-import Presto.Backend.Flow (BackendFlow, log, callAPI, runSysCmd, doAff)
+import Presto.Backend.Flow (BackendFlow, log, callAPI, runSysCmd, doAffRR)
 import Presto.Backend.Interpreter (BackendRuntime(..), Connection(..), RunningMode(..), runBackend)
 import Presto.Backend.Playback.Types (RecordingEntry(..), PlaybackError(..), PlaybackErrorType(..))
 import Presto.Backend.Types.API (class RestEndpoint, APIResult, Request(..), Headers(..), Response(..), ErrorPayload(..), Method(..), defaultDecodeResponse)
@@ -122,7 +122,7 @@ runSysCmdScript :: BackendFlow Unit Unit String
 runSysCmdScript = runSysCmd "echo 'ABC'"
 
 doAffScript :: BackendFlow Unit Unit String
-doAffScript = doAff (pure "This is result.")
+doAffScript = doAffRR (pure "This is result.")
 
 runTests :: Spec _ Unit
 runTests = do
