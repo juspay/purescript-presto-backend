@@ -29,7 +29,7 @@ data LogEntry = LogEntry
 
 data CallAPIEntry = CallAPIEntry
   { jsonRequest :: String
-  , jsonResult  :: EitherEx ErrorResponse String --APIResult String
+  , jsonResult  :: EitherEx ErrorResponse String
   }
 
 data RunSysCmdEntry = RunSysCmdEntry

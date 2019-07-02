@@ -1,11 +1,6 @@
 module Presto.Backend.APIInteract
-  (-- ErrorResponseEx (..)
- -- , APIResultEx (..)
- -- , APIResult(..)
- -- , ExtendedAPIResultEx(..)
+  (
    apiInteract
- -- , fromErrorResponseEx
- -- , fromAPIResultEx
   ) where
 
 import Prelude
@@ -51,57 +46,3 @@ apiInteract a headers = do
                                                     , userMessage: "Unknown error"
                                                     }
                                     }
-
-
--- fromErrorResponseEx :: ErrorResponseEx -> ErrorResponse
--- fromErrorResponseEx (ErrorResponseEx rex) = rex
-
--- fromAPIResultEx :: forall a. APIResultEx a -> APIResult a
--- fromAPIResultEx (APILeft eEx) = Left $ fromErrorResponseEx eEx
--- fromAPIResultEx (APIRight a) = Right a
-
-
-
--- derive instance genericErrorResponseEx :: Generic ErrorResponseEx _
--- instance decodeErrorResponseEx :: Decode ErrorResponseEx where decode = defaultDecode
--- instance encodeErrorResponseEx :: Encode ErrorResponseEx where encode = defaultEncode
-
--- Either ErrorResponse s
--- derive instance genericAPIResultEx :: Generic (Either ErrorResponse s) _
--- instance decodeAPIResultEx :: Decode s => Decode (Either ErrorResponse s) where decode = defaultDecode
--- instance encodeAPIResultEx :: Encode s => Encode (Either ErrorResponse s) where encode = defaultEncode
-
--- derive instance genericAPIResult :: Generic (APIResult a) _
--- instance decodeAPIResult :: Decode a => Decode (APIResult a) where decode = defaultDecode
--- instance encodeAPIResult :: Encode a => Encode (APIResult a) where encode = defaultEncode
-
--- derive instance functorEither :: Functor APIResultEx
--- derive instance genericAPIResultEx :: Generic (APIResultEx a) _
--- instance decodeAPIResultEx :: Decode a => Decode (APIResultEx a) where decode = defaultDecode
--- instance encodeAPIResultEx :: Encode a => Encode (APIResultEx a) where encode = defaultEncode
-
--- instance aPIResultEq :: Eq s => Eq (Either ErrorResponse s) where
---   eq (Right a) (Right b) = a == b
---   eq (Left ((Response ae))) (Left ((Response be))) =
---     ae.code == be.code
---     && ae.status == be.status
---     && errPayloadEq ae.response be.response
---     where
---       errPayloadEq (ErrorPayload aep) (ErrorPayload bep) =
---         aep.error == bep.error
---         && aep.errorMessage == bep.errorMessage
---         && aep.userMessage == bep.userMessage
---   eq _ _ = false
-
---instance aPIResultEq :: Eq a => Eq (APIResult a) where
---  eq (Right a) (Right b) = a == b
---  eq (Left ((Response ae))) (Left ((Response be))) =
---    ae.code == be.code
---    && ae.status == be.status
---    && errPayloadEq ae.response be.response
---    where
---      errPayloadEq (ErrorPayload aep) (ErrorPayload bep) =
---        aep.error == bep.error
---        && aep.errorMessage == bep.errorMessage
---        && aep.userMessage == bep.userMessage
---  eq _ _ = false
