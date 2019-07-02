@@ -32,16 +32,19 @@ import Data.Either (Either(..))
 import Data.Exists (Exists, mkExists)
 import Data.Foreign (Foreign)
 import Data.Foreign.Class (class Decode, class Encode)
+import Data.Lazy (defer)
 import Data.Maybe (Maybe(..))
 import Data.Options (Options)
 import Data.Time.Duration (Milliseconds, Seconds)
 import Presto.Backend.DB (findOne, findAll, create, createWithOpts, query, update, delete) as DB
 import Presto.Backend.Types (BackendAff)
-import Presto.Backend.APIInteract (ExtendedAPIResultEx, apiInteract)
+import Presto.Backend.Types.API (ErrorResponse, APIResult)
+import Presto.Backend.Types.EitherEx
+import Presto.Backend.APIInteract (apiInteract)
 import Presto.Backend.Playback.Types as Playback
 import Presto.Backend.Playback.Entries as Playback
 import Data.Foreign.Generic (encodeJSON)
-import Presto.Backend.Types.API (class RestEndpoint,APIResult, Headers)
+import Presto.Backend.Types.API (class RestEndpoint, Headers, makeRequest)
 import Presto.Core.Types.Language.Interaction (Interaction)
 import Sequelize.Class (class Model)
 import Sequelize.Types (Conn, Instance)
@@ -51,8 +54,8 @@ data BackendFlowCommands next st rt s =
     | Get (st -> next)
     | Put st (st -> next)
     | Modify (st -> st) (st -> next)
-    | CallAPI (Interaction (ExtendedAPIResultEx s))
-        (Playback.RRItemDict Playback.CallAPIEntry (ExtendedAPIResultEx s))
+    | CallAPI (Interaction (EitherEx ErrorResponse s))
+        (Playback.RRItemDict Playback.CallAPIEntry (EitherEx ErrorResponse s))
         (APIResult s -> next)
     | DoAff (forall eff. BackendAff eff s)
         (Playback.RRItemDict Playback.DoAffEntry s)
@@ -95,6 +98,9 @@ data BackendFlowCommands next st rt s =
     | RunSysCmd String
         (Playback.RRItemDict Playback.RunSysCmdEntry String)
         (String -> next)
+    -- | HandleException
+    -- | Await (Control s) (s -> next)
+    -- | Delay Milliseconds next
 
 type BackendFlowCommandsWrapper st rt s next = BackendFlowCommands next st rt s
 
@@ -198,8 +204,8 @@ callAPI
   => RestEndpoint a b
   => Headers -> a -> BackendFlow st rt (APIResult b)
 callAPI headers a = wrap $ CallAPI
-  (apiInteractEx a headers)
-  (Playback.mkEntryDict Playback.mkCallAPIEntry)
+  (apiInteract a headers)
+  (Playback.mkEntryDict (Playback.mkCallAPIEntry (defer $ \_ -> encodeJSON $ makeRequest a headers) ))
   id
 
 setCacheInMulti :: forall st rt. String -> String -> Multi -> BackendFlow st rt Multi

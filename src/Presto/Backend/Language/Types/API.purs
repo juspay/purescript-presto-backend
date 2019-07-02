@@ -126,6 +126,7 @@ instance decodeRequestG :: Decode Request where
   decode = defaultDecode
   
 derive instance genericErrorPayload :: Generic ErrorPayload _
+derive instance eqErrorPayload :: Eq ErrorPayload
 instance encodeErrorPayload :: Encode ErrorPayload where
   encode = defaultEncode
 instance decodeErrorPayload :: Decode ErrorPayload where
@@ -134,6 +135,7 @@ instance showErrorPayload :: Show ErrorPayload where
   show (ErrorPayload payload) = payload.userMessage
 
 derive instance genericResponse :: Generic (Response a) _
+derive instance eqResponse :: Eq a => Eq (Response a)
 instance decodeResponseG :: Decode a => Decode (Response a) where
   decode = defaultDecode
 instance encodeResponseG :: Encode a => Encode (Response a) where

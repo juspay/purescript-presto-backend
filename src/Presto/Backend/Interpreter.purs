@@ -53,6 +53,7 @@ import Data.Lazy (defer)
 import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), BackendFlowCommandsWrapper, BackendFlowWrapper(..))
 import Presto.Backend.SystemCommands (runSysCmd)
 import Presto.Backend.Types (BackendAff)
+import Presto.Backend.Types.EitherEx
 import Presto.Backend.Runtime.Common (jsonStringify, lift3)
 import Presto.Backend.Runtime.Types (InterpreterMT, InterpreterMT', LogRunner, RunningMode(..), Cache(..), DB(..), Connection(..), BackendRuntime(..))
 import Presto.Backend.Runtime.Types as X
@@ -60,7 +61,6 @@ import Presto.Backend.Playback.Types
 import Presto.Backend.Playback.Machine
 import Presto.Backend.Playback.Machine.Classless
 import Presto.Backend.Playback.Entries
-import Presto.Backend.APIInteract (ExtendedAPIResultEx (..), APIResultEx(..), fromAPIResultEx)
 import Presto.Backend.Language.Runtime.API (runAPIInteraction)
 import Sequelize.Types (Conn)
 import Type.Proxy (Proxy(..))
@@ -169,9 +169,9 @@ interpret brt@(BackendRuntime rt) (GetDBConn dbName next) = do
     Nothing -> interpret brt (ThrowException "No DB found" next)
 
 interpret brt@(BackendRuntime rt) (CallAPI apiAct rrItemDict next) = do
-  ExtendedAPIResultEx resultEx <- withRunModeClassless brt rrItemDict
+  resultEx <- withRunModeClassless brt rrItemDict
     (defer $ \_ -> lift3 $ runAPIInteraction rt.apiRunner apiAct)
-  pure $ next $ fromAPIResultEx resultEx.resultEx
+  pure $ next $ fromEitherEx resultEx
 
 interpret brt@(BackendRuntime rt) (Log tag message next) = do
   next <$> withRunMode brt
@@ -179,11 +179,6 @@ interpret brt@(BackendRuntime rt) (Log tag message next) = do
     (mkLogEntry tag (jsonStringify message))
 
 interpret r (Fork flow next) = forkF r flow >>= (pure <<< next)
-
-interpret brt (RunSysCmd cmd rrItemDict next) = do
-    res <- withRunModeClassless brt rrItemDict
-      (defer $ \_ -> lift3 $ runSysCmd cmd)
-    pure $ next res
 
 interpret _ _ = R.lift S.get >>= (E.throwError <<< Tuple (error "Not implemented yet!") )
 

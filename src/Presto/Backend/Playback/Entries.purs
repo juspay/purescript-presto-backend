@@ -9,13 +9,16 @@ import Data.Foreign.Generic.Class (class GenericDecode, class GenericEncode)
 import Data.Foreign.Class (class Encode, class Decode, encode, decode)
 import Data.Generic.Rep (class Generic)
 import Data.Maybe (Maybe(..), isJust)
+import Data.Newtype (class Newtype)
 import Data.Tuple (Tuple(..))
 import Data.Lazy (Lazy, force, defer)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
 import Presto.Backend.Runtime.Common (jsonStringify)
 import Presto.Backend.Types (BackendAff)
+import Presto.Backend.Types.API (APIResult(..), ErrorPayload, ErrorResponse, Response)
+import Presto.Backend.Types.EitherEx
 import Presto.Backend.Playback.Types
-import Presto.Backend.APIInteract (ExtendedAPIResultEx (..), APIResultEx (..))
+
 
 
 
@@ -26,7 +29,7 @@ data LogEntry = LogEntry
 
 data CallAPIEntry = CallAPIEntry
   { jsonRequest :: String
-  , jsonResult  :: APIResultEx String
+  , jsonResult  :: EitherEx ErrorResponse String --APIResult String
   }
 
 data RunSysCmdEntry = RunSysCmdEntry
@@ -55,12 +58,13 @@ mkCallAPIEntry
   :: forall b
    . Encode b
   => Decode b
-  => ExtendedAPIResultEx b
+  =>  Lazy String -> EitherEx ErrorResponse  b
   -> CallAPIEntry
-mkCallAPIEntry (ExtendedAPIResultEx resultEx) = CallAPIEntry
-  { jsonRequest : force resultEx.mkJsonRequest
-  , jsonResult  : encodeJSON <$> resultEx.resultEx
+mkCallAPIEntry jReq aRes = CallAPIEntry
+  { jsonRequest : force jReq
+  , jsonResult  : encodeJSON <$> aRes
   }
+
 
 derive instance genericLogEntry :: Generic LogEntry _
 derive instance eqLogEntry :: Eq LogEntry
@@ -81,6 +85,7 @@ instance mockedResultLogEntry :: MockedResult LogEntry Unit where
 derive instance genericCallAPIEntry :: Generic CallAPIEntry _
 derive instance eqCallAPIEntry :: Eq CallAPIEntry
 
+
 instance decodeCallAPIEntry :: Decode CallAPIEntry where decode = defaultDecode
 instance encodeCallAPIEntry :: Encode CallAPIEntry where encode = defaultEncode
 
@@ -93,17 +98,14 @@ instance rrItemCallAPIEntry :: RRItem CallAPIEntry where
 
 instance mockedResultCallAPIEntry
   :: Decode b
-  => MockedResult CallAPIEntry (ExtendedAPIResultEx b) where
+  => MockedResult CallAPIEntry (EitherEx (Response ErrorPayload) b) where
     parseRRItem (CallAPIEntry ce) = do
-      eResultEx <- case ce.jsonResult of
-        APILeft  errResp -> Just $ APILeft errResp
-        APIRight strResp -> do
+      eResult <- case ce.jsonResult of
+        LeftEx  errResp -> Just $ LeftEx errResp
+        RightEx strResp -> do
             (resultEx :: b) <- hush $ E.runExcept $ decodeJSON strResp
-            Just $ APIRight resultEx
-      pure $ ExtendedAPIResultEx
-        { mkJsonRequest: defer $ \_ -> ce.jsonRequest
-        , resultEx: eResultEx
-        }
+            Just $ RightEx resultEx
+      pure  eResult
 
 derive instance genericRunSysCmdEntry :: Generic RunSysCmdEntry _
 derive instance eqRunSysCmdEntry :: Eq RunSysCmdEntry
