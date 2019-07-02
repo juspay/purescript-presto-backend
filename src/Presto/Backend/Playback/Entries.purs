@@ -16,7 +16,8 @@ import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
 import Presto.Backend.Runtime.Common (jsonStringify)
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (APIResult(..), ErrorPayload, ErrorResponse, Response)
-import Presto.Backend.Types.EitherEx
+import Presto.Backend.Types.EitherEx (EitherEx(..))
+import Presto.Backend.DB.Types (DBError)
 import Presto.Backend.Playback.Types
 
 
@@ -41,6 +42,12 @@ data DoAffEntry = DoAffEntry
   { jsonResult :: String
   }
 
+data RunDBEntry = RunDBEntry
+  { dbName     :: String
+  , dbMethod   :: String
+  , jsonResult :: EitherEx DBError String
+  }
+
 mkRunSysCmdEntry :: String -> String -> RunSysCmdEntry
 mkRunSysCmdEntry cmd result = RunSysCmdEntry { cmd, result }
 
@@ -58,13 +65,27 @@ mkCallAPIEntry
   :: forall b
    . Encode b
   => Decode b
-  =>  Lazy String -> EitherEx ErrorResponse  b
+  => Lazy String
+  -> EitherEx ErrorResponse  b
   -> CallAPIEntry
 mkCallAPIEntry jReq aRes = CallAPIEntry
   { jsonRequest : force jReq
   , jsonResult  : encodeJSON <$> aRes
   }
 
+mkRunDBEntry
+  :: forall b
+   . Encode b
+  => Decode b
+  => String
+  -> String
+  -> EitherEx DBError b
+  -> RunDBEntry
+mkRunDBEntry dbName dbMethod aRes = RunDBEntry
+  { dbName
+  , dbMethod
+  , jsonResult : encodeJSON <$> aRes
+  }
 
 derive instance genericLogEntry :: Generic LogEntry _
 derive instance eqLogEntry :: Eq LogEntry
@@ -137,3 +158,25 @@ instance rrItemDoAffEntry :: RRItem DoAffEntry where
 
 instance mockedResultDoAffEntry :: Decode b => MockedResult DoAffEntry b where
   parseRRItem (DoAffEntry r) = hush $ E.runExcept $ decodeJSON r.jsonResult
+
+
+
+derive instance genericRunDBEntry :: Generic RunDBEntry _
+derive instance eqRunDBEntry :: Eq RunDBEntry
+instance decodeRunDBEntry :: Decode RunDBEntry where decode = defaultDecode
+instance encodeRunDBEntry :: Encode RunDBEntry where encode = defaultEncode
+instance rrItemRunDBEntry :: RRItem RunDBEntry where
+  toRecordingEntry = RecordingEntry <<< encodeJSON
+  fromRecordingEntry (RecordingEntry re) = hush $ E.runExcept $ decodeJSON re
+  getTag   _ = "RunDBEntry"
+  isMocked _ = true
+
+instance mockedResultRunDBEntry
+  :: Decode b => MockedResult RunDBEntry (EitherEx DBError b) where
+    parseRRItem (RunDBEntry dbe) = do
+      eResult <- case dbe.jsonResult of
+        LeftEx  errResp -> Just $ LeftEx errResp
+        RightEx strResp -> do
+            (resultEx :: b) <- hush $ E.runExcept $ decodeJSON strResp
+            Just $ RightEx resultEx
+      pure eResult

@@ -26,12 +26,14 @@ import Prelude
 import Cache (SimpleConn)
 import Cache.Multi (Multi)
 import Control.Monad.Eff (Eff)
-import Control.Monad.Eff.Exception (Error)
+import Control.Monad.Aff (Aff)
+import Control.Monad.Eff.Exception (Error, error, message)
 import Control.Monad.Free (Free, liftF)
 import Data.Either (Either(..))
 import Data.Exists (Exists, mkExists)
 import Data.Foreign (Foreign)
 import Data.Foreign.Class (class Decode, class Encode)
+import Data.Foreign.Generic (encodeJSON)
 import Data.Lazy (defer)
 import Data.Maybe (Maybe(..))
 import Data.Options (Options)
@@ -39,31 +41,40 @@ import Data.Time.Duration (Milliseconds, Seconds)
 import Presto.Backend.DB (findOne, findAll, create, createWithOpts, query, update, delete) as DB
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (ErrorResponse, APIResult)
-import Presto.Backend.Types.EitherEx
 import Presto.Backend.APIInteract (apiInteract)
+import Presto.Backend.Types.EitherEx (EitherEx(..), fromCustomExError, toCustomExError)
 import Presto.Backend.Playback.Types as Playback
 import Presto.Backend.Playback.Entries as Playback
-import Data.Foreign.Generic (encodeJSON)
 import Presto.Backend.Types.API (class RestEndpoint, Headers, makeRequest)
+import Presto.Backend.DB.Types (DBError)
 import Presto.Core.Types.Language.Interaction (Interaction)
 import Sequelize.Class (class Model)
-import Sequelize.Types (Conn, Instance)
+import Sequelize.Types (Conn, Instance, SEQUELIZE)
 
 data BackendFlowCommands next st rt s =
       Ask (rt -> next)
     | Get (st -> next)
     | Put st (st -> next)
     | Modify (st -> st) (st -> next)
+
     | CallAPI (Interaction (EitherEx ErrorResponse s))
         (Playback.RRItemDict Playback.CallAPIEntry (EitherEx ErrorResponse s))
         (APIResult s -> next)
+
     | DoAff (forall eff. BackendAff eff s)
         (Playback.RRItemDict Playback.DoAffEntry s)
         (s -> next)
+
     | ThrowException String (s -> next)
+
+    | RunDB (forall eff. Aff (sequelize :: SEQUELIZE | eff) (EitherEx DBError s))
+        (Playback.RRItemDict Playback.RunDBEntry (EitherEx DBError s))
+        (EitherEx DBError s -> next)
+
     | GetDBConn String (Conn -> next)
     | GetCacheConn String (SimpleConn -> next)
     | Log String s (Unit -> next)
+
     | SetCache SimpleConn String String (Either Error Unit -> next)
     | SetCacheWithExpiry SimpleConn String String Milliseconds (Either Error Unit -> next)
     | GetCache SimpleConn String (Either Error (Maybe String) -> next)
@@ -98,9 +109,7 @@ data BackendFlowCommands next st rt s =
     | RunSysCmd String
         (Playback.RRItemDict Playback.RunSysCmdEntry String)
         (String -> next)
-    -- | HandleException
-    -- | Await (Control s) (s -> next)
-    -- | Delay Milliseconds next
+
 
 type BackendFlowCommandsWrapper st rt s next = BackendFlowCommands next st rt s
 
@@ -138,17 +147,36 @@ doAff aff = wrap $ DoAff aff (Playback.mkEntryDict Playback.mkDoAffEntry) id
 -- instead of being abstracted.
 -- For more details, see:
 --  https://docs.google.com/document/d/1c9HggT8Y5D_A_YohILbjxiz15PikBXCKGMWa0JlqdpI/edit
--- findOne :: forall model st rt. Model model => String -> Options model -> BackendFlow st rt (Either Error (Maybe model))
--- findOne dbName options = do
---   conn <- getDBConn dbName
---   model <- doAff $ DB.findOne conn options
---   wrap $ FindOne model id
---
--- findAll :: forall model st rt. Model model => String -> Options model -> BackendFlow st rt (Either Error (Array model))
+
+-- TODO: TASK: record options, record model
+findOne
+  :: forall model st rt
+   . Model model
+  => String
+  -> Options model
+  -> BackendFlow st rt (Either Error (Maybe model))
+findOne dbName options = do
+  conn <- getDBConn dbName
+  eResEx <- wrap $ RunDB
+    (toCustomExError <$> DB.findOne conn options)
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "findOne")
+    id
+  pure $ fromCustomExError eResEx
+-- 
+-- -- TODO: TASK: record options, record model
+-- findAll
+--   :: forall model st rt
+--    . Model model
+--   => String
+--   -> Options model
+--   -> BackendFlow st rt (Either Error (Array model))
 -- findAll dbName options = do
 --   conn <- getDBConn dbName
---   model <- doAff $ DB.findAll conn options
---   wrap $ FindAll model id
+--   eResEx <- wrap $ RunDB
+--     (toCustomExError <$> DB.findAll conn options)
+--     (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "findAll")
+--     id
+--   pure $ fromCustomExError eResEx
 
 -- TODO: rework these methods. DB interaction is designed wrongly.
 -- query

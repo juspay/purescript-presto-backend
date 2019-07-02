@@ -19,7 +19,7 @@
  along with this program. If not, see <https://www.gnu.org/licenses/agpl.html>.
 -}
 
-module Presto.Backend.DB 
+module Presto.Backend.DB
   (
     useMasterClause,
     _getModelByName,
@@ -56,6 +56,7 @@ import Sequelize.Class (class Model, modelName)
 import Sequelize.Instance (instanceToModelE)
 import Sequelize.Types (Conn, Instance, ModelOf, SEQUELIZE)
 import Type.Proxy (Proxy(..))
+import Presto.Backend.DB.Types (DBError (..))
 
 foreign import _getModelByName :: forall a e. Fn2 Conn String (Eff (sequelize :: SEQUELIZE | e) (ModelOf a))
 
@@ -72,7 +73,7 @@ getModelByName conn = do
 findOne :: forall a e. Model a => Conn -> Options a -> Aff (sequelize :: SEQUELIZE | e) (Either Error (Maybe a))
 findOne conn options = do
     model <- getModelByName conn :: (Aff (sequelize :: SEQUELIZE | e) (Either Error (ModelOf a)))
-    case model of 
+    case model of
         Right m -> do
             val <- attempt $ findOne' m options
             case val of
@@ -174,4 +175,4 @@ delete conn whereClause = do
       case val of
         Right { affectedCount : count } -> pure <<< Right $ count
         Left err ->pure $ Left $ error $ show err
-    Left err -> pure $ Left $ error $ show err  
+    Left err -> pure $ Left $ error $ show err

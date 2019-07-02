@@ -1,7 +1,10 @@
 module Presto.Backend.Types.EitherEx
   ( EitherEx (..)
+  , class CustomExError
   , fromEitherEx
   , toEitherEx
+  , fromCustomExError
+  , toCustomExError
   ) where
 
 import Prelude
@@ -12,11 +15,13 @@ import Data.Foreign.Class (class Decode, class Encode, decode, encode)
 import Data.Generic.Rep (class Generic)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
 
-
-
 data EitherEx l r
   = LeftEx l
   | RightEx r
+
+class CustomExError err1 err2 a where
+  fromCustomExError :: EitherEx err2 a -> Either   err1 a
+  toCustomExError   :: Either   err1 a -> EitherEx err2 a
 
 fromEitherEx :: forall l r. EitherEx l r -> Either l r
 fromEitherEx (LeftEx l)   = Left l
