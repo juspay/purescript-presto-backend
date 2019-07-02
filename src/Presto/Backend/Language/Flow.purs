@@ -61,7 +61,9 @@ data BackendFlowCommands next st rt s =
         (Playback.RRItemDict Playback.CallAPIEntry (EitherEx ErrorResponse s))
         (APIResult s -> next)
 
-    | DoAff (forall eff. BackendAff eff s)
+    | DoAff (forall eff. BackendAff eff s) (s -> next)
+
+    | DoAffRR (forall eff. BackendAff eff s)
         (Playback.RRItemDict Playback.DoAffEntry s)
         (s -> next)
 
@@ -135,13 +137,16 @@ modify fst = wrap $ Modify fst id
 throwException :: forall st rt a. String -> BackendFlow st rt a
 throwException errorMessage = wrap $ ThrowException errorMessage id
 
-doAff
+doAff :: forall st rt a. (forall eff. BackendAff eff a) -> BackendFlow st rt a
+doAff aff = wrap $ DoAff aff id
+
+doAffRR
   :: forall st rt a
    . Encode a
   => Decode a
   => (forall eff. BackendAff eff a)
   -> BackendFlow st rt a
-doAff aff = wrap $ DoAff aff (Playback.mkEntryDict Playback.mkDoAffEntry) id
+doAffRR aff = wrap $ DoAffRR aff (Playback.mkEntryDict Playback.mkDoAffEntry) id
 
 -- TODO: TASK: add options, model and other input params to recording so it they be compared.
 -- TODO: Think what to do with getDBCon.

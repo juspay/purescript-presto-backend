@@ -84,7 +84,9 @@ interpret _ (Modify d next) = R.lift (S.modify d) *> S.get >>= (pure <<< next)
 
 interpret _ (ThrowException errorMessage next) = R.lift S.get >>= (R.lift <<< S.lift <<< E.ExceptT <<<  pure <<< Left <<< Tuple (error errorMessage)) >>= pure <<< next
 
-interpret brt@(BackendRuntime rt) (DoAff aff rrItemDict next) = do
+interpret _ (DoAff aff nextF) = (R.lift $ S.lift $ E.lift aff) >>= (pure <<< nextF)
+
+interpret brt@(BackendRuntime rt) (DoAffRR aff rrItemDict next) = do
   res <- withRunModeClassless brt rrItemDict
     (defer $ \_ -> lift3 $ rt.affRunner aff)
   pure $ next res
