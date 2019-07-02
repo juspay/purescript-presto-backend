@@ -53,6 +53,7 @@ import Data.Lazy (defer)
 import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), BackendFlowCommandsWrapper, BackendFlowWrapper(..))
 import Presto.Backend.SystemCommands (runSysCmd)
 import Presto.Backend.Types (BackendAff)
+import Presto.Backend.Types.EitherEx
 import Presto.Backend.Runtime.Common (jsonStringify, lift3)
 import Presto.Backend.Runtime.Types (InterpreterMT, InterpreterMT', LogRunner, RunningMode(..), Cache(..), DB(..), Connection(..), BackendRuntime(..))
 import Presto.Backend.Runtime.Types as X
@@ -60,7 +61,6 @@ import Presto.Backend.Playback.Types
 import Presto.Backend.Playback.Machine
 import Presto.Backend.Playback.Machine.Classless
 import Presto.Backend.Playback.Entries
-import Presto.Backend.APIInteract (ExtendedAPIResultEx (..), APIResultEx(..), fromAPIResultEx)
 import Presto.Backend.Language.Runtime.API (runAPIInteraction)
 import Sequelize.Types (Conn)
 import Type.Proxy (Proxy(..))
@@ -84,7 +84,15 @@ interpret _ (Modify d next) = R.lift (S.modify d) *> S.get >>= (pure <<< next)
 
 interpret _ (ThrowException errorMessage next) = R.lift S.get >>= (R.lift <<< S.lift <<< E.ExceptT <<<  pure <<< Left <<< Tuple (error errorMessage)) >>= pure <<< next
 
-interpret _ (DoAff aff nextF) = (R.lift $ S.lift $ E.lift aff) >>= (pure <<< nextF)
+interpret brt@(BackendRuntime rt) (DoAff aff rrItemDict next) = do
+  res <- withRunModeClassless brt rrItemDict
+    (defer $ \_ -> lift3 $ rt.affRunner aff)
+  pure $ next res
+
+interpret brt (RunSysCmd cmd rrItemDict next) = do
+    res <- withRunModeClassless brt rrItemDict
+      (defer $ \_ -> lift3 $ runSysCmd cmd)
+    pure $ next res
 
 interpret _ (SetCache cacheConn key value next) = (R.lift $ S.lift $ E.lift $ void <$> set cacheConn key value Nothing NoOptions) >>= (pure <<< next)
 
@@ -153,18 +161,6 @@ interpret brt@(BackendRuntime rt) (GetCacheConn cacheName next) = do
     Just _  -> interpret brt (ThrowException "No DB found" next)
     Nothing -> interpret brt (ThrowException "No DB found" next)
 
-interpret _ (FindOne model next) = (pure <<< next) model
-
-interpret _ (FindAll models next) = (pure <<< next) models
-
-interpret _ (Query models next) = (pure <<< next) models
-
-interpret _ (Create model next) = (pure <<< next) model
-
-interpret _ (Update model next) = (pure <<< next) model
-
-interpret _ (Delete model next) = (pure <<< next) model
-
 interpret brt@(BackendRuntime rt) (GetDBConn dbName next) = do
   let maybedb = lookup dbName rt.connections
   case maybedb of
@@ -173,14 +169,9 @@ interpret brt@(BackendRuntime rt) (GetDBConn dbName next) = do
     Nothing -> interpret brt (ThrowException "No DB found" next)
 
 interpret brt@(BackendRuntime rt) (CallAPI apiAct rrItemDict next) = do
-  ExtendedAPIResultEx resultEx <- withRunModeClassless brt rrItemDict
+  resultEx <- withRunModeClassless brt rrItemDict
     (defer $ \_ -> lift3 $ runAPIInteraction rt.apiRunner apiAct)
-  pure $ next $ fromAPIResultEx resultEx.resultEx
-
-interpret brt (RunSysCmd cmd rrItemDict next) = do
-    res <- withRunModeClassless brt rrItemDict
-      (defer $ \_ -> lift3 $ runSysCmd cmd)
-    pure $ next res
+  pure $ next $ fromEitherEx resultEx
 
 interpret brt@(BackendRuntime rt) (Log tag message next) = do
   next <$> withRunMode brt

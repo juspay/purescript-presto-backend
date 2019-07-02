@@ -29,11 +29,11 @@ import Debug.Trace (spy)
 import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual, fail)
 
-import Presto.Backend.Flow (BackendFlow, log, callAPI, runSysCmd)
+import Presto.Backend.Flow (BackendFlow, log, callAPI, runSysCmd, doAff)
 import Presto.Backend.Interpreter (BackendRuntime(..), Connection(..), RunningMode(..), runBackend)
-import Presto.Backend.APIInteract (ErrorResponseEx (..))
 import Presto.Backend.Playback.Types (RecordingEntry(..), PlaybackError(..), PlaybackErrorType(..))
-import Presto.Backend.Types.API (class RestEndpoint, APIResult, Request(..), Headers(..), ErrorResponse, Response(..), ErrorPayload(..), Method(..), defaultDecodeResponse)
+import Presto.Backend.Types.API (class RestEndpoint, APIResult, Request(..), Headers(..), Response(..), ErrorPayload(..), Method(..), defaultDecodeResponse)
+import Presto.Backend.Types.EitherEx
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
 
 data SomeRequest = SomeRequest
@@ -77,11 +77,15 @@ failingLogRunner tag value = throwError $ error "Logger should not be called."
 failingApiRunner :: forall e. Request -> Aff e String
 failingApiRunner _ = throwError $ error "API Runner should not be called."
 
+-- TODO: lazy?
+failingAffRunner :: forall a. Aff _ a -> Aff _ a
+failingAffRunner _ = throwError $ error "Aff Runner should not be called."
+
 apiRunner :: forall e. Request -> Aff e String
 apiRunner r@(Request req)
   | req.url == "1" = pure $ encodeJSON $ SomeResponse { code: 1, string: "Hello there!" }
 apiRunner r
-  | true = pure $ encodeJSON $ ErrorResponseEx $ Response
+  | true = pure $ encodeJSON $  Response
     { code: 400
     , status: "Unknown request: " <> encodeJSON r
     , response: ErrorPayload
@@ -90,6 +94,10 @@ apiRunner r
         , userMessage: "Unknown request"
         }
     }
+
+-- TODO: lazy?
+affRunner :: forall a. Aff _ a -> Aff _ a
+affRunner aff = aff
 
 emptyHeaders :: Headers
 emptyHeaders = Headers []
@@ -113,12 +121,16 @@ logAndCallAPIScript = do
 runSysCmdScript :: BackendFlow Unit Unit String
 runSysCmdScript = runSysCmd "echo 'ABC'"
 
+doAffScript :: BackendFlow Unit Unit String
+doAffScript = doAff (pure "This is result.")
+
 runTests :: Spec _ Unit
 runTests = do
   let backendRuntime mode = BackendRuntime
         { apiRunner   : apiRunner
         , connections : StrMap.empty
         , logRunner   : logRunner
+        , affRunner   : affRunner
         , mode        : mode
         }
   let backendRuntimeRegular = backendRuntime RegularMode
@@ -150,12 +162,12 @@ runTests = do
           length recording.entries `shouldEqual` 4
           index recording.entries 0 `shouldEqual` (Just $ RecordingEntry "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}")
           index recording.entries 1 `shouldEqual` (Just $ RecordingEntry "{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}")
-          index recording.entries 2 `shouldEqual` (Just $ RecordingEntry "{\"jsonResult\":{\"contents\":\"{\\\"string\\\":\\\"Hello there!\\\",\\\"code\\\":1}\",\"tag\":\"APIRight\"},\"jsonRequest\":\"{\\\"url\\\":\\\"1\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":1,\\\\\\\"code\\\\\\\":1}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\"}"
+          index recording.entries 2 `shouldEqual` (Just $ RecordingEntry "{\"jsonResult\":{\"contents\":\"{\\\"string\\\":\\\"Hello there!\\\",\\\"code\\\":1}\",\"tag\":\"RightEx\"},\"jsonRequest\":\"{\\\"url\\\":\\\"1\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":1,\\\\\\\"code\\\\\\\":1}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\"}"
             )
-          index recording.entries 3 `shouldEqual` (Just $ RecordingEntry "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"APILeft\"},\"jsonRequest\":\"{\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\"}"
+          index recording.entries 3 `shouldEqual` (Just $ RecordingEntry "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":\"{\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\"}"
             )
 
-    it "Record / replay test: success" $ do
+    it "Record / replay test: log and callAPI success" $ do
       recordingRef <- liftEff $ newRef { entries : [] }
       let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording logAndCallAPIScript) unit) unit)
@@ -168,6 +180,7 @@ runTests = do
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
             , logRunner   : failingLogRunner
+            , affRunner   : failingAffRunner
             , mode        : ReplayingMode
               { recording
               , stepRef
@@ -192,6 +205,7 @@ runTests = do
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
             , logRunner   : failingLogRunner
+            , affRunner   : failingAffRunner
             , mode        : ReplayingMode
               { recording
               , stepRef
@@ -221,6 +235,7 @@ runTests = do
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
             , logRunner   : failingLogRunner
+            , affRunner   : failingAffRunner
             , mode        : ReplayingMode
               { recording
               , stepRef
@@ -234,7 +249,7 @@ runTests = do
       pbError `shouldEqual` (Just $ PlaybackError { errorMessage: "Expected: LogEntry", errorType: UnknownRRItem })
       curStep `shouldEqual` 3
 
-    it "Record / replay test: success" $ do
+    it "Record / replay test: runSysCmd success" $ do
       recordingRef <- liftEff $ newRef { entries : [] }
       let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording runSysCmdScript) unit) unit)
@@ -249,6 +264,7 @@ runTests = do
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
             , logRunner   : failingLogRunner
+            , affRunner   : failingAffRunner
             , mode        : ReplayingMode
               { recording
               , stepRef
@@ -259,5 +275,34 @@ runTests = do
       curStep  <- liftEff $ readRef stepRef
       case eResult2 of
         Right (Tuple n unit) -> n `shouldEqual` "ABC\n"
+        Left err -> fail $ show err
+      curStep `shouldEqual` 1
+
+    it "Record / replay test: doAff success" $ do
+      recordingRef <- liftEff $ newRef { entries : [] }
+      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording doAffScript) unit) unit)
+      case eResult of
+        Right (Tuple n unit) -> n `shouldEqual` "This is result."
+        _ -> fail $ show eResult
+
+      stepRef   <- liftEff $ newRef 0
+      errorRef  <- liftEff $ newRef Nothing
+      recording <- liftEff $ readRef recordingRef
+      let replayingBackendRuntime = BackendRuntime
+            { apiRunner   : failingApiRunner
+            , connections : StrMap.empty
+            , logRunner   : failingLogRunner
+            , affRunner   : failingAffRunner
+            , mode        : ReplayingMode
+              { recording
+              , stepRef
+              , errorRef
+              }
+            }
+      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime doAffScript) unit) unit)
+      curStep  <- liftEff $ readRef stepRef
+      case eResult2 of
+        Right (Tuple n unit) -> n `shouldEqual` "This is result."
         Left err -> fail $ show err
       curStep `shouldEqual` 1
