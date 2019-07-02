@@ -143,18 +143,13 @@ doAff
   -> BackendFlow st rt a
 doAff aff = wrap $ DoAff aff (Playback.mkEntryDict Playback.mkDoAffEntry) id
 
--- TODO: FIXME: these functions should not be used because they work with doAff
--- instead of being abstracted.
--- For more details, see:
---  https://docs.google.com/document/d/1c9HggT8Y5D_A_YohILbjxiz15PikBXCKGMWa0JlqdpI/edit
+-- TODO: TASK: add options, model and other input params to recording so it they be compared.
+-- TODO: Think what to do with getDBCon.
 
--- TODO: TASK: record options, record model
 findOne
   :: forall model st rt
    . Model model
-  => String
-  -> Options model
-  -> BackendFlow st rt (Either Error (Maybe model))
+  => String -> Options model -> BackendFlow st rt (Either Error (Maybe model))
 findOne dbName options = do
   conn <- getDBConn dbName
   eResEx <- wrap $ RunDB
@@ -162,56 +157,67 @@ findOne dbName options = do
     (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "findOne")
     id
   pure $ fromCustomExError eResEx
--- 
--- -- TODO: TASK: record options, record model
--- findAll
---   :: forall model st rt
---    . Model model
---   => String
---   -> Options model
---   -> BackendFlow st rt (Either Error (Array model))
--- findAll dbName options = do
---   conn <- getDBConn dbName
---   eResEx <- wrap $ RunDB
---     (toCustomExError <$> DB.findAll conn options)
---     (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "findAll")
---     id
---   pure $ fromCustomExError eResEx
 
--- TODO: rework these methods. DB interaction is designed wrongly.
--- query
---   :: forall a st rt
---    . Encode a
---   => Decode a
---   => String -> String -> BackendFlow st rt (Either Error (Array a))
--- query dbName rawq = do
---   conn <- getDBConn dbName
---   doAff $ DB.query conn rawq
---
--- create :: forall model st rt. Model model => String -> model -> BackendFlow st rt (Either Error (Maybe model))
--- create dbName model = do
---   conn <- getDBConn dbName
---   doAff $ DB.create conn model
+findAll
+  :: forall model st rt
+   . Model model
+  => String -> Options model -> BackendFlow st rt (Either Error (Array model))
+findAll dbName options = do
+  conn <- getDBConn dbName
+  eResEx <- wrap $ RunDB
+    (toCustomExError <$> DB.findAll conn options)
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "findAll")
+    id
+  pure $ fromCustomExError eResEx
 
--- createWithOpts :: forall model st rt. Model model => String -> model -> Options model -> BackendFlow st rt (Either Error (Maybe model))
--- createWithOpts dbName model options = do
---   conn <- getDBConn dbName
---   doAff $ DB.createWithOpts conn model options
+query
+  :: forall a st rt
+   . Encode a
+  => Decode a
+  => String -> String -> BackendFlow st rt (Either Error (Array a))
+query dbName rawq = do
+  conn <- getDBConn dbName
+  eResEx <- wrap $ RunDB
+    (toCustomExError <$> DB.query conn rawq)
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "query")
+    id
+  pure $ fromCustomExError eResEx
 
--- findOrCreate :: forall model st rt. Model model => String -> Options model -> BackendFlow st rt (Either Error (Maybe model))
--- findOrCreate dbName options = do
---   conn <- getDBConn dbName
---   wrap $ FindOrCreate (Right Nothing) id
+create :: forall model st rt. Model model => String -> model -> BackendFlow st rt (Either Error (Maybe model))
+create dbName model = do
+  conn <- getDBConn dbName
+  eResEx <- wrap $ RunDB
+    (toCustomExError <$> DB.create conn model)
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "create")
+    id
+  pure $ fromCustomExError eResEx
 
--- update :: forall model st rt. Model model => String -> Options model -> Options model -> BackendFlow st rt (Either Error (Array model))
--- update dbName updateValues whereClause = do
---   conn <- getDBConn dbName
---   doAff $ DB.update conn updateValues whereClause
---
--- delete :: forall model st rt. Model model => String -> Options model -> BackendFlow st rt (Either Error Int)
--- delete dbName options = do
---   conn <- getDBConn dbName
---   doAff $ DB.delete conn options
+createWithOpts :: forall model st rt. Model model => String -> model -> Options model -> BackendFlow st rt (Either Error (Maybe model))
+createWithOpts dbName model options = do
+  conn <- getDBConn dbName
+  eResEx <- wrap $ RunDB
+    (toCustomExError <$> DB.createWithOpts conn model options)
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "createWithOpts")
+    id
+  pure $ fromCustomExError eResEx
+
+update :: forall model st rt. Model model => String -> Options model -> Options model -> BackendFlow st rt (Either Error (Array model))
+update dbName updateValues whereClause = do
+  conn <- getDBConn dbName
+  eResEx <- wrap $ RunDB
+    (toCustomExError <$> DB.update conn updateValues whereClause)
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "update")
+    id
+  pure $ fromCustomExError eResEx
+
+delete :: forall model st rt. Model model => String -> Options model -> BackendFlow st rt (Either Error Int)
+delete dbName options = do
+  conn <- getDBConn dbName
+  eResEx <- wrap $ RunDB
+    (toCustomExError <$> DB.delete conn options)
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "delete")
+    id
+  pure $ fromCustomExError eResEx
 
 getDBConn :: forall st rt. String -> BackendFlow st rt Conn
 getDBConn dbName = wrap $ GetDBConn dbName id

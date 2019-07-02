@@ -178,6 +178,11 @@ interpret brt@(BackendRuntime rt) (Log tag message next) = do
     (defer $ \_ -> lift3 (rt.logRunner tag message))
     (mkLogEntry tag (jsonStringify message))
 
+interpret brt@(BackendRuntime rt) (RunDB dbAff rrItemDict next) = do
+  result <- withRunModeClassless brt rrItemDict
+    (defer $ \_ -> lift3 $ rt.affRunner dbAff)
+  pure $ next result
+
 interpret r (Fork flow next) = forkF r flow >>= (pure <<< next)
 
 interpret _ _ = R.lift S.get >>= (E.throwError <<< Tuple (error "Not implemented yet!") )
