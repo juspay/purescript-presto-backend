@@ -42,14 +42,19 @@ import Presto.Backend.DB (findOne, findAll, create, createWithOpts, query, updat
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (ErrorResponse, APIResult)
 import Presto.Backend.APIInteract (apiInteract)
-import Presto.Backend.Types.EitherEx (EitherEx(..), fromCustomExError, toCustomExError)
+import Presto.Backend.Types.EitherEx (EitherEx(..), fromCustomEitherEx, toCustomEitherEx)
 import Presto.Backend.Playback.Types as Playback
 import Presto.Backend.Playback.Entries as Playback
 import Presto.Backend.Types.API (class RestEndpoint, Headers, makeRequest)
-import Presto.Backend.DB.Types (DBError)
+import Presto.Backend.DB.Types (DBError(..), toDBMaybeResult, fromDBMaybeResult)
 import Presto.Core.Types.Language.Interaction (Interaction)
 import Sequelize.Class (class Model)
 import Sequelize.Types (Conn, Instance, SEQUELIZE)
+
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
+import Control.Monad.Except (runExcept) as E
+import Data.Either (Either(..), note, hush, isLeft)
+import Data.Foreign.Class (class Encode, class Decode, encode, decode)
 
 data BackendFlowCommands next st rt s =
       Ask (rt -> next)
@@ -85,7 +90,9 @@ data BackendFlowCommands next st rt s =
     | Enqueue SimpleConn String String (Either Error Unit -> next)
     | Dequeue SimpleConn String (Either Error (Maybe String) -> next)
     | GetQueueIdx SimpleConn String Int (Either Error (Maybe String) -> next)
+
     | Fork (BackendFlow st rt s) (Unit -> next)
+
     | Expire SimpleConn String Seconds (Either Error Boolean -> next)
     | Incr SimpleConn String (Either Error Int -> next)
     | SetHash SimpleConn String String String (Either Error Boolean -> next)
@@ -158,10 +165,10 @@ findOne
 findOne dbName options = do
   conn <- getDBConn dbName
   eResEx <- wrap $ RunDB
-    (toCustomExError <$> DB.findOne conn options)
+    (toDBMaybeResult <$> DB.findOne conn options)
     (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "findOne")
     id
-  pure $ fromCustomExError eResEx
+  pure $ fromDBMaybeResult eResEx
 
 findAll
   :: forall model st rt
@@ -170,10 +177,10 @@ findAll
 findAll dbName options = do
   conn <- getDBConn dbName
   eResEx <- wrap $ RunDB
-    (toCustomExError <$> DB.findAll conn options)
+    (toCustomEitherEx <$> DB.findAll conn options)
     (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "findAll")
     id
-  pure $ fromCustomExError eResEx
+  pure $ fromCustomEitherEx eResEx
 
 query
   :: forall a st rt
@@ -183,46 +190,46 @@ query
 query dbName rawq = do
   conn <- getDBConn dbName
   eResEx <- wrap $ RunDB
-    (toCustomExError <$> DB.query conn rawq)
+    (toCustomEitherEx <$> DB.query conn rawq)
     (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "query")
     id
-  pure $ fromCustomExError eResEx
+  pure $ fromCustomEitherEx eResEx
 
 create :: forall model st rt. Model model => String -> model -> BackendFlow st rt (Either Error (Maybe model))
 create dbName model = do
   conn <- getDBConn dbName
   eResEx <- wrap $ RunDB
-    (toCustomExError <$> DB.create conn model)
+    (toDBMaybeResult <$> DB.create conn model)
     (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "create")
     id
-  pure $ fromCustomExError eResEx
+  pure $ fromDBMaybeResult eResEx
 
 createWithOpts :: forall model st rt. Model model => String -> model -> Options model -> BackendFlow st rt (Either Error (Maybe model))
 createWithOpts dbName model options = do
   conn <- getDBConn dbName
   eResEx <- wrap $ RunDB
-    (toCustomExError <$> DB.createWithOpts conn model options)
+    (toDBMaybeResult <$> DB.createWithOpts conn model options)
     (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "createWithOpts")
     id
-  pure $ fromCustomExError eResEx
+  pure $ fromDBMaybeResult eResEx
 
 update :: forall model st rt. Model model => String -> Options model -> Options model -> BackendFlow st rt (Either Error (Array model))
 update dbName updateValues whereClause = do
   conn <- getDBConn dbName
   eResEx <- wrap $ RunDB
-    (toCustomExError <$> DB.update conn updateValues whereClause)
+    (toCustomEitherEx <$> DB.update conn updateValues whereClause)
     (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "update")
     id
-  pure $ fromCustomExError eResEx
+  pure $ fromCustomEitherEx eResEx
 
 delete :: forall model st rt. Model model => String -> Options model -> BackendFlow st rt (Either Error Int)
 delete dbName options = do
   conn <- getDBConn dbName
   eResEx <- wrap $ RunDB
-    (toCustomExError <$> DB.delete conn options)
+    (toCustomEitherEx <$> DB.delete conn options)
     (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "delete")
     id
-  pure $ fromCustomExError eResEx
+  pure $ fromCustomEitherEx eResEx
 
 getDBConn :: forall st rt. String -> BackendFlow st rt Conn
 getDBConn dbName = wrap $ GetDBConn dbName id

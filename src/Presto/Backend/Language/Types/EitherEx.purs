@@ -1,15 +1,16 @@
 module Presto.Backend.Types.EitherEx
   ( EitherEx (..)
-  , class CustomExError
+  , class CustomEitherEx
   , fromEitherEx
   , toEitherEx
-  , fromCustomExError
-  , toCustomExError
+  , eitherEx
+  , fromCustomEitherEx
+  , toCustomEitherEx
   ) where
 
 import Prelude
 
-import Data.Either (Either(..))
+import Data.Either (Either(..), either)
 import Data.Eq (class Eq, eq)
 import Data.Foreign.Class (class Decode, class Encode, decode, encode)
 import Data.Generic.Rep (class Generic)
@@ -19,17 +20,19 @@ data EitherEx l r
   = LeftEx l
   | RightEx r
 
-class CustomExError err1 err2 a where
-  fromCustomExError :: EitherEx err2 a -> Either   err1 a
-  toCustomExError   :: Either   err1 a -> EitherEx err2 a
+eitherEx :: forall l r c. (l -> c) -> (r -> c) -> EitherEx l r -> c
+eitherEx lf rf (LeftEx l)  = lf l
+eitherEx lf rf (RightEx r) = rf r
+
+class CustomEitherEx err1 err2 a where
+  fromCustomEitherEx :: EitherEx err2 a -> Either   err1 a
+  toCustomEitherEx   :: Either   err1 a -> EitherEx err2 a
 
 fromEitherEx :: forall l r. EitherEx l r -> Either l r
-fromEitherEx (LeftEx l)   = Left l
-fromEitherEx (RightEx r)  = Right r
+fromEitherEx = eitherEx Left Right
 
 toEitherEx :: forall l r. Either l r -> EitherEx l r
-toEitherEx (Left l)   = LeftEx l
-toEitherEx (Right r)  = RightEx r
+toEitherEx = either LeftEx RightEx
 
 
 derive instance genericEitherEx :: Generic (EitherEx l r) _
