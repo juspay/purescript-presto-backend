@@ -62,7 +62,8 @@ import Presto.Backend.Playback.Machine
 import Presto.Backend.Playback.Machine.Classless
 import Presto.Backend.Playback.Entries
 import Presto.Backend.Language.Runtime.API (runAPIInteraction)
-import Sequelize.Types (Conn)
+import Presto.Backend.Language.Types.DB (SqlConn(..), MockedSqlConn(..), SequelizeConn(..))
+import Presto.Backend.Runtime.Types (Connection(..))
 import Type.Proxy (Proxy(..))
 
 forkF :: forall eff rt st a. BackendRuntime -> BackendFlow st rt a -> InterpreterMT rt st (Tuple Error st) eff Unit
@@ -72,8 +73,21 @@ forkF runtime flow = do
   let m = E.runExceptT ( S.runStateT ( R.runReaderT ( runBackend runtime flow ) rt) st)
   R.lift $ S.lift $ E.lift $ forkAff m *> pure unit
 
+throwException' :: forall st rt s eff a. String -> InterpreterMT' rt st eff a
+throwException' errorMessage = do
+  st <- R.lift S.get
+  R.lift $ S.lift $ E.ExceptT $ pure $ Left $ Tuple (error errorMessage) st
 
-interpret :: forall st rt s eff a.  BackendRuntime -> BackendFlowCommandsWrapper st rt s a -> InterpreterMT' rt st eff a
+getDBConn' :: forall st rt eff. BackendRuntime -> String -> InterpreterMT' rt st eff SqlConn
+getDBConn' brt@(BackendRuntime rt) dbName = do
+  let mbConn = lookup dbName rt.connections
+  case mbConn of
+    Just (SqlConn sqlConn) -> pure sqlConn
+    Just _  -> throwException' "No DB found"
+    Nothing -> throwException' "No DB found"
+
+
+interpret :: forall st rt s eff a. BackendRuntime -> BackendFlowCommandsWrapper st rt s a -> InterpreterMT' rt st eff a
 interpret _ (Ask next) = R.ask >>= (pure <<< next)
 
 interpret _ (Get next) = R.lift (S.get) >>= (pure <<< next)
@@ -82,7 +96,7 @@ interpret _ (Put d next) = R.lift (S.put d) *> (pure <<< next) d
 
 interpret _ (Modify d next) = R.lift (S.modify d) *> S.get >>= (pure <<< next)
 
-interpret _ (ThrowException errorMessage next) = R.lift S.get >>= (R.lift <<< S.lift <<< E.ExceptT <<<  pure <<< Left <<< Tuple (error errorMessage)) >>= pure <<< next
+interpret _ (ThrowException errorMessage) = throwException' errorMessage
 
 interpret _ (DoAff aff nextF) = (R.lift $ S.lift $ E.lift aff) >>= (pure <<< nextF)
 
@@ -159,16 +173,12 @@ interpret _ (Exec multi next) = (R.lift <<< S.lift <<< E.lift <<< execMulti $ mu
 interpret brt@(BackendRuntime rt) (GetCacheConn cacheName next) = do
   let maybeCache = lookup cacheName rt.connections
   case maybeCache of
-    Just (Redis cache) -> (pure <<< next) cache
-    Just _  -> interpret brt (ThrowException "No DB found" next)
-    Nothing -> interpret brt (ThrowException "No DB found" next)
+    Just (Redis simpleConn) -> (pure <<< next) simpleConn
+    Just _  -> throwException' "No DB found"
+    Nothing -> throwException' "No DB found"
 
-interpret brt@(BackendRuntime rt) (GetDBConn dbName next) = do
-  let maybedb = lookup dbName rt.connections
-  case maybedb of
-    Just (Sequelize db) -> (pure <<< next) db
-    Just _  -> interpret brt (ThrowException "No DB found" next)
-    Nothing -> interpret brt (ThrowException "No DB found" next)
+interpret brt@(BackendRuntime rt) (GetDBConn dbName next) =
+  next <$> getDBConn' brt dbName
 
 interpret brt@(BackendRuntime rt) (CallAPI apiAct rrItemDict next) = do
   resultEx <- withRunModeClassless brt rrItemDict
@@ -180,14 +190,19 @@ interpret brt@(BackendRuntime rt) (Log tag message next) = do
     (defer $ \_ -> lift3 (rt.logRunner tag message))
     (mkLogEntry tag (jsonStringify message))
 
-interpret brt@(BackendRuntime rt) (RunDB dbAff rrItemDict next) = do
-  result <- withRunModeClassless brt rrItemDict
-    (defer $ \_ -> lift3 $ rt.affRunner dbAff)
-  pure $ next result
+interpret brt@(BackendRuntime rt) (RunDB dbName dbAffF mockedDbActDict rrItemDict next) = do
+  conn' <- getDBConn' brt dbName
+  case conn' of
+    Sequelize (SequelizeConn conn) -> do
+      result <- withRunModeClassless brt rrItemDict
+        (defer $ \_ -> lift3 $ rt.affRunner $ dbAffF conn)
+      pure $ next result
+    MockedSql mocked -> do
+      throwException' "Mocking is not yet implemented."
 
 interpret r (Fork flow next) = forkF r flow >>= (pure <<< next)
 
-interpret _ _ = R.lift S.get >>= (E.throwError <<< Tuple (error "Not implemented yet!") )
+interpret _ _ = throwException' "Not implemented yet!"
 
 runBackend :: forall st rt eff a. BackendRuntime -> BackendFlow st rt a -> InterpreterMT' rt st eff a
 runBackend backendRuntime = foldFree (\(BackendFlowWrapper x) -> runExists (interpret backendRuntime) x)

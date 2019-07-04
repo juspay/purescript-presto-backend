@@ -39,16 +39,8 @@ instance customExErrorDBError :: CustomEitherEx Error DBError a where
   fromCustomEitherEx (RightEx a)                 = Right a
   toCustomEitherEx = either (LeftEx <<< DBError <<< message) RightEx
 
-
-
 toDBMaybeResult :: forall a. Either Error (Maybe a) -> EitherEx DBError (MaybeEx a)
 toDBMaybeResult = either (LeftEx <<< toDBError) (RightEx <<< toMaybeEx)
 
 fromDBMaybeResult :: forall a. EitherEx DBError (MaybeEx a) -> Either Error (Maybe a)
 fromDBMaybeResult = eitherEx (Left <<< fromDBError) (Right <<< fromMaybeEx)
-
--- toDBArrayResult :: forall a. Either Error (Array a) -> EitherEx DBError (Array a)
--- toDBArrayResult = either (LeftEx <<< toDBError) (RightEx <<< toMaybeEx)
---
--- fromDBArrayResult :: forall a. EitherEx DBError (Array a) -> Either Error (Array a)
--- fromDBArrayResult = eitherEx (Left <<< fromDBError) (Right <<< fromMaybeEx)
