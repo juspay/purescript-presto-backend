@@ -35,10 +35,11 @@ import Test.Spec.Assertions (shouldEqual, fail)
 import Sequelize.Class (class Model)
 import Sequelize.Types (Conn, Instance, SEQUELIZE)
 import Presto.Backend.Flow (BackendFlow, log, callAPI, runSysCmd, doAffRR, findOne, getDBConn)
-import Presto.Backend.Playback.Types (RecordingEntry(..), PlaybackError(..), PlaybackErrorType(..))
+import Presto.Backend.Language.Flow.Extra as Extra
 import Presto.Backend.Types.API (class RestEndpoint, APIResult, Request(..), Headers(..), Response(..), ErrorPayload(..), Method(..), defaultDecodeResponse)
 import Presto.Backend.Types.EitherEx
 import Presto.Backend.Language.Types.DB (SqlConn(..), MockedSqlConn(..), SequelizeConn(..))
+import Presto.Backend.Playback.Types (RecordingEntry(..), PlaybackError(..), PlaybackErrorType(..))
 import Presto.Backend.Runtime.Types (Connection(..), BackendRuntime(..), RunningMode(..))
 import Presto.Backend.Interpreter (runBackend)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
@@ -348,3 +349,14 @@ runTests = do
         Right (Tuple (MockedSql (MockedSqlConn dbName)) unit) -> dbName `shouldEqual` testDB
         Left err -> fail $ show err
         _ -> fail "Unknown result"
+    --
+    -- it "Record / replay test: db success test1" $ do
+    --   recordingRef <- liftEff $ newRef { entries : [] }
+    --   let conns = StrMap.singleton testDB $ SqlConn $ MockedSql $ MockedSqlConn testDB
+    --   let (BackendRuntime rt') = backendRuntime $ RecordingMode { recordingRef }
+    --   let rt = BackendRuntime $ rt' { connections = conns }
+    --   eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend rt dbScript1) unit) unit)
+    --   case eResult of
+    --     Right (Tuple (MockedSql (MockedSqlConn dbName)) unit) -> dbName `shouldEqual` testDB
+    --     Left err -> fail $ show err
+    --     _ -> fail "Unknown result"

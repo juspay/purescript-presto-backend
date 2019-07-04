@@ -37,7 +37,6 @@ import Data.Foreign (Foreign)
 import Data.Foreign.Class (class Encode, class Decode, encode, decode)
 import Data.Foreign.Generic (encodeJSON)
 import Data.Lazy (defer)
-import Data.Maybe (Maybe(..))
 import Data.Options (Options)
 import Data.Options (options) as Opt
 import Data.Time.Duration (Milliseconds, Seconds)
