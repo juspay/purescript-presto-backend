@@ -49,9 +49,8 @@ import Presto.Backend.Types.EitherEx (EitherEx(..), fromCustomEitherEx, toCustom
 import Presto.Backend.Playback.Types as Playback
 import Presto.Backend.Playback.Entries as Playback
 import Presto.Backend.Types.API (class RestEndpoint, Headers, makeRequest)
-import Presto.Backend.DB.Types (DBError(..), toDBMaybeResult, fromDBMaybeResult)
+import Presto.Backend.Language.Types.DB (SqlConn, MockedSqlConn, DBError(..), toDBMaybeResult, fromDBMaybeResult)
 import Presto.Core.Types.Language.Interaction (Interaction)
-import Presto.Backend.Language.Types.DB (SqlConn, MockedSqlConn, SequelizeConn)
 import Sequelize.Class (class Model)
 import Sequelize.Types (Conn, Instance, SEQUELIZE)
 import Presto.Backend.DB.Mock.Types as SqlDBMock
@@ -82,7 +81,10 @@ data BackendFlowCommands next st rt s =
 
     | ThrowException String
 
-    | GetDBConn String (SqlConn -> next)
+    | GetDBConn String
+        (Playback.RRItemDict Playback.GetDBConnEntry SqlConn)
+        (SqlConn -> next)
+
     | RunDB String
         (forall eff. Conn -> Aff (sequelize :: SEQUELIZE | eff) (EitherEx DBError s))
         (MockedSqlConn -> SqlDBMock.DBActionDict)
@@ -168,7 +170,9 @@ throwException :: forall st rt a. String -> BackendFlow st rt a
 throwException errorMessage = wrap $ ThrowException errorMessage
 
 getDBConn :: forall st rt. String -> BackendFlow st rt SqlConn
-getDBConn dbName = wrap $ GetDBConn dbName id
+getDBConn dbName = wrap $ GetDBConn dbName
+  (Playback.mkEntryDict $ Playback.mkGetDBConnEntry dbName)
+  id
 
 -- TODO: TASK: add options, model and other input params to recording so it they be compared.
 

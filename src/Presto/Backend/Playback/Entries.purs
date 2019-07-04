@@ -18,10 +18,8 @@ import Presto.Backend.Runtime.Common (jsonStringify)
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (APIResult(..), ErrorPayload, ErrorResponse, Response)
 import Presto.Backend.Types.EitherEx (EitherEx(..))
-import Presto.Backend.DB.Types (DBError)
+import Presto.Backend.Language.Types.DB
 import Presto.Backend.Playback.Types
-
-
 
 
 data LogEntry = LogEntry
@@ -49,6 +47,11 @@ data RunDBEntry = RunDBEntry
   , jsonResult :: EitherEx DBError String
   , options :: String
   , model :: String
+  }
+
+data GetDBConnEntry = GetDBConnEntry
+  { dbName     :: String
+  , mockedConn :: MockedSqlConn
   }
 
 mkRunSysCmdEntry :: String -> String -> RunSysCmdEntry
@@ -93,6 +96,10 @@ mkRunDBEntry dbName dbMethod options model aRes = RunDBEntry
   , options : encodeJSON options
   , model : model
   }
+
+mkGetDBConnEntry :: String -> SqlConn -> GetDBConnEntry
+mkGetDBConnEntry dbName (Sequelize _) = GetDBConnEntry { dbName, mockedConn : MockedSqlConn dbName }
+mkGetDBConnEntry dbName (MockedSql mockedConn) = GetDBConnEntry { dbName, mockedConn }
 
 derive instance genericLogEntry :: Generic LogEntry _
 derive instance eqLogEntry :: Eq LogEntry
@@ -187,3 +194,18 @@ instance mockedResultRunDBEntry
             (resultEx :: b) <- hush $ E.runExcept $ decodeJSON strResp
             Just $ RightEx resultEx
       pure eResult
+
+
+
+derive instance genericGetDBConnEntry :: Generic GetDBConnEntry _
+derive instance eqGetDBConnEntry :: Eq GetDBConnEntry
+instance decodeGetDBConnEntry :: Decode GetDBConnEntry where decode = defaultDecode
+instance encodeGetDBConnEntry :: Encode GetDBConnEntry where encode = defaultEncode
+instance rrItemGetDBConnEntry :: RRItem GetDBConnEntry where
+  toRecordingEntry = RecordingEntry <<< encodeJSON
+  fromRecordingEntry (RecordingEntry re) = hush $ E.runExcept $ decodeJSON re
+  getTag   _ = "GetDBConnEntry"
+  isMocked _ = true
+
+instance mockedResultGetDBConnEntry :: MockedResult GetDBConnEntry SqlConn where
+  parseRRItem (GetDBConnEntry entry) = Just $ MockedSql entry.mockedConn

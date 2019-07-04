@@ -3,6 +3,8 @@ module Presto.Backend.DB.Mock.Actions where
 import Presto.Backend.Language.Types.DB ()
 import Presto.Backend.DB.Mock.Types ()
 
+-- TODO, draft
+
 data FindOne         = FindOne
 data FindAll         = FindAll
 data Update          = Update

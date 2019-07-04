@@ -56,7 +56,6 @@ import Sequelize.Class (class Model, modelName)
 import Sequelize.Instance (instanceToModelE)
 import Sequelize.Types (Conn, Instance, ModelOf, SEQUELIZE)
 import Type.Proxy (Proxy(..))
-import Presto.Backend.DB.Types (DBError (..))
 
 foreign import _getModelByName :: forall a e. Fn2 Conn String (Eff (sequelize :: SEQUELIZE | e) (ModelOf a))
 
@@ -81,18 +80,6 @@ findOne conn options = do
                 Right Nothing -> pure <<< Right $ Nothing
                 Left err -> pure <<< Left $ error $ show err
         Left err -> pure $ Left $ error $ show err
-
--- findOneE :: forall a. Model a => Options a -> FlowES Configs _ a
--- findOneE options = do
---   conn <- get
---   model <- getModelByName :: (FlowES Configs _ (ModelOf a))
---   let mName = modelName (Proxy :: Proxy a)
---   lift $ ExceptT $ doAff do
---     val <- attempt $ findOne' model options
---     case val of
---       Right (Just v) -> pure $ bimap (\err -> DBError { message : show err  }) id (instanceToModelE v)
---       Right Nothing -> pure <<< Left $ DBError { message : mName <> " not found" }
---       Left err -> pure <<< Left $ DBError { message : show err }
 
 findAll :: forall a e. Model a => Conn -> Options a -> Aff (sequelize :: SEQUELIZE | e) (Either Error (Array a))
 findAll conn options = do
@@ -150,20 +137,6 @@ update' conn updateValues whereClause = do
                 Right {affectedCount} -> pure <<< Right $ affectedCount
                 Left err -> pure <<< Left $ error $ show err
         Left err -> pure $ Left $ error $ show err
-
--- updateE :: forall a e . Model a => Options a -> Options a -> FlowES Configs _ (Array a)
--- updateE updateValues whereClause = do
---   { conn } <- get
---   model <- getModelByName :: (FlowES Configs _ (ModelOf a))
---   let mName = modelName (Proxy :: Proxy a)
---   lift $ ExceptT $ doAff do
---     val <- attempt $ updateModel model updateValues whereClause
---     recs <- Read.findAll' model whereClause
---     case val of
---       Right { affectedCount : 0, affectedRows } -> pure <<< Left $ DBError { message : "No record updated " <> mName }
---       Right { affectedCount , affectedRows : Nothing } -> pure <<< Left $ DBError { message : "No record updated " <> mName }
---       Right { affectedCount , affectedRows : Just x } -> pure <<< Right $ recs
---       Left err -> pure <<< Left $ DBError { message : message err }
 
 delete :: forall a e. Model a => Conn -> Options a -> Aff (sequelize :: SEQUELIZE | e) (Either Error Int)
 delete conn whereClause = do

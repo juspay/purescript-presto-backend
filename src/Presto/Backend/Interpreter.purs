@@ -55,7 +55,7 @@ import Presto.Backend.SystemCommands (runSysCmd)
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.EitherEx
 import Presto.Backend.Runtime.Common (jsonStringify, lift3)
-import Presto.Backend.Runtime.Types (InterpreterMT, InterpreterMT', LogRunner, RunningMode(..), Cache(..), DB(..), Connection(..), BackendRuntime(..))
+import Presto.Backend.Runtime.Types (InterpreterMT, InterpreterMT', LogRunner, RunningMode(..), Connection(..), BackendRuntime(..))
 import Presto.Backend.Runtime.Types as X
 import Presto.Backend.Playback.Types
 import Presto.Backend.Playback.Machine
@@ -116,14 +116,16 @@ interpret brt@(BackendRuntime rt) (Log tag message next) = do
 interpret r (Fork flow next) = forkF r flow >>= (pure <<< next)
 
 interpret brt (RunSysCmd cmd rrItemDict next) = do
-    res <- withRunModeClassless brt rrItemDict
-      (defer $ \_ -> lift3 $ runSysCmd cmd)
-    pure $ next res
+  res <- withRunModeClassless brt rrItemDict
+    (defer $ \_ -> lift3 $ runSysCmd cmd)
+  pure $ next res
 
 interpret _ (ThrowException errorMessage) = throwException' errorMessage
 
-interpret brt@(BackendRuntime rt) (GetDBConn dbName next) =
-  next <$> getDBConn' brt dbName
+interpret brt@(BackendRuntime rt) (GetDBConn dbName rrItemDict next) = do
+  res <- withRunModeClassless brt rrItemDict
+    (defer $ \_ -> getDBConn' brt dbName)
+  pure $ next res
 
 interpret brt@(BackendRuntime rt) (RunDB dbName dbAffF mockedDbActDict rrItemDict next) = do
   conn' <- getDBConn' brt dbName
