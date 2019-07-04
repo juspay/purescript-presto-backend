@@ -73,19 +73,23 @@ data BackendFlowCommands next st rt s =
         (Playback.RRItemDict Playback.DoAffEntry s)
         (s -> next)
 
+    | Log String s (Unit -> next)
+    | Fork (BackendFlow st rt s) (Unit -> next)
+
+    | RunSysCmd String
+        (Playback.RRItemDict Playback.RunSysCmdEntry String)
+        (String -> next)
+
     | ThrowException String
 
+    | GetDBConn String (SqlConn -> next)
     | RunDB String
         (forall eff. Conn -> Aff (sequelize :: SEQUELIZE | eff) (EitherEx DBError s))
         (MockedSqlConn -> SqlDBMock.DBActionDict)
         (Playback.RRItemDict Playback.RunDBEntry (EitherEx DBError s))
         (EitherEx DBError s -> next)
 
-    | GetDBConn String (SqlConn -> next)
-
     | GetCacheConn String (SimpleConn -> next)
-    | Log String s (Unit -> next)
-
     | SetCache SimpleConn String String (Either Error Unit -> next)
     | SetCacheWithExpiry SimpleConn String String Milliseconds (Either Error Unit -> next)
     | GetCache SimpleConn String (Either Error (Maybe String) -> next)
@@ -94,8 +98,6 @@ data BackendFlowCommands next st rt s =
     | Enqueue SimpleConn String String (Either Error Unit -> next)
     | Dequeue SimpleConn String (Either Error (Maybe String) -> next)
     | GetQueueIdx SimpleConn String Int (Either Error (Maybe String) -> next)
-
-    | Fork (BackendFlow st rt s) (Unit -> next)
 
     | Expire SimpleConn String Seconds (Either Error Boolean -> next)
     | Incr SimpleConn String (Either Error Int -> next)
@@ -119,9 +121,6 @@ data BackendFlowCommands next st rt s =
     | DequeueInMulti String Multi (Multi -> next)
     | GetQueueIdxInMulti String Int Multi (Multi -> next)
     | Exec Multi (Either Error (Array Foreign) -> next)
-    | RunSysCmd String
-        (Playback.RRItemDict Playback.RunSysCmdEntry String)
-        (String -> next)
 
 
 type BackendFlowCommandsWrapper st rt s next = BackendFlowCommands next st rt s
@@ -145,9 +144,6 @@ put st = wrap $ Put st id
 modify :: forall st rt. (st -> st) -> BackendFlow st rt st
 modify fst = wrap $ Modify fst id
 
-throwException :: forall st rt a. String -> BackendFlow st rt a
-throwException errorMessage = wrap $ ThrowException errorMessage
-
 doAff :: forall st rt a. (forall eff. BackendAff eff a) -> BackendFlow st rt a
 doAff aff = wrap $ DoAff aff id
 
@@ -158,6 +154,21 @@ doAffRR
   => (forall eff. BackendAff eff a)
   -> BackendFlow st rt a
 doAffRR aff = wrap $ DoAffRR aff (Playback.mkEntryDict Playback.mkDoAffEntry) id
+
+log :: forall st rt a. String -> a -> BackendFlow st rt Unit
+log tag message = wrap $ Log tag message id
+
+forkFlow :: forall st rt a. BackendFlow st rt a -> BackendFlow st rt Unit
+forkFlow flow = wrap $ Fork flow id
+
+runSysCmd :: forall st rt. String -> BackendFlow st rt String
+runSysCmd cmd = wrap $ RunSysCmd cmd (Playback.mkEntryDict $ Playback.mkRunSysCmdEntry cmd) id
+
+throwException :: forall st rt a. String -> BackendFlow st rt a
+throwException errorMessage = wrap $ ThrowException errorMessage
+
+getDBConn :: forall st rt. String -> BackendFlow st rt SqlConn
+getDBConn dbName = wrap $ GetDBConn dbName id
 
 -- TODO: TASK: add options, model and other input params to recording so it they be compared.
 
@@ -234,9 +245,6 @@ delete dbName options = do
     id
   pure $ fromCustomEitherEx eResEx
 
-getDBConn :: forall st rt. String -> BackendFlow st rt SqlConn
-getDBConn dbName = wrap $ GetDBConn dbName id
-
 getCacheConn :: forall st rt. String -> BackendFlow st rt SimpleConn
 getCacheConn dbName = wrap $ GetCacheConn dbName id
 
@@ -293,9 +301,6 @@ setCacheWithExpiry :: forall st rt. String -> String -> String -> Milliseconds -
 setCacheWithExpiry cacheName key value ttl = do
   cacheConn <- getCacheConn cacheName
   wrap $ SetCacheWithExpiry cacheConn key value ttl id
-
-log :: forall st rt a. String -> a -> BackendFlow st rt Unit
-log tag message = wrap $ Log tag message id
 
 expireInMulti :: forall st rt. String -> Seconds -> Multi -> BackendFlow st rt Multi
 expireInMulti key ttl multi = wrap $ ExpireInMulti key ttl multi id
@@ -376,9 +381,3 @@ setMessageHandler :: forall st rt. String -> (forall eff. (String -> String -> E
 setMessageHandler cacheName f = do
   cacheConn <- getCacheConn cacheName
   wrap $ SetMessageHandler cacheConn f id
-
-runSysCmd :: forall st rt. String -> BackendFlow st rt String
-runSysCmd cmd = wrap $ RunSysCmd cmd (Playback.mkEntryDict $ Playback.mkRunSysCmdEntry cmd) id
-
-forkFlow :: forall st rt a. BackendFlow st rt a -> BackendFlow st rt Unit
-forkFlow flow = wrap $ Fork flow id

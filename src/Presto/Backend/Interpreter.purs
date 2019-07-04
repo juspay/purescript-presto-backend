@@ -96,7 +96,10 @@ interpret _ (Put d next) = R.lift (S.put d) *> (pure <<< next) d
 
 interpret _ (Modify d next) = R.lift (S.modify d) *> S.get >>= (pure <<< next)
 
-interpret _ (ThrowException errorMessage) = throwException' errorMessage
+interpret brt@(BackendRuntime rt) (CallAPI apiAct rrItemDict next) = do
+  resultEx <- withRunModeClassless brt rrItemDict
+    (defer $ \_ -> lift3 $ runAPIInteraction rt.apiRunner apiAct)
+  pure $ next $ fromEitherEx resultEx
 
 interpret _ (DoAff aff nextF) = (R.lift $ S.lift $ E.lift aff) >>= (pure <<< nextF)
 
@@ -105,10 +108,39 @@ interpret brt@(BackendRuntime rt) (DoAffRR aff rrItemDict next) = do
     (defer $ \_ -> lift3 $ rt.affRunner aff)
   pure $ next res
 
+interpret brt@(BackendRuntime rt) (Log tag message next) = do
+  next <$> withRunMode brt
+    (defer $ \_ -> lift3 (rt.logRunner tag message))
+    (mkLogEntry tag (jsonStringify message))
+
+interpret r (Fork flow next) = forkF r flow >>= (pure <<< next)
+
 interpret brt (RunSysCmd cmd rrItemDict next) = do
     res <- withRunModeClassless brt rrItemDict
       (defer $ \_ -> lift3 $ runSysCmd cmd)
     pure $ next res
+
+interpret _ (ThrowException errorMessage) = throwException' errorMessage
+
+interpret brt@(BackendRuntime rt) (GetDBConn dbName next) =
+  next <$> getDBConn' brt dbName
+
+interpret brt@(BackendRuntime rt) (RunDB dbName dbAffF mockedDbActDict rrItemDict next) = do
+  conn' <- getDBConn' brt dbName
+  case conn' of
+    Sequelize (SequelizeConn conn) -> do
+      result <- withRunModeClassless brt rrItemDict
+        (defer $ \_ -> lift3 $ rt.affRunner $ dbAffF conn)
+      pure $ next result
+    MockedSql mocked -> do
+      throwException' "Mocking is not yet implemented."
+
+interpret brt@(BackendRuntime rt) (GetCacheConn cacheName next) = do
+  let maybeCache = lookup cacheName rt.connections
+  case maybeCache of
+    Just (Redis simpleConn) -> (pure <<< next) simpleConn
+    Just _  -> throwException' "No DB found"
+    Nothing -> throwException' "No DB found"
 
 interpret _ (SetCache cacheConn key value next) = (R.lift $ S.lift $ E.lift $ void <$> set cacheConn key value Nothing NoOptions) >>= (pure <<< next)
 
@@ -169,38 +201,6 @@ interpret _ (DequeueInMulti listName multi next) = (R.lift <<< S.lift <<< E.lift
 interpret _ (GetQueueIdxInMulti listName index multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< lindexMulti listName index $ multi) >>= (pure <<< next)
 
 interpret _ (Exec multi next) = (R.lift <<< S.lift <<< E.lift <<< execMulti $ multi) >>= (pure <<< next)
-
-interpret brt@(BackendRuntime rt) (GetCacheConn cacheName next) = do
-  let maybeCache = lookup cacheName rt.connections
-  case maybeCache of
-    Just (Redis simpleConn) -> (pure <<< next) simpleConn
-    Just _  -> throwException' "No DB found"
-    Nothing -> throwException' "No DB found"
-
-interpret brt@(BackendRuntime rt) (GetDBConn dbName next) =
-  next <$> getDBConn' brt dbName
-
-interpret brt@(BackendRuntime rt) (CallAPI apiAct rrItemDict next) = do
-  resultEx <- withRunModeClassless brt rrItemDict
-    (defer $ \_ -> lift3 $ runAPIInteraction rt.apiRunner apiAct)
-  pure $ next $ fromEitherEx resultEx
-
-interpret brt@(BackendRuntime rt) (Log tag message next) = do
-  next <$> withRunMode brt
-    (defer $ \_ -> lift3 (rt.logRunner tag message))
-    (mkLogEntry tag (jsonStringify message))
-
-interpret brt@(BackendRuntime rt) (RunDB dbName dbAffF mockedDbActDict rrItemDict next) = do
-  conn' <- getDBConn' brt dbName
-  case conn' of
-    Sequelize (SequelizeConn conn) -> do
-      result <- withRunModeClassless brt rrItemDict
-        (defer $ \_ -> lift3 $ rt.affRunner $ dbAffF conn)
-      pure $ next result
-    MockedSql mocked -> do
-      throwException' "Mocking is not yet implemented."
-
-interpret r (Fork flow next) = forkF r flow >>= (pure <<< next)
 
 interpret _ _ = throwException' "Not implemented yet!"
 
