@@ -166,7 +166,7 @@ findOne
 findOne dbName options = do
   conn <- getDBConn dbName
   eResEx <- wrap $ RunDB
-    (toCustomExError <$> DB.findOne conn options)
+    (toDBMaybeResult <$> DB.findOne conn options)
     (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "findOne" [Opt.options options] "")
     id
   pure $ fromDBMaybeResult eResEx
@@ -178,7 +178,7 @@ findAll
 findAll dbName options = do
   conn <- getDBConn dbName
   eResEx <- wrap $ RunDB
-    (toCustomExError <$> DB.findAll conn options)
+    (toCustomEitherEx <$> DB.findAll conn options)
     (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "findAll" [Opt.options options] "")
     id
   pure $ fromCustomEitherEx eResEx
@@ -191,7 +191,7 @@ query
 query dbName rawq = do
   conn <- getDBConn dbName
   eResEx <- wrap $ RunDB
-    (toCustomExError <$> DB.query conn rawq)
+    (toCustomEitherEx <$> DB.query conn rawq)
     (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "query" [] "")
     id
   pure $ fromCustomEitherEx eResEx
@@ -200,7 +200,7 @@ create :: forall model st rt. Model model => String -> model -> BackendFlow st r
 create dbName model = do
   conn <- getDBConn dbName
   eResEx <- wrap $ RunDB
-    (toCustomExError <$> DB.create conn model)
+    (toDBMaybeResult <$> DB.create conn model)
     (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "create" [] (encodeJSON model))
     id
   pure $ fromDBMaybeResult eResEx
@@ -209,7 +209,7 @@ createWithOpts :: forall model st rt. Model model => String -> model -> Options 
 createWithOpts dbName model options = do
   conn <- getDBConn dbName
   eResEx <- wrap $ RunDB
-    (toCustomExError <$> DB.createWithOpts conn model options)
+    (toDBMaybeResult <$> DB.createWithOpts conn model options)
     (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "createWithOpts" [Opt.options options] (encodeJSON model))
     id
   pure $ fromDBMaybeResult eResEx
@@ -218,7 +218,7 @@ update :: forall model st rt. Model model => String -> Options model -> Options 
 update dbName updateValues whereClause = do
   conn <- getDBConn dbName
   eResEx <- wrap $ RunDB
-    (toCustomExError <$> DB.update conn updateValues whereClause)
+    (toCustomEitherEx <$> DB.update conn updateValues whereClause)
     (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "update" [(Opt.options updateValues),(Opt.options whereClause)] "")
     id
   pure $ fromCustomEitherEx eResEx
@@ -227,7 +227,7 @@ delete :: forall model st rt. Model model => String -> Options model -> BackendF
 delete dbName options = do
   conn <- getDBConn dbName
   eResEx <- wrap $ RunDB
-    (toCustomExError <$> DB.delete conn options)
+    (toCustomEitherEx <$> DB.delete conn options)
     (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "delete" [Opt.options options] "")
     id
   pure $ fromCustomEitherEx eResEx
