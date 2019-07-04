@@ -81,10 +81,6 @@ data BackendFlowCommands next st rt s =
         (Playback.RRItemDict Playback.RunDBEntry (EitherEx DBError s))
         (EitherEx DBError s -> next)
 
-    -- | RunSqlDB ()
-    --     (Playback.RRItemDict Playback.RunDBEntry (EitherEx DBError s))
-    --     (EitherEx DBError s -> next)
-
     | GetDBConn String (SqlConn -> next)
 
     | GetCacheConn String (SimpleConn -> next)
