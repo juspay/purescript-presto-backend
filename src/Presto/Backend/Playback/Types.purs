@@ -41,6 +41,9 @@ type RecorderRuntime =
 
 type PlayerRuntime =
   { recording :: Recording
+  , disableVerify :: Array DisableEntries
+  , disableReplaying :: Array DisableEntries
+  , skip :: Array DisableEntries
   , stepRef   :: Ref Int
   , errorRef  :: Ref (Maybe PlaybackError)      -- this is a record having fields error type and message
   }

@@ -136,20 +136,21 @@ compareRRItems playerRt rrItemDict nextRRItem rrItem = do
   replayError playerRt $ itemMismatch expected actual
 
 replay
-  :: forall eff rt st rrItem native
-   . PlayerRuntime
-  -> RRItemDict rrItem native
+  :: forall eff rt st rrItem native. PlayerRuntime -> RRItemDict rrItem native
   -> Lazy (InterpreterMT' rt st eff native)
   -> InterpreterMT' rt st eff native
 replay playerRt rrItemDict lAct = do
   let proxy = Proxy :: Proxy rrItem
+  let tagNoDiff = getTag' rrItemDict proxy
   eNextRRItemRes <- lift3 $ liftEff $ popNextRRItemAndResult playerRt rrItemDict proxy
   case eNextRRItemRes of
     Left err -> replayError playerRt err
     Right (Tuple nextRRItem nextRes) -> do
       res <- replayWithMock rrItemDict lAct proxy nextRes
-      compareRRItems playerRt rrItemDict nextRRItem $ mkEntry' rrItemDict res
-      pure res
+      if not (elem tagNoDiff playerRt.disableVerify) then do
+        compareRRItems playerRt rrItemDict nextRRItem $ mkEntry' rrItemDict res
+        pure res
+        else pure res
 
 record :: forall eff rt st rrItem native. RecorderRuntime  -> RRItemDict rrItem native  ->  Lazy (InterpreterMT' rt st eff native)  -> InterpreterMT' rt st eff native
 record recorderRt rrItemDict lAct = do
