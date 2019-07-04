@@ -40,7 +40,7 @@ import Data.Lazy (defer)
 import Data.Options (Options)
 import Data.Options (options) as Opt
 import Data.Time.Duration (Milliseconds, Seconds)
-import Presto.Backend.DB (findOne, findAll, create, createWithOpts, query, update, delete) as DB
+import Presto.Backend.DBImpl (findOne, findAll, create, createWithOpts, query, update, delete) as DB
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (ErrorResponse, APIResult)
 import Presto.Backend.APIInteract (apiInteract)

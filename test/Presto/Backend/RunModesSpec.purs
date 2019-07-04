@@ -35,7 +35,6 @@ import Test.Spec.Assertions (shouldEqual, fail)
 import Sequelize.Class (class Model)
 import Sequelize.Types (Conn, Instance, SEQUELIZE)
 import Presto.Backend.Flow (BackendFlow, log, callAPI, runSysCmd, doAffRR, findOne, getDBConn)
-import Presto.Backend.Language.Flow.Extra as Extra
 import Presto.Backend.Types.API (class RestEndpoint, APIResult, Request(..), Headers(..), Response(..), ErrorPayload(..), Method(..), defaultDecodeResponse)
 import Presto.Backend.Types.EitherEx
 import Presto.Backend.Language.Types.DB (SqlConn(..), MockedSqlConn(..), SequelizeConn(..))

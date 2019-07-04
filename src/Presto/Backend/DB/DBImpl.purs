@@ -19,10 +19,9 @@
  along with this program. If not, see <https://www.gnu.org/licenses/agpl.html>.
 -}
 
-module Presto.Backend.DB
+module Presto.Backend.DBImpl
   (
     useMasterClause,
-    _getModelByName,
     getModelByName,
     findOne,
     findAll,
@@ -58,6 +57,7 @@ import Sequelize.Types (Conn, Instance, ModelOf, SEQUELIZE)
 import Type.Proxy (Proxy(..))
 
 foreign import _getModelByName :: forall a e. Fn2 Conn String (Eff (sequelize :: SEQUELIZE | e) (ModelOf a))
+
 
 
 -- Add this clause if you want to force a query to be executed on Master DB
