@@ -1,30 +1,32 @@
 module Presto.Backend.Playback.Machine.Classless where
 
 import Prelude
+import Presto.Backend.Playback.Entries
+import Presto.Backend.Playback.Types
+import Presto.Backend.Runtime.Types
 
 import Control.Monad.Aff (Aff)
-import Control.Monad.Eff.Ref (REF, Ref, newRef, readRef, writeRef, modifyRef)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Eff.Exception (Error, error)
+import Control.Monad.Eff.Ref (REF, Ref, newRef, readRef, writeRef, modifyRef)
 import Control.Monad.Except (runExcept) as E
 import Control.Monad.Except.Trans (ExceptT(..), lift, throwError, runExceptT) as E
 import Control.Monad.Reader.Trans (ReaderT, ask, lift, runReaderT) as R
 import Control.Monad.State.Trans (StateT, get, lift, modify, put, runStateT) as S
 import Control.Monad.Trans.Class (class MonadTrans, lift)
-import Data.Foreign.Generic (encodeJSON)
+import Control.MonadZero (guard)
+import Data.Array (elem)
 import Data.Array as Array
 import Data.Either (Either(..), note, hush, isLeft)
-import Data.Maybe (Maybe(..), isJust)
-import Data.Tuple (Tuple(..))
+import Data.Foreign.Generic (encodeJSON)
 import Data.Foreign.Generic as G
 import Data.Lazy (Lazy, force)
-import Presto.Backend.Types (BackendAff)
-import Presto.Backend.Runtime.Common (jsonStringify, lift3)
-import Presto.Backend.Runtime.Types
-import Presto.Backend.Playback.Types
-import Presto.Backend.Playback.Entries
+import Data.Maybe (Maybe(..), isJust)
+import Data.Tuple (Tuple(..))
 import Presto.Backend.APIInteract (apiInteract)
+import Presto.Backend.Runtime.Common (jsonStringify, lift3)
+import Presto.Backend.Types (BackendAff)
 import Type.Proxy (Proxy(..))
 
 unexpectedRecordingEnd :: String -> PlaybackError
@@ -149,20 +151,14 @@ replay playerRt rrItemDict lAct = do
       compareRRItems playerRt rrItemDict nextRRItem $ mkEntry' rrItemDict res
       pure res
 
-record
-  :: forall eff rt st rrItem native
-   . RecorderRuntime
-  -> RRItemDict rrItem native
-  -> Lazy (InterpreterMT' rt st eff native)
-  -> InterpreterMT' rt st eff native
+record :: forall eff rt st rrItem native. RecorderRuntime  -> RRItemDict rrItem native  ->  Lazy (InterpreterMT' rt st eff native)  -> InterpreterMT' rt st eff native
 record recorderRt rrItemDict lAct = do
   native <- force lAct
-  lift3
-    $ liftEff
-    $ pushRecordingEntry recorderRt
-    $ toRecordingEntry' rrItemDict
-    $ mkEntry' rrItemDict native
-  pure native
+  let tag = getTag' rrItemDict (Proxy :: Proxy rrItem)
+  if not ( elem tag recorderRt.disableEntries ) then do
+      lift3 $ liftEff $ pushRecordingEntry recorderRt $ toRecordingEntry' rrItemDict $ mkEntry' rrItemDict native
+      pure native
+    else pure native
 
 withRunModeClassless
   :: forall eff rt st rrItem native

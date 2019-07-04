@@ -4,26 +4,28 @@ import Prelude
 
 import Control.Monad.Eff.Ref (Ref)
 import Data.Array as Array
-import Data.Maybe (Maybe)
-import Data.Tuple (Tuple(..))
-import Data.Generic.Rep (class Generic)
-import Data.Generic.Rep.Eq as GEq
-import Data.Generic.Rep.Show as GShow
-import Data.Generic.Rep.Ord as GOrd
-import Data.Generic.Rep.Enum as GEnum
-import Data.Generic.Rep.Bounded as GBounded
-import Data.Newtype (class Newtype)
-import Data.Eq (class Eq, eq)
-import Data.Enum (class Enum, succ, pred)
 import Data.Bounded (class Bounded, top, bottom)
+import Data.Enum (class Enum, succ, pred)
+import Data.Eq (class Eq, eq)
+import Data.Foreign.Class (class Encode, class Decode, encode, decode)
 import Data.Foreign.Generic (defaultOptions, genericDecode, genericDecodeJSON, genericEncode, genericEncodeJSON, encodeJSON)
 import Data.Foreign.Generic.Class (class GenericDecode, class GenericEncode)
-import Data.Foreign.Class (class Encode, class Decode, encode, decode)
+import Data.Generic.Rep (class Generic)
+import Data.Generic.Rep.Bounded as GBounded
+import Data.Generic.Rep.Enum as GEnum
+import Data.Generic.Rep.Eq as GEq
+import Data.Generic.Rep.Ord as GOrd
+import Data.Generic.Rep.Show as GShow
+import Data.Maybe (Maybe)
+import Data.Newtype (class Newtype)
+import Data.Tuple (Tuple(..))
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
+import Sequelize.Models.Types (DataType(..))
 import Type.Proxy (Proxy)
 
 data RecordingEntry = RecordingEntry String
 
+type DisableEntries  = String
 -- TODO: it might be Data.Sequence.Ordered is better
 type Recording =
   { entries :: Array RecordingEntry
@@ -34,12 +36,13 @@ type Recording =
 -- So having a sequential flow is preferred.
 type RecorderRuntime =
   { recordingRef :: Ref Recording
-  }
+   ,disableEntries :: Array DisableEntries     --why we are using ref ??
+  }                                     -- this is a data type for recording
 
 type PlayerRuntime =
   { recording :: Recording
   , stepRef   :: Ref Int
-  , errorRef  :: Ref (Maybe PlaybackError)
+  , errorRef  :: Ref (Maybe PlaybackError)      -- this is a record having fields error type and message
   }
 
 data PlaybackErrorType
@@ -53,19 +56,28 @@ newtype PlaybackError = PlaybackError
   , errorMessage :: String
   }
 
-class (Eq rrItem, Decode rrItem, Encode rrItem) <= RRItem rrItem where
-  toRecordingEntry   :: rrItem -> RecordingEntry
+-- data Proxy a = Proxy
+--
+-- x :: Proxy "ar"
+-- x = Proxy
+--
+--
+-- reflexSymbol (Proxy) = "ar"
+
+class (Eq rrItem, Decode rrItem, Encode rrItem) <= RRItem rrItem where       -- what this typeclass means
+  toRecordingEntry   :: rrItem -> RecordingEntry          -- these are function inside the typeclass
   fromRecordingEntry :: RecordingEntry -> Maybe rrItem
-  getTag             :: Proxy rrItem -> String
+  getTag             :: Proxy rrItem -> String            --what is proxy
   isMocked           :: Proxy rrItem -> Boolean
+
 
 -- Class for conversions of RRItem and native results.
 -- Native result can be unencodable completely.
 -- TODO: error handling
-class (RRItem rrItem) <= MockedResult rrItem native | rrItem -> native where
+class (RRItem rrItem) <= MockedResult rrItem native | rrItem -> native where            --rrItem will determine the type of native How??
   parseRRItem :: rrItem -> Maybe native
 
-derive instance genericRecordingEntry :: Generic RecordingEntry _
+derive instance genericRecordingEntry :: Generic RecordingEntry _   --these are basically instances for RecordEnrty type
 instance decodeRecordingEntry         :: Decode  RecordingEntry where decode = defaultDecode
 instance encodeRecordingEntry         :: Encode  RecordingEntry where encode = defaultEncode
 instance eqRecordingEntry             :: Eq      RecordingEntry where eq = GEq.genericEq
@@ -94,17 +106,17 @@ instance showPlaybackError           :: Show    PlaybackError where show = GShow
 instance ordPlaybackError            :: Ord     PlaybackError where compare = GOrd.genericCompare
 
 -- Classless types
-
 newtype RRItemDict rrItem native = RRItemDict
   { toRecordingEntry   :: rrItem -> RecordingEntry
   , fromRecordingEntry :: RecordingEntry -> Maybe rrItem
   , getTag             :: Proxy rrItem -> String
   , isMocked           :: Proxy rrItem -> Boolean
-  , parseRRItem        :: rrItem -> Maybe native
+  , parseRRItem        :: rrItem -> Maybe native              --is this same as The one in MockedResult typeclass
   , mkEntry            :: native -> rrItem
   , compare            :: rrItem -> rrItem -> Boolean
   , encodeJSON         :: rrItem -> String
   }
+
 
 toRecordingEntry' :: forall rrItem native. RRItemDict rrItem native -> rrItem -> RecordingEntry
 toRecordingEntry' (RRItemDict d) = d.toRecordingEntry
@@ -131,12 +143,7 @@ encodeJSON' :: forall rrItem native. RRItemDict rrItem native -> rrItem -> Strin
 encodeJSON' (RRItemDict d) = d.encodeJSON
 
 
-mkEntryDict
-  :: forall rrItem native
-   . RRItem rrItem
-  => MockedResult rrItem native
-  => (native -> rrItem)
-  -> RRItemDict rrItem native
+mkEntryDict :: forall rrItem native. RRItem rrItem => MockedResult rrItem native => (native -> rrItem) -> RRItemDict rrItem native
 mkEntryDict mkEntry = RRItemDict
   { toRecordingEntry   : toRecordingEntry
   , fromRecordingEntry : fromRecordingEntry
