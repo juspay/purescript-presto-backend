@@ -34,7 +34,7 @@ import Test.Spec.Assertions (shouldEqual, fail)
 
 import Sequelize.Class (class Model)
 import Sequelize.Types (Conn, Instance, SEQUELIZE)
-import Presto.Backend.Flow (BackendFlow, log, callAPI, runSysCmd, doAffRR, findOne)
+import Presto.Backend.Flow (BackendFlow, log, callAPI, runSysCmd, doAffRR, findOne, getDBConn)
 import Presto.Backend.Playback.Types (RecordingEntry(..), PlaybackError(..), PlaybackErrorType(..))
 import Presto.Backend.Types.API (class RestEndpoint, APIResult, Request(..), Headers(..), Response(..), ErrorPayload(..), Method(..), defaultDecodeResponse)
 import Presto.Backend.Types.EitherEx
@@ -136,6 +136,9 @@ doAffScript = doAffRR (pure "This is result.")
 
 testDB :: String
 testDB = "TestDB"
+
+dbScript0 :: BackendFlow Unit Unit SqlConn
+dbScript0 = getDBConn testDB
 
 dbScript1 :: BackendFlow Unit Unit (Maybe Car)
 dbScript1 = do
@@ -335,13 +338,13 @@ runTests = do
         Left err -> fail $ show err
       curStep `shouldEqual` 1
 
-    it "Record / replay test: sql db mocked success test1" $ do
+    it "Record / replay test: getDBConn success" $ do
       recordingRef <- liftEff $ newRef { entries : [] }
-
       let conns = StrMap.singleton testDB $ SqlConn $ MockedSql $ MockedSqlConn testDB
       let (BackendRuntime rt') = backendRuntime $ RecordingMode { recordingRef }
       let rt = BackendRuntime $ rt' { connections = conns }
-      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend rt dbScript1) unit) unit)
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend rt dbScript0) unit) unit)
       case eResult of
-        Right (Tuple n unit) -> pure unit
-        _ -> pure unit -- not yet implemented.
+        Right (Tuple (MockedSql (MockedSqlConn dbName)) unit) -> dbName `shouldEqual` testDB
+        Left err -> fail $ show err
+        _ -> fail "Unknown result"
