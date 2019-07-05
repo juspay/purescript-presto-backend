@@ -4,6 +4,7 @@ import Prelude
 
 import Control.Monad.Except (runExcept) as E
 import Data.Either (Either(..), note, hush, isLeft)
+import Data.Foreign (Foreign)
 import Data.Foreign.Generic (defaultOptions, genericDecode, genericDecodeJSON, genericEncode, genericEncodeJSON, encodeJSON, decodeJSON)
 import Data.Foreign.Generic.Class (class GenericDecode, class GenericEncode)
 import Data.Foreign.Class (class Encode, class Decode, encode, decode)
@@ -46,6 +47,8 @@ data RunDBEntry = RunDBEntry
   { dbName     :: String
   , dbMethod   :: String
   , jsonResult :: EitherEx DBError String
+  , options :: String
+  , model :: String
   }
 
 mkRunSysCmdEntry :: String -> String -> RunSysCmdEntry
@@ -79,12 +82,16 @@ mkRunDBEntry
   => Decode b
   => String
   -> String
+  -> Array Foreign
+  -> String
   -> EitherEx DBError b
   -> RunDBEntry
-mkRunDBEntry dbName dbMethod aRes = RunDBEntry
+mkRunDBEntry dbName dbMethod options model aRes = RunDBEntry
   { dbName
   , dbMethod
   , jsonResult : encodeJSON <$> aRes
+  , options : encodeJSON options
+  , model : model
   }
 
 derive instance genericLogEntry :: Generic LogEntry _

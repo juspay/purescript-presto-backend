@@ -31,12 +31,13 @@ import Control.Monad.Eff.Exception (Error, error, message)
 import Control.Monad.Free (Free, liftF)
 import Data.Either (Either(..))
 import Data.Exists (Exists, mkExists)
-import Data.Foreign (Foreign)
+import Data.Foreign (Foreign, toForeign)
 import Data.Foreign.Class (class Decode, class Encode)
 import Data.Foreign.Generic (encodeJSON)
 import Data.Lazy (defer)
 import Data.Maybe (Maybe(..))
 import Data.Options (Options)
+import Data.Options (options) as Opt
 import Data.Time.Duration (Milliseconds, Seconds)
 import Presto.Backend.DB (findOne, findAll, create, createWithOpts, query, update, delete) as DB
 import Presto.Backend.Types (BackendAff)
@@ -166,7 +167,7 @@ findOne dbName options = do
   conn <- getDBConn dbName
   eResEx <- wrap $ RunDB
     (toDBMaybeResult <$> DB.findOne conn options)
-    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "findOne")
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "findOne" [Opt.options options] "")
     id
   pure $ fromDBMaybeResult eResEx
 
@@ -178,7 +179,7 @@ findAll dbName options = do
   conn <- getDBConn dbName
   eResEx <- wrap $ RunDB
     (toCustomEitherEx <$> DB.findAll conn options)
-    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "findAll")
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "findAll" [Opt.options options] "")
     id
   pure $ fromCustomEitherEx eResEx
 
@@ -191,7 +192,7 @@ query dbName rawq = do
   conn <- getDBConn dbName
   eResEx <- wrap $ RunDB
     (toCustomEitherEx <$> DB.query conn rawq)
-    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "query")
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "query" [toForeign rawq] "")
     id
   pure $ fromCustomEitherEx eResEx
 
@@ -200,7 +201,7 @@ create dbName model = do
   conn <- getDBConn dbName
   eResEx <- wrap $ RunDB
     (toDBMaybeResult <$> DB.create conn model)
-    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "create")
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "create" [] (encodeJSON model))
     id
   pure $ fromDBMaybeResult eResEx
 
@@ -209,7 +210,7 @@ createWithOpts dbName model options = do
   conn <- getDBConn dbName
   eResEx <- wrap $ RunDB
     (toDBMaybeResult <$> DB.createWithOpts conn model options)
-    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "createWithOpts")
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "createWithOpts" [Opt.options options] (encodeJSON model))
     id
   pure $ fromDBMaybeResult eResEx
 
@@ -218,7 +219,7 @@ update dbName updateValues whereClause = do
   conn <- getDBConn dbName
   eResEx <- wrap $ RunDB
     (toCustomEitherEx <$> DB.update conn updateValues whereClause)
-    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "update")
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "update" [(Opt.options updateValues),(Opt.options whereClause)] "")
     id
   pure $ fromCustomEitherEx eResEx
 
@@ -227,7 +228,7 @@ delete dbName options = do
   conn <- getDBConn dbName
   eResEx <- wrap $ RunDB
     (toCustomEitherEx <$> DB.delete conn options)
-    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "delete")
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "delete" [Opt.options options] "")
     id
   pure $ fromCustomEitherEx eResEx
 
