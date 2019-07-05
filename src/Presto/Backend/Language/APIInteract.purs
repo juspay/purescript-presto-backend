@@ -15,7 +15,7 @@ import Data.Foreign.Class (class Decode, class Encode, decode, encode)
 import Data.Either (Either(..))
 import Presto.Core.Types.Language.Interaction (Interaction, request)
 import Presto.Backend.Types.API (class RestEndpoint,  ErrorPayload(..), ErrorResponse, Response(..), Headers, decodeResponse, makeRequest)
-import Presto.Backend.Types.EitherEx
+import Presto.Backend.Language.Types.EitherEx
 import Presto.Core.Utils.Encoding (defaultDecodeJSON, defaultEncode, defaultDecode)
 
 -- This is done because of lack of instances.

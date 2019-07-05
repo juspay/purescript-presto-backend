@@ -36,7 +36,7 @@ import Sequelize.Class (class Model)
 import Sequelize.Types (Conn, Instance, SEQUELIZE)
 import Presto.Backend.Flow (BackendFlow, log, callAPI, runSysCmd, doAffRR, findOne, getDBConn)
 import Presto.Backend.Types.API (class RestEndpoint, APIResult, Request(..), Headers(..), Response(..), ErrorPayload(..), Method(..), defaultDecodeResponse)
-import Presto.Backend.Types.EitherEx
+import Presto.Backend.Language.Types.EitherEx
 import Presto.Backend.Language.Types.DB (SqlConn(..), MockedSqlConn(..), SequelizeConn(..))
 import Presto.Backend.Playback.Types (RecordingEntry(..), PlaybackError(..), PlaybackErrorType(..))
 import Presto.Backend.Runtime.Types (Connection(..), BackendRuntime(..), RunningMode(..))

@@ -17,7 +17,7 @@ import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
 import Presto.Backend.Runtime.Common (jsonStringify)
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (APIResult(..), ErrorPayload, ErrorResponse, Response)
-import Presto.Backend.Types.EitherEx (EitherEx(..))
+import Presto.Backend.Language.Types.EitherEx (EitherEx(..))
 import Presto.Backend.Language.Types.DB
 import Presto.Backend.Playback.Types
 

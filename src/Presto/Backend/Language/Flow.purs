@@ -44,7 +44,7 @@ import Presto.Backend.DBImpl (findOne, findAll, create, createWithOpts, query, u
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (ErrorResponse, APIResult)
 import Presto.Backend.APIInteract (apiInteract)
-import Presto.Backend.Types.EitherEx (EitherEx(..), fromCustomEitherEx, toCustomEitherEx)
+import Presto.Backend.Language.Types.EitherEx (EitherEx(..), fromCustomEitherEx, toCustomEitherEx)
 import Presto.Backend.Playback.Types as Playback
 import Presto.Backend.Playback.Entries as Playback
 import Presto.Backend.Types.API (class RestEndpoint, Headers, makeRequest)

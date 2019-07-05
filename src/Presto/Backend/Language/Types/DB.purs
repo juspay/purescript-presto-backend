@@ -16,8 +16,8 @@ import Data.Generic.Rep.Ord as GOrd
 import Data.Eq (class Eq, eq)
 import Data.Either (Either(..), either)
 import Data.Maybe (Maybe(..), maybe)
-import Presto.Backend.Types.EitherEx(EitherEx (..), class CustomEitherEx, fromEitherEx, toEitherEx, eitherEx, fromCustomEitherEx, toCustomEitherEx)
-import Presto.Backend.Types.MaybeEx (MaybeEx(..), toMaybeEx, fromMaybeEx, maybeEx)
+import Presto.Backend.Language.Types.EitherEx(EitherEx (..), class CustomEitherEx, fromEitherEx, toEitherEx, eitherEx, fromCustomEitherEx, toCustomEitherEx)
+import Presto.Backend.Language.Types.MaybeEx (MaybeEx(..), toMaybeEx, fromMaybeEx, maybeEx)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
 import Sequelize.Types (Conn)
 

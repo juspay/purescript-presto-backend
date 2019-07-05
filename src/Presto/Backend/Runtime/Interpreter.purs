@@ -53,7 +53,7 @@ import Data.Lazy (defer)
 import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), BackendFlowCommandsWrapper, BackendFlowWrapper(..))
 import Presto.Backend.SystemCommands (runSysCmd)
 import Presto.Backend.Types (BackendAff)
-import Presto.Backend.Types.EitherEx
+import Presto.Backend.Language.Types.EitherEx
 import Presto.Backend.Runtime.Common (jsonStringify, lift3)
 import Presto.Backend.Runtime.Types (InterpreterMT, InterpreterMT', LogRunner, RunningMode(..), Connection(..), BackendRuntime(..))
 import Presto.Backend.Runtime.Types as X

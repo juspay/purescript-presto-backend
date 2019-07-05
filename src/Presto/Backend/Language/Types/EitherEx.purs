@@ -1,4 +1,4 @@
-module Presto.Backend.Types.EitherEx
+module Presto.Backend.Language.Types.EitherEx
   ( EitherEx (..)
   , class CustomEitherEx
   , fromEitherEx
