@@ -185,8 +185,8 @@ runTests = do
               { recording
               , stepRef
               , errorRef
-              , disableVerify : ["CallAPIEntry"]
-              , disableReplay : ["CallAPIEntry"]
+              , disableVerify : [""]
+              , disableReplay : [""]
               , skip : ["CallAPIEntry"]
               }
             }

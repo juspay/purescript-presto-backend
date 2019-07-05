@@ -21,7 +21,7 @@ import Presto.Backend.Types.EitherEx (EitherEx(..))
 import Presto.Core.Utils.Encoding (defaultDecode, defaultEncode, defaultEnumDecode, defaultEnumEncode)
 
 
-data Mode = Normal | NoVerify | NoMock | Skipp 
+data Mode = Normal | NoVerify | NoMock | Skip 
 derive instance modeEq :: Eq Mode 
 derive instance genericMode :: Generic Mode _
 instance modeEncode :: Encode Mode where encode = defaultEnumEncode 
