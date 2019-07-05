@@ -54,6 +54,7 @@ import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), BackendFlowCom
 import Presto.Backend.SystemCommands (runSysCmd)
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Language.Types.EitherEx
+import Presto.Backend.Language.Types.DB (SqlConn(..), MockedSqlConn(..), SequelizeConn(..))
 import Presto.Backend.Runtime.Common (jsonStringify, lift3)
 import Presto.Backend.Runtime.Types (InterpreterMT, InterpreterMT', LogRunner, RunningMode(..), Connection(..), BackendRuntime(..))
 import Presto.Backend.Runtime.Types as X
@@ -61,9 +62,8 @@ import Presto.Backend.Playback.Types
 import Presto.Backend.Playback.Machine
 import Presto.Backend.Playback.Machine.Classless
 import Presto.Backend.Playback.Entries
-import Presto.Backend.Language.Types.DB (SqlConn(..), MockedSqlConn(..), SequelizeConn(..))
 import Presto.Backend.Runtime.API (runAPIInteraction)
-import Presto.Backend.Runtime.Types (Connection(..))
+import Presto.Backend.DB.Mock.Types (DBActionDict)
 import Type.Proxy (Proxy(..))
 
 forkF :: forall eff rt st a. BackendRuntime -> BackendFlow st rt a -> InterpreterMT rt st (Tuple Error st) eff Unit
@@ -86,6 +86,8 @@ getDBConn' brt@(BackendRuntime rt) dbName = do
     Just _  -> throwException' "No DB found"
     Nothing -> throwException' "No DB found"
 
+getMockedValue :: forall st rt eff a. BackendRuntime -> DBActionDict -> InterpreterMT' rt st eff a
+getMockedValue brt mockedDbActDict = throwException' "Mocking is not yet implemented."
 
 interpret :: forall st rt s eff a. BackendRuntime -> BackendFlowCommandsWrapper st rt s a -> InterpreterMT' rt st eff a
 interpret _ (Ask next) = R.ask >>= (pure <<< next)
@@ -129,13 +131,12 @@ interpret brt@(BackendRuntime rt) (GetDBConn dbName rrItemDict next) = do
 
 interpret brt@(BackendRuntime rt) (RunDB dbName dbAffF mockedDbActDict rrItemDict next) = do
   conn' <- getDBConn' brt dbName
-  case conn' of
-    Sequelize (SequelizeConn conn) -> do
-      result <- withRunModeClassless brt rrItemDict
+  result <- case conn' of
+    Sequelize (SequelizeConn conn) -> withRunModeClassless brt rrItemDict
         (defer $ \_ -> lift3 $ rt.affRunner $ dbAffF conn)
-      pure $ next result
-    MockedSql mocked -> do
-      throwException' "Mocking is not yet implemented."
+    MockedSql mocked -> withRunModeClassless brt rrItemDict
+        (defer $ \_ -> getMockedValue brt $ mockedDbActDict mocked)
+  pure $ next result
 
 interpret brt@(BackendRuntime rt) (GetCacheConn cacheName next) = do
   let maybeCache = lookup cacheName rt.connections
