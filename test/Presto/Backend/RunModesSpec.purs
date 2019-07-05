@@ -153,7 +153,7 @@ runTests = do
   describe "Recording/replaying mode tests" do
     it "Record test" $ do
       recordingRef <- liftEff $ newRef { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
+      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef , disableEntries : ["",""]}
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording logAndCallAPIScript) unit) unit)
       case eResult of
         Left err -> fail $ show err
@@ -162,14 +162,14 @@ runTests = do
           length recording.entries `shouldEqual` 4
           index recording.entries 0 `shouldEqual` (Just $ RecordingEntry "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}")
           index recording.entries 1 `shouldEqual` (Just $ RecordingEntry "{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}")
-          index recording.entries 2 `shouldEqual` (Just $ RecordingEntry "{\"jsonResult\":{\"contents\":\"{\\\"string\\\":\\\"Hello there!\\\",\\\"code\\\":1}\",\"tag\":\"RightEx\"},\"jsonRequest\":\"{\\\"url\\\":\\\"1\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":1,\\\\\\\"code\\\\\\\":1}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\"}"
+          index recording.entries 2 `shouldEqual` (Just $ RecordingEntry "{\"mode\":\"Normal\",\"jsonResult\":{\"contents\":\"{\\\"string\\\":\\\"Hello there!\\\",\\\"code\\\":1}\",\"tag\":\"RightEx\"},\"jsonRequest\":\"{\\\"url\\\":\\\"1\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":1,\\\\\\\"code\\\\\\\":1}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\"}"
             )
-          index recording.entries 3 `shouldEqual` (Just $ RecordingEntry "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":\"{\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\"}"
+          index recording.entries 3 `shouldEqual` (Just $ RecordingEntry "{\"mode\":\"Normal\",\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":\"{\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\"}"
             )
 
     it "Record / replay test: log and callAPI success" $ do
       recordingRef <- liftEff $ newRef { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
+      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef , disableEntries : ["","Log"]}
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording logAndCallAPIScript) unit) unit)
       isRight eResult `shouldEqual` true
 
@@ -185,6 +185,9 @@ runTests = do
               { recording
               , stepRef
               , errorRef
+              , disableVerify : ["CallAPIEntry"]
+              , disableReplay : ["CallAPIEntry"]
+              , skip : ["CallAPIEntry"]
               }
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
@@ -194,7 +197,7 @@ runTests = do
 
     it "Record / replay test: index out of range" $ do
       recordingRef <- liftEff $ newRef { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
+      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef, disableEntries : ["callApi","Log"] }
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording logAndCallAPIScript) unit) unit)
       isRight eResult `shouldEqual` true
 
@@ -210,6 +213,9 @@ runTests = do
               { recording
               , stepRef
               , errorRef
+              , disableVerify : []
+              , disableReplay : []
+              , skip : []
               }
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
@@ -224,7 +230,7 @@ runTests = do
 
     it "Record / replay test: started from the middle" $ do
       recordingRef <- liftEff $ newRef { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
+      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef, disableEntries : ["callApi","Log"] }
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording logAndCallAPIScript) unit) unit)
       isRight eResult `shouldEqual` true
 
@@ -240,6 +246,9 @@ runTests = do
               { recording
               , stepRef
               , errorRef
+              , disableVerify : []
+              , disableReplay : []
+              , skip : []
               }
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
@@ -251,7 +260,7 @@ runTests = do
 
     it "Record / replay test: runSysCmd success" $ do
       recordingRef <- liftEff $ newRef { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
+      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef , disableEntries : ["callApi","Log"]}
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording runSysCmdScript) unit) unit)
       case eResult of
         Right (Tuple n unit) -> n `shouldEqual` "ABC\n"
@@ -269,6 +278,9 @@ runTests = do
               { recording
               , stepRef
               , errorRef
+              , disableVerify : []
+              , disableReplay : []
+              , skip : []
               }
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime runSysCmdScript) unit) unit)
@@ -280,7 +292,7 @@ runTests = do
 
     it "Record / replay test: doAff success" $ do
       recordingRef <- liftEff $ newRef { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
+      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef ,  disableEntries : ["callApi","Log"]}
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording doAffScript) unit) unit)
       case eResult of
         Right (Tuple n unit) -> n `shouldEqual` "This is result."
@@ -298,6 +310,9 @@ runTests = do
               { recording
               , stepRef
               , errorRef
+              , disableVerify : []
+              , disableReplay : []
+              , skip : []
               }
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime doAffScript) unit) unit)

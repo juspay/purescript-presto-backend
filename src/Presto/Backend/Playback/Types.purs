@@ -35,14 +35,18 @@ type Recording =
 -- For now, Ref is used, but it's not thread safe.
 -- So having a sequential flow is preferred.
 type RecorderRuntime =
-  { recordingRef :: Ref Recording
-   ,disableEntries :: Array DisableEntries     --why we are using ref ??
-  }                                     -- this is a data type for recording
+  { recordingRef :: Ref Recording                                       --why we are using ref ??
+                                       -- this is a data type for recording
+   ,disableEntries :: Array DisableEntries     
+  }
 
 type PlayerRuntime =
   { recording :: Recording
   , stepRef   :: Ref Int
   , errorRef  :: Ref (Maybe PlaybackError)      -- this is a record having fields error type and message
+  , disableVerify :: Array String
+  , disableReplay :: Array String 
+  , skip :: Array String 
   }
 
 data PlaybackErrorType
@@ -116,6 +120,7 @@ newtype RRItemDict rrItem native = RRItemDict
   , compare            :: rrItem -> rrItem -> Boolean
   , encodeJSON         :: rrItem -> String
   }
+
 
 
 toRecordingEntry' :: forall rrItem native. RRItemDict rrItem native -> rrItem -> RecordingEntry

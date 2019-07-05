@@ -1,51 +1,61 @@
 module Presto.Backend.Playback.Entries where
 
 import Prelude
+import Presto.Backend.Playback.Types
 
 import Control.Monad.Except (runExcept) as E
 import Data.Either (Either(..), note, hush, isLeft)
+import Data.Foreign.Class (class Encode, class Decode, encode, decode)
 import Data.Foreign.Generic (defaultOptions, genericDecode, genericDecodeJSON, genericEncode, genericEncodeJSON, encodeJSON, decodeJSON)
 import Data.Foreign.Generic.Class (class GenericDecode, class GenericEncode)
-import Data.Foreign.Class (class Encode, class Decode, encode, decode)
 import Data.Generic.Rep (class Generic)
+import Data.Lazy (Lazy, force, defer)
 import Data.Maybe (Maybe(..), isJust)
 import Data.Newtype (class Newtype)
 import Data.Tuple (Tuple(..))
-import Data.Lazy (Lazy, force, defer)
-import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
+import Presto.Backend.DB.Types (DBError)
 import Presto.Backend.Runtime.Common (jsonStringify)
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (APIResult(..), ErrorPayload, ErrorResponse, Response)
 import Presto.Backend.Types.EitherEx (EitherEx(..))
-import Presto.Backend.DB.Types (DBError)
-import Presto.Backend.Playback.Types
+import Presto.Core.Utils.Encoding (defaultDecode, defaultEncode, defaultEnumDecode, defaultEnumEncode)
 
 
+data Mode = Normal | NoVerify | NoMock | Skipp 
+derive instance modeEq :: Eq Mode 
+derive instance genericMode :: Generic Mode _
+instance modeEncode :: Encode Mode where encode = defaultEnumEncode 
+instance modeDecode :: Decode Mode where decode = defaultEnumDecode
 
 
 data LogEntry = LogEntry
   { tag     :: String
   , message :: String
+  -- , mode :: Mode 
   }
 
 data CallAPIEntry = CallAPIEntry
   { jsonRequest :: String
   , jsonResult  :: EitherEx ErrorResponse String
+  , mode :: Mode 
   }
 
 data RunSysCmdEntry = RunSysCmdEntry
   { cmd :: String
   , result :: String
+  -- , mode :: Mode 
   }
 
 data DoAffEntry = DoAffEntry
   { jsonResult :: String
+  -- , mode :: Mode 
   }
 
 data RunDBEntry = RunDBEntry
   { dbName     :: String
   , dbMethod   :: String
   , jsonResult :: EitherEx DBError String
+  -- , mode :: Mode 
   }
 
 mkRunSysCmdEntry :: String -> String -> RunSysCmdEntry
@@ -71,6 +81,7 @@ mkCallAPIEntry
 mkCallAPIEntry jReq aRes = CallAPIEntry
   { jsonRequest : force jReq
   , jsonResult  : encodeJSON <$> aRes
+  , mode : Normal
   }
 
 mkRunDBEntry
