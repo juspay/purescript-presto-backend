@@ -36,16 +36,16 @@ type Recording =
 -- So having a sequential flow is preferred.
 type RecorderRuntime =
   { recordingRef :: Ref Recording
-   ,disableEntries :: Array DisableEntries     --why we are using ref ??
-  }                                     -- this is a data type for recording
+   ,disableEntries :: Array DisableEntries
+  }
 
 type PlayerRuntime =
   { recording :: Recording
   , disableVerify :: Array DisableEntries
-  , disableReplaying :: Array DisableEntries
+  , disableMocking :: Array DisableEntries
   , skip :: Array DisableEntries
   , stepRef   :: Ref Int
-  , errorRef  :: Ref (Maybe PlaybackError)      -- this is a record having fields error type and message
+  , errorRef  :: Ref (Maybe PlaybackError)
   }
 
 data PlaybackErrorType
@@ -59,28 +59,21 @@ newtype PlaybackError = PlaybackError
   , errorMessage :: String
   }
 
--- data Proxy a = Proxy
---
--- x :: Proxy "ar"
--- x = Proxy
---
---
--- reflexSymbol (Proxy) = "ar"
 
-class (Eq rrItem, Decode rrItem, Encode rrItem) <= RRItem rrItem where       -- what this typeclass means
-  toRecordingEntry   :: rrItem -> RecordingEntry          -- these are function inside the typeclass
+class (Eq rrItem, Decode rrItem, Encode rrItem) <= RRItem rrItem where
+  toRecordingEntry   :: rrItem -> RecordingEntry
   fromRecordingEntry :: RecordingEntry -> Maybe rrItem
-  getTag             :: Proxy rrItem -> String            --what is proxy
+  getTag             :: Proxy rrItem -> String
   isMocked           :: Proxy rrItem -> Boolean
 
 
 -- Class for conversions of RRItem and native results.
 -- Native result can be unencodable completely.
 -- TODO: error handling
-class (RRItem rrItem) <= MockedResult rrItem native | rrItem -> native where            --rrItem will determine the type of native How??
+class (RRItem rrItem) <= MockedResult rrItem native | rrItem -> native where
   parseRRItem :: rrItem -> Maybe native
 
-derive instance genericRecordingEntry :: Generic RecordingEntry _   --these are basically instances for RecordEnrty type
+derive instance genericRecordingEntry :: Generic RecordingEntry _
 instance decodeRecordingEntry         :: Decode  RecordingEntry where decode = defaultDecode
 instance encodeRecordingEntry         :: Encode  RecordingEntry where encode = defaultEncode
 instance eqRecordingEntry             :: Eq      RecordingEntry where eq = GEq.genericEq
@@ -114,7 +107,7 @@ newtype RRItemDict rrItem native = RRItemDict
   , fromRecordingEntry :: RecordingEntry -> Maybe rrItem
   , getTag             :: Proxy rrItem -> String
   , isMocked           :: Proxy rrItem -> Boolean
-  , parseRRItem        :: rrItem -> Maybe native              --is this same as The one in MockedResult typeclass
+  , parseRRItem        :: rrItem -> Maybe native
   , mkEntry            :: native -> rrItem
   , compare            :: rrItem -> rrItem -> Boolean
   , encodeJSON         :: rrItem -> String

@@ -147,7 +147,7 @@ replay playerRt rrItemDict lAct = do
     Left err -> replayError playerRt err
     Right (Tuple nextRRItem nextRes) -> do
       res <- replayWithMock rrItemDict lAct proxy nextRes
-      if not (elem tag playerRt.disableVerify) then do              -- return response without doing diff  request
+      if not (elem tag playerRt.disableVerify) then do            
         compareRRItems playerRt rrItemDict nextRRItem $ mkEntry' rrItemDict res
         pure res
         else pure res
@@ -161,11 +161,11 @@ record recorderRt rrItemDict lAct = do
       pure native
     else pure native
 
-withRunModeClassless                                                    --disable Replay
-  :: forall eff rt st rrItem native                                     -- sol 1  : Call withRunModeClassless from replay funtion in Regular Mode
-   . BackendRuntime                                                     -- problem : withRunModeClassless takes BackendRuntime as an agr which we don't have when we are in replay
-  -> RRItemDict rrItem native                                           -- (we can pass BRT as well with replay but this does not seems correct)
-  -> Lazy (InterpreterMT' rt st eff native)                             -- sol 2 : Change withRunModeClassless to check the tag here itself and then call the function in regular mode
+withRunModeClassless
+  :: forall eff rt st rrItem native
+   . BackendRuntime
+  -> RRItemDict rrItem native
+  -> Lazy (InterpreterMT' rt st eff native)
   -> InterpreterMT' rt st eff native
 withRunModeClassless brt@(BackendRuntime rt) rrItemDict lAct =
   case rt.mode of

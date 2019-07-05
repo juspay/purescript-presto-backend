@@ -1,40 +1,40 @@
 module Presto.Backend.RunModesSpec where
 
 import Prelude
+import Presto.Backend.Types.EitherEx
 
 import Control.Monad.Aff (Aff)
 import Control.Monad.Aff.Class (liftAff)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (liftEff)
+import Control.Monad.Eff.Exception (error)
 import Control.Monad.Eff.Ref (REF, Ref, newRef, readRef, writeRef, modifyRef)
+import Control.Monad.Error.Class (throwError)
 import Control.Monad.Except.Trans (runExceptT)
 import Control.Monad.Reader.Trans (runReaderT)
 import Control.Monad.State.Trans (runStateT)
-import Control.Monad.Error.Class (throwError)
-import Control.Monad.Eff.Exception (error)
 import Data.Array (length, index)
-import Data.Tuple (Tuple(..))
-import Data.Maybe (Maybe(..), isJust)
 import Data.Either (Either(..), isLeft, isRight)
+import Data.Foreign.Class (class Encode, class Decode, encode, decode)
 import Data.Foreign.Generic (defaultOptions, genericDecode, genericDecodeJSON, genericEncode, genericEncodeJSON, encodeJSON, decodeJSON)
 import Data.Foreign.Generic.Class (class GenericDecode, class GenericEncode)
-import Data.Foreign.Class (class Encode, class Decode, encode, decode)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq as GEq
-import Data.Generic.Rep.Show as GShow
 import Data.Generic.Rep.Ord as GOrd
+import Data.Generic.Rep.Show as GShow
 import Data.Map as Map
+import Data.Maybe (Maybe(..), isJust)
 import Data.StrMap as StrMap
+import Data.Tuple (Tuple(..))
 import Debug.Trace (spy)
-import Test.Spec (Spec, describe, it)
-import Test.Spec.Assertions (shouldEqual, fail)
-
 import Presto.Backend.Flow (BackendFlow, log, callAPI, runSysCmd, doAffRR)
 import Presto.Backend.Interpreter (BackendRuntime(..), Connection(..), RunningMode(..), runBackend)
+import Presto.Backend.Playback.Entries (CallAPIEntry(..))
 import Presto.Backend.Playback.Types (RecordingEntry(..), PlaybackError(..), PlaybackErrorType(..))
 import Presto.Backend.Types.API (class RestEndpoint, APIResult, Request(..), Headers(..), Response(..), ErrorPayload(..), Method(..), defaultDecodeResponse)
-import Presto.Backend.Types.EitherEx
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
+import Test.Spec (Spec, describe, it)
+import Test.Spec.Assertions (shouldEqual, fail)
 
 data SomeRequest = SomeRequest
   { code   :: Int
@@ -153,7 +153,7 @@ runTests = do
   describe "Recording/replaying mode tests" do
     it "Record test" $ do
       recordingRef <- liftEff $ newRef { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
+      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef , disableEntries : [""]}
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording logAndCallAPIScript) unit) unit)
       case eResult of
         Left err -> fail $ show err
@@ -169,13 +169,17 @@ runTests = do
 
     it "Record / replay test: log and callAPI success" $ do
       recordingRef <- liftEff $ newRef { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
+      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef , disableEntries : [""]}
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording logAndCallAPIScript) unit) unit)
       isRight eResult `shouldEqual` true
 
       stepRef   <- liftEff $ newRef 0
       errorRef  <- liftEff $ newRef Nothing
       recording <- liftEff $ readRef recordingRef
+
+      let disableVerify = [""]
+      let disableMocking = [""]
+      let skip = [""]
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -183,6 +187,9 @@ runTests = do
             , affRunner   : failingAffRunner
             , mode        : ReplayingMode
               { recording
+              , disableVerify
+              , disableMocking
+              , skip
               , stepRef
               , errorRef
               }
@@ -194,13 +201,18 @@ runTests = do
 
     it "Record / replay test: index out of range" $ do
       recordingRef <- liftEff $ newRef { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
+      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef , disableEntries : [""] }
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording logAndCallAPIScript) unit) unit)
       isRight eResult `shouldEqual` true
 
       stepRef   <- liftEff $ newRef 10
       errorRef  <- liftEff $ newRef Nothing
       recording <- liftEff $ readRef recordingRef
+
+      let disableVerify = [""]
+      let disableMocking = [""]
+      let skip = [""]
+
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -208,6 +220,9 @@ runTests = do
             , affRunner   : failingAffRunner
             , mode        : ReplayingMode
               { recording
+              , disableVerify
+              , disableMocking
+              , skip
               , stepRef
               , errorRef
               }
@@ -224,13 +239,18 @@ runTests = do
 
     it "Record / replay test: started from the middle" $ do
       recordingRef <- liftEff $ newRef { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
+      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef , disableEntries : [""] }
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording logAndCallAPIScript) unit) unit)
       isRight eResult `shouldEqual` true
 
       stepRef   <- liftEff $ newRef 2
       errorRef  <- liftEff $ newRef Nothing
       recording <- liftEff $ readRef recordingRef
+
+      let disableVerify = [""]
+      let disableMocking = [""]
+      let skip = [""]
+
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -238,6 +258,9 @@ runTests = do
             , affRunner   : failingAffRunner
             , mode        : ReplayingMode
               { recording
+              , disableVerify
+              , disableMocking
+              , skip
               , stepRef
               , errorRef
               }
@@ -251,7 +274,7 @@ runTests = do
 
     it "Record / replay test: runSysCmd success" $ do
       recordingRef <- liftEff $ newRef { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
+      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef , disableEntries : [""] }
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording runSysCmdScript) unit) unit)
       case eResult of
         Right (Tuple n unit) -> n `shouldEqual` "ABC\n"
@@ -260,6 +283,11 @@ runTests = do
       stepRef   <- liftEff $ newRef 0
       errorRef  <- liftEff $ newRef Nothing
       recording <- liftEff $ readRef recordingRef
+
+      let disableVerify = [""]
+      let disableMocking = [""]
+      let skip = [""]
+
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -267,6 +295,9 @@ runTests = do
             , affRunner   : failingAffRunner
             , mode        : ReplayingMode
               { recording
+              , disableVerify
+              , disableMocking
+              , skip
               , stepRef
               , errorRef
               }
@@ -280,7 +311,7 @@ runTests = do
 
     it "Record / replay test: doAff success" $ do
       recordingRef <- liftEff $ newRef { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
+      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef , disableEntries : [""] }
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording doAffScript) unit) unit)
       case eResult of
         Right (Tuple n unit) -> n `shouldEqual` "This is result."
@@ -289,6 +320,11 @@ runTests = do
       stepRef   <- liftEff $ newRef 0
       errorRef  <- liftEff $ newRef Nothing
       recording <- liftEff $ readRef recordingRef
+
+      let disableVerify = [""]
+      let disableMocking = [""]
+      let skip = [""]
+
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -296,6 +332,9 @@ runTests = do
             , affRunner   : failingAffRunner
             , mode        : ReplayingMode
               { recording
+              , disableVerify
+              , disableMocking
+              , skip
               , stepRef
               , errorRef
               }
