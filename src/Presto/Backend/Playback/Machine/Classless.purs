@@ -141,13 +141,13 @@ replay
   -> InterpreterMT' rt st eff native
 replay playerRt rrItemDict lAct = do
   let proxy = Proxy :: Proxy rrItem
-  let tagNoDiff = getTag' rrItemDict proxy
+  let tag = getTag' rrItemDict proxy
   eNextRRItemRes <- lift3 $ liftEff $ popNextRRItemAndResult playerRt rrItemDict proxy
   case eNextRRItemRes of
     Left err -> replayError playerRt err
     Right (Tuple nextRRItem nextRes) -> do
       res <- replayWithMock rrItemDict lAct proxy nextRes
-      if not (elem tagNoDiff playerRt.disableVerify) then do
+      if not (elem tag playerRt.disableVerify) then do
         compareRRItems playerRt rrItemDict nextRRItem $ mkEntry' rrItemDict res
         pure res
         else pure res
@@ -161,13 +161,19 @@ record recorderRt rrItemDict lAct = do
       pure native
     else pure native
 
-withRunModeClassless
-  :: forall eff rt st rrItem native
-   . BackendRuntime
-  -> RRItemDict rrItem native
-  -> Lazy (InterpreterMT' rt st eff native)
+withRunModeClassless                                                    --disable Replay
+  :: forall eff rt st rrItem native                                     -- sol 1  : Call withRunModeClassless from replay funtion in Regular Mode
+   . BackendRuntime                                                     -- problem : withRunModeClassless takes BackendRuntime as an agr which we don't have when we are in replay
+  -> RRItemDict rrItem native                                           -- (we can pass BRT as well with replay but this does not seems correct)
+  -> Lazy (InterpreterMT' rt st eff native)                             -- sol 2 : Change withRunModeClassless to check the tag here itself and then call the function in regular mode
   -> InterpreterMT' rt st eff native
-withRunModeClassless brt@(BackendRuntime rt) rrItemDict lAct = case rt.mode of
+withRunModeClassless brt@(BackendRuntime rt) rrItemDict lAct =
+  case rt.mode of
   RegularMode              -> force lAct
   RecordingMode recorderRt -> record recorderRt rrItemDict lAct
-  ReplayingMode playerRt   -> replay playerRt   rrItemDict lAct
+  ReplayingMode playerRt   -> do
+                              let proxy = Proxy :: Proxy rrItem
+                              let tag = getTag' rrItemDict proxy
+                              if elem tag playerRt.disableMocking then do
+                                force lAct
+                                else replay playerRt   rrItemDict lAct
