@@ -100,7 +100,6 @@ data BackendFlowCommands next st rt s =
     | Enqueue SimpleConn String String (Either Error Unit -> next)
     | Dequeue SimpleConn String (Either Error (Maybe String) -> next)
     | GetQueueIdx SimpleConn String Int (Either Error (Maybe String) -> next)
-
     | Expire SimpleConn String Seconds (Either Error Boolean -> next)
     | Incr SimpleConn String (Either Error Int -> next)
     | SetHash SimpleConn String String String (Either Error Boolean -> next)
@@ -173,35 +172,6 @@ getDBConn :: forall st rt. String -> BackendFlow st rt SqlConn
 getDBConn dbName = wrap $ GetDBConn dbName
   (Playback.mkEntryDict $ Playback.mkGetDBConnEntry dbName)
   id
-
--- TODO: TASK: add options, model and other input params to recording so it they be compared.
--- data CustomDBModel model = CustomDBModel
-
--- getModelByName
---   :: forall model st rt
---    . Model model
---   => String
---   -> BackendFlow st rt (Either Error (ModelOf model))
--- getModelByName dbName = do
---
---
-  -- eResEx <- wrap $ RunDB dbName
-  --   (\conn     -> (\x -> (encodeModel <<< toCustomDBModel) <$> toCustomEitherEx x) <$> DB.getModelByName conn)
-  --   (\connMock -> SqlDBMock.mkDbActionDict $ SqlDBMock.mkGetModelByName dbName)
-  --   (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "getModelByName")
-  --   id
-  -- pure $ do
-  --   m <- fromCustomEitherEx eResEx
-  --   case E.runExcept $ decodeModel m of
-  --     Left err -> Left $ error $ show err
-  --     Right m' -> Right m'
-  --
-  -- -- pure (fromCustomDBModel <$> fromCustomEitherEx eResEx)
-  -- where
-  --   toCustomDBModel :: forall m. Model m => EncodeModel m => DecodeModel m => ModelOf model -> m
-  --   toCustomDBModel = unsafeCoerce
-  -- --   fromCustomDBModel :: CustomDBModel model -> ModelOf model
-  -- --   fromCustomDBModel = unsafeCoerce
 
 findOne
   :: forall model st rt
