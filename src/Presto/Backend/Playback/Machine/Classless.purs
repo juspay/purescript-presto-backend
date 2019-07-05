@@ -142,6 +142,10 @@ replay
 replay playerRt rrItemDict lAct = do
   let proxy = Proxy :: Proxy rrItem
   let tag = getTag' rrItemDict proxy
+  let mode = getMode' rrItemDict proxy 
+  case mode of 
+    Normal -> pure unit 
+    _ -> pure unit 
   eNextRRItemRes <- lift3 $ liftEff $ popNextRRItemAndResult playerRt rrItemDict proxy
   case eNextRRItemRes of
     Left err -> replayError playerRt err
@@ -177,3 +181,7 @@ withRunModeClassless brt@(BackendRuntime rt) rrItemDict lAct =
                               if elem tag playerRt.disableMocking then do
                                 force lAct
                                 else replay playerRt   rrItemDict lAct
+
+
+
+

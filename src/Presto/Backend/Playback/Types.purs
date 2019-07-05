@@ -24,6 +24,11 @@ import Sequelize.Models.Types (DataType(..))
 import Type.Proxy (Proxy)
 
 data RecordingEntry = RecordingEntry String
+data Mode = Normal | NoVerify | NoMock | Skip 
+-- derive instance modeEq :: Eq Mode 
+-- derive instance genericMode :: Generic Mode _
+-- instance modeEncode :: Encode Mode where encode = defaultEnumEncode 
+-- instance modeDecode :: Decode Mode where decode = defaultEnumDecode
 
 type DisableEntries  = String
 -- TODO: it might be Data.Sequence.Ordered is better
@@ -66,6 +71,7 @@ class (Eq rrItem, Decode rrItem, Encode rrItem) <= RRItem rrItem where
   fromRecordingEntry :: RecordingEntry -> Maybe rrItem
   getTag             :: Proxy rrItem -> String
   isMocked           :: Proxy rrItem -> Boolean
+  getMode             :: Proxy rrItem -> Mode 
 
 
 -- Class for conversions of RRItem and native results.
@@ -112,6 +118,7 @@ newtype RRItemDict rrItem native = RRItemDict
   , mkEntry            :: native -> rrItem
   , compare            :: rrItem -> rrItem -> Boolean
   , encodeJSON         :: rrItem -> String
+  , getMode            :: Proxy rrItem -> Mode 
   }
 
 
@@ -124,6 +131,9 @@ fromRecordingEntry' (RRItemDict d) = d.fromRecordingEntry
 
 getTag' :: forall rrItem native. RRItemDict rrItem native -> Proxy rrItem -> String
 getTag' (RRItemDict d) = d.getTag
+
+getMode' :: forall rrItem native. RRItemDict rrItem native -> Proxy rrItem -> Mode 
+getMode' (RRItemDict d) = d.getMode
 
 isMocked' :: forall rrItem native. RRItemDict rrItem native -> Proxy rrItem -> Boolean
 isMocked' (RRItemDict d) = d.isMocked
@@ -151,4 +161,5 @@ mkEntryDict mkEntry = RRItemDict
   , mkEntry            : mkEntry
   , compare            : (==)
   , encodeJSON         : encodeJSON
+  , getMode            : getMode 
   }

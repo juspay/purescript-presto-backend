@@ -20,42 +20,29 @@ import Presto.Backend.Types.API (APIResult(..), ErrorPayload, ErrorResponse, Res
 import Presto.Backend.Types.EitherEx (EitherEx(..))
 import Presto.Core.Utils.Encoding (defaultDecode, defaultEncode, defaultEnumDecode, defaultEnumEncode)
 
-
-data Mode = Normal | NoVerify | NoMock | Skip 
-derive instance modeEq :: Eq Mode 
-derive instance genericMode :: Generic Mode _
-instance modeEncode :: Encode Mode where encode = defaultEnumEncode 
-instance modeDecode :: Decode Mode where decode = defaultEnumDecode
-
-
 data LogEntry = LogEntry
   { tag     :: String
   , message :: String
-  -- , mode :: Mode 
   }
 
 data CallAPIEntry = CallAPIEntry
   { jsonRequest :: String
   , jsonResult  :: EitherEx ErrorResponse String
-  , mode :: Mode 
   }
 
 data RunSysCmdEntry = RunSysCmdEntry
   { cmd :: String
   , result :: String
-  -- , mode :: Mode 
   }
 
 data DoAffEntry = DoAffEntry
   { jsonResult :: String
-  -- , mode :: Mode 
   }
 
 data RunDBEntry = RunDBEntry
   { dbName     :: String
   , dbMethod   :: String
   , jsonResult :: EitherEx DBError String
-  -- , mode :: Mode 
   }
 
 mkRunSysCmdEntry :: String -> String -> RunSysCmdEntry
@@ -81,7 +68,6 @@ mkCallAPIEntry
 mkCallAPIEntry jReq aRes = CallAPIEntry
   { jsonRequest : force jReq
   , jsonResult  : encodeJSON <$> aRes
-  , mode : Normal
   }
 
 mkRunDBEntry
@@ -109,6 +95,8 @@ instance rrItemLogEntry :: RRItem LogEntry where
   fromRecordingEntry (RecordingEntry re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "LogEntry"
   isMocked _ = true
+  getMode  _ = Normal 
+  
 
 instance mockedResultLogEntry :: MockedResult LogEntry Unit where
   parseRRItem _ = Just unit
@@ -126,6 +114,8 @@ instance rrItemCallAPIEntry :: RRItem CallAPIEntry where
   fromRecordingEntry (RecordingEntry re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "CallAPIEntry"
   isMocked _ = true
+  getMode  _ = Normal 
+
 
 
 instance mockedResultCallAPIEntry
@@ -150,6 +140,7 @@ instance rrItemRunSysCmdEntry :: RRItem RunSysCmdEntry where
   fromRecordingEntry (RecordingEntry re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "RunSysCmdEntry"
   isMocked _ = true
+  getMode  _ = Normal 
 
 instance mockedResultRunSysCmdEntry :: MockedResult RunSysCmdEntry String where
   parseRRItem (RunSysCmdEntry e) = Just e.result
@@ -166,6 +157,7 @@ instance rrItemDoAffEntry :: RRItem DoAffEntry where
   fromRecordingEntry (RecordingEntry re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "DoAffEntry"
   isMocked _ = true
+  getMode  _ = Normal 
 
 instance mockedResultDoAffEntry :: Decode b => MockedResult DoAffEntry b where
   parseRRItem (DoAffEntry r) = hush $ E.runExcept $ decodeJSON r.jsonResult
@@ -181,6 +173,7 @@ instance rrItemRunDBEntry :: RRItem RunDBEntry where
   fromRecordingEntry (RecordingEntry re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "RunDBEntry"
   isMocked _ = true
+  getMode  _ = Normal 
 
 instance mockedResultRunDBEntry
   :: Decode b => MockedResult RunDBEntry (EitherEx DBError b) where
