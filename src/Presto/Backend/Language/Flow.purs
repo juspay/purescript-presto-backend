@@ -31,7 +31,7 @@ import Control.Monad.Eff.Exception (Error, error, message)
 import Control.Monad.Free (Free, liftF)
 import Data.Either (Either(..))
 import Data.Exists (Exists, mkExists)
-import Data.Foreign (Foreign)
+import Data.Foreign (Foreign, toForeign)
 import Data.Foreign.Class (class Decode, class Encode)
 import Data.Foreign.Generic (encodeJSON)
 import Data.Lazy (defer)
@@ -192,7 +192,7 @@ query dbName rawq = do
   conn <- getDBConn dbName
   eResEx <- wrap $ RunDB
     (toCustomEitherEx <$> DB.query conn rawq)
-    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "query" [] "")
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "query" [toForeign rawq] "")
     id
   pure $ fromCustomEitherEx eResEx
 
