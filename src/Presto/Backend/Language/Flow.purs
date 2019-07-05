@@ -40,7 +40,7 @@ import Data.Lazy (defer)
 import Data.Options (Options)
 import Data.Options (options) as Opt
 import Data.Time.Duration (Milliseconds, Seconds)
-import Presto.Backend.DBImpl (findOne, findAll, create, createWithOpts, query, update, delete) as DB
+import Presto.Backend.DBImpl (findOne, findAll, create, createWithOpts, query, update, delete, getModelByName) as DB
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (ErrorResponse, APIResult)
 import Presto.Backend.APIInteract (apiInteract)
@@ -49,11 +49,12 @@ import Presto.Backend.Playback.Types as Playback
 import Presto.Backend.Playback.Entries as Playback
 import Presto.Backend.Types.API (class RestEndpoint, Headers, makeRequest)
 import Presto.Backend.Language.Types.DB (SqlConn, MockedSqlConn, DBError(..), toDBMaybeResult, fromDBMaybeResult)
-import Presto.Core.Types.Language.Interaction (Interaction)
-import Sequelize.Class (class Model)
-import Sequelize.Types (Conn, Instance, SEQUELIZE)
 import Presto.Backend.DB.Mock.Types as SqlDBMock
 import Presto.Backend.DB.Mock.Actions as SqlDBMock
+import Presto.Core.Types.Language.Interaction (Interaction)
+import Sequelize.Class (class Model, class EncodeModel, class DecodeModel, encodeModel, decodeModel)
+import Sequelize.Types (Conn, Instance, SEQUELIZE, ModelOf)
+import Unsafe.Coerce (unsafeCoerce)
 
 data BackendFlowCommands next st rt s =
       Ask (rt -> next)
@@ -174,6 +175,33 @@ getDBConn dbName = wrap $ GetDBConn dbName
   id
 
 -- TODO: TASK: add options, model and other input params to recording so it they be compared.
+-- data CustomDBModel model = CustomDBModel
+
+-- getModelByName
+--   :: forall model st rt
+--    . Model model
+--   => String
+--   -> BackendFlow st rt (Either Error (ModelOf model))
+-- getModelByName dbName = do
+--
+--
+  -- eResEx <- wrap $ RunDB dbName
+  --   (\conn     -> (\x -> (encodeModel <<< toCustomDBModel) <$> toCustomEitherEx x) <$> DB.getModelByName conn)
+  --   (\connMock -> SqlDBMock.mkDbActionDict $ SqlDBMock.mkGetModelByName dbName)
+  --   (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "getModelByName")
+  --   id
+  -- pure $ do
+  --   m <- fromCustomEitherEx eResEx
+  --   case E.runExcept $ decodeModel m of
+  --     Left err -> Left $ error $ show err
+  --     Right m' -> Right m'
+  --
+  -- -- pure (fromCustomDBModel <$> fromCustomEitherEx eResEx)
+  -- where
+  --   toCustomDBModel :: forall m. Model m => EncodeModel m => DecodeModel m => ModelOf model -> m
+  --   toCustomDBModel = unsafeCoerce
+  -- --   fromCustomDBModel :: CustomDBModel model -> ModelOf model
+  -- --   fromCustomDBModel = unsafeCoerce
 
 findOne
   :: forall model st rt

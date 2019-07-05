@@ -40,7 +40,7 @@ import Presto.Backend.Types.EitherEx
 import Presto.Backend.Language.Types.DB (SqlConn(..), MockedSqlConn(..), SequelizeConn(..))
 import Presto.Backend.Playback.Types (RecordingEntry(..), PlaybackError(..), PlaybackErrorType(..))
 import Presto.Backend.Runtime.Types (Connection(..), BackendRuntime(..), RunningMode(..))
-import Presto.Backend.Interpreter (runBackend)
+import Presto.Backend.Runtime.Interpreter (runBackend)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
 import Presto.Backend.TestData.DBModel
 import Presto.Backend.TestData.Common

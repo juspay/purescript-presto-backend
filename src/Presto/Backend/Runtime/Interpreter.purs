@@ -19,8 +19,8 @@
  along with this program. If not, see <https://www.gnu.org/licenses/agpl.html>.
 -}
 
-module Presto.Backend.Interpreter
-  ( module Presto.Backend.Interpreter
+module Presto.Backend.Runtime.Interpreter
+  ( module Presto.Backend.Runtime.Interpreter
   , module X
   ) where
 
@@ -61,8 +61,8 @@ import Presto.Backend.Playback.Types
 import Presto.Backend.Playback.Machine
 import Presto.Backend.Playback.Machine.Classless
 import Presto.Backend.Playback.Entries
-import Presto.Backend.Language.Runtime.API (runAPIInteraction)
 import Presto.Backend.Language.Types.DB (SqlConn(..), MockedSqlConn(..), SequelizeConn(..))
+import Presto.Backend.Runtime.API (runAPIInteraction)
 import Presto.Backend.Runtime.Types (Connection(..))
 import Type.Proxy (Proxy(..))
 
