@@ -147,7 +147,7 @@ replay playerRt rrItemDict lAct = do
     Left err -> replayError playerRt err
     Right (Tuple nextRRItem nextRes) -> do
       res <- replayWithMock rrItemDict lAct proxy nextRes
-      if not (elem tag playerRt.disableVerify) then do
+      if not (elem tag playerRt.disableVerify) then do              -- return response without doing diff  request
         compareRRItems playerRt rrItemDict nextRRItem $ mkEntry' rrItemDict res
         pure res
         else pure res
