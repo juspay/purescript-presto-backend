@@ -47,9 +47,6 @@ type PlayerRuntime =
   , skip :: Array DisableEntries
   , stepRef   :: Ref Int
   , errorRef  :: Ref (Maybe PlaybackError)      -- this is a record having fields error type and message
-  , disableVerify :: Array String
-  , disableReplay :: Array String 
-  , skip :: Array String 
   }
 
 data PlaybackErrorType

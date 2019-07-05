@@ -186,7 +186,7 @@ runTests = do
               , stepRef
               , errorRef
               , disableVerify : [""]
-              , disableReplay : [""]
+              , disableMocking : [""]
               , skip : ["CallAPIEntry"]
               }
             }
@@ -214,7 +214,7 @@ runTests = do
               , stepRef
               , errorRef
               , disableVerify : []
-              , disableReplay : []
+              , disableMocking : []
               , skip : []
               }
             }
@@ -247,7 +247,7 @@ runTests = do
               , stepRef
               , errorRef
               , disableVerify : []
-              , disableReplay : []
+              , disableMocking : []
               , skip : []
               }
             }
@@ -279,7 +279,7 @@ runTests = do
               , stepRef
               , errorRef
               , disableVerify : []
-              , disableReplay : []
+              , disableMocking : []
               , skip : []
               }
             }
@@ -311,7 +311,7 @@ runTests = do
               , stepRef
               , errorRef
               , disableVerify : []
-              , disableReplay : []
+              , disableMocking : []
               , skip : []
               }
             }
