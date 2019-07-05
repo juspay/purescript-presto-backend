@@ -40,7 +40,7 @@ import Data.Lazy (defer)
 import Data.Options (Options)
 import Data.Options (options) as Opt
 import Data.Time.Duration (Milliseconds, Seconds)
-import Presto.Backend.DBImpl (findOne, findAll, create, createWithOpts, query, update, delete, getModelByName) as DB
+import Presto.Backend.DBImpl (findOne, findAll, create, createWithOpts, query, update, update', delete, getModelByName) as DB
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (ErrorResponse, APIResult)
 import Presto.Backend.APIInteract (apiInteract)
@@ -264,6 +264,15 @@ update dbName updateValues whereClause = do
     (\conn -> toCustomEitherEx <$> DB.update conn updateValues whereClause)
     (\connMock -> SqlDBMock.mkDbActionDict $ SqlDBMock.mkUpdate dbName)
     (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "update" [(Opt.options updateValues),(Opt.options whereClause)] "")
+    id
+  pure $ fromCustomEitherEx eResEx
+
+update' :: forall model st rt. Model model => String -> Options model -> Options model -> BackendFlow st rt (Either Error Int)
+update' dbName updateValues whereClause = do
+  eResEx <- wrap $ RunDB dbName
+    (\conn -> toCustomEitherEx <$> DB.update' conn updateValues whereClause)
+    (\connMock -> SqlDBMock.mkDbActionDict $ SqlDBMock.mkUpdate dbName)
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "update'" [(Opt.options updateValues),(Opt.options whereClause)] "")
     id
   pure $ fromCustomEitherEx eResEx
 

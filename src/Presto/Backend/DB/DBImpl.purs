@@ -19,6 +19,10 @@
  along with this program. If not, see <https://www.gnu.org/licenses/agpl.html>.
 -}
 
+-- Warning: using these functions from the BackendFlow is not recommended.
+-- These functions are implementation-related
+-- and cannot be tested / recorded / replayed / mocked properly.
+
 module Presto.Backend.DBImpl
   (
     useMasterClause,
