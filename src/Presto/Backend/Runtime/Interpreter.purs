@@ -26,10 +26,6 @@ module Presto.Backend.Runtime.Interpreter
 
 import Prelude
 
-import Cache (SetOptions(..), SimpleConn, del, exists, expire, get, incr, publish, set, setMessageHandler, subscribe)
-import Cache.Hash (hget, hset)
-import Cache.List (lindex, lpop, rpush)
-import Cache.Multi (execMulti, expireMulti, getMulti, hgetMulti, hsetMulti, incrMulti, lindexMulti, lpopMulti, newMulti, publishMulti, rpushMulti, setMulti, subscribeMulti)
 import Control.Monad.Aff (Aff, forkAff)
 import Control.Monad.Eff.Ref (REF, Ref, newRef, readRef, writeRef, modifyRef)
 import Control.Monad.Eff (Eff)
@@ -58,10 +54,9 @@ import Presto.Backend.Language.Types.DB (KVDBConn(..), SqlConn(..), MockedSqlCon
 import Presto.Backend.Runtime.Common (jsonStringify, lift3, throwException', getDBConn', getKVDBConn')
 import Presto.Backend.Runtime.Types (InterpreterMT, InterpreterMT', LogRunner, RunningMode(..), Connection(..), BackendRuntime(..))
 import Presto.Backend.Runtime.Types as X
-import Presto.Backend.Playback.Types
-import Presto.Backend.Playback.Machine
-import Presto.Backend.Playback.Machine.Classless
-import Presto.Backend.Playback.Entries
+import Presto.Backend.Playback.Machine (withRunMode)
+import Presto.Backend.Playback.Machine.Classless (withRunModeClassless)
+import Presto.Backend.Playback.Entries (mkLogEntry)
 import Presto.Backend.Runtime.API (runAPIInteraction)
 import Presto.Backend.Runtime.KVDBInterpreter (runKVDB)
 import Presto.Backend.DB.Mock.Types (DBActionDict)
@@ -77,9 +72,6 @@ forkF runtime flow = do
 
 getMockedDBValue :: forall st rt eff a. BackendRuntime -> DBActionDict -> InterpreterMT' rt st eff a
 getMockedDBValue brt mockedDbActDict = throwException' "Mocking is not yet implemented for DB."
-
-getMockedKVDBValue :: forall st rt eff a. BackendRuntime -> KVDBActionDict -> InterpreterMT' rt st eff a
-getMockedKVDBValue brt mockedKvDbActDict = throwException' "Mocking is not yet implemented for KV DB."
 
 interpret :: forall st rt s eff a. BackendRuntime -> BackendFlowCommandsWrapper st rt s a -> InterpreterMT' rt st eff a
 interpret _ (Ask next) = R.ask >>= (pure <<< next)
@@ -135,23 +127,11 @@ interpret brt@(BackendRuntime rt) (GetKVDBConn dbName rrItemDict next) = do
     (defer $ \_ -> getKVDBConn' brt dbName)
   pure $ next res
 
-interpret brt (RunKVDBEither dbName kvDBF mockedKvDbActDictF rrItemDict next) = do
-  conn' <- getKVDBConn' brt dbName
-  res <- case conn' of
-    Redis simpleConn -> withRunModeClassless brt rrItemDict
-        (defer $ \_ -> runKVDB brt $ kvDBF simpleConn)
-    MockedKVDB mocked -> withRunModeClassless brt rrItemDict
-        (defer $ \_ -> getMockedKVDBValue brt $ mockedKvDbActDictF mocked)
-  pure $ next res
+interpret brt (RunKVDBEither dbName kvDBF mockedKvDbActDictF rrItemDict next) =
+  next <$> runKVDB brt dbName kvDBF mockedKvDbActDictF rrItemDict
 
-interpret brt (RunKVDBSimple dbName kvDBF mockedKvDbActDictF rrItemDict next) = do
-  conn' <- getKVDBConn' brt dbName
-  res <- case conn' of
-    Redis simpleConn -> withRunModeClassless brt rrItemDict
-        (defer $ \_ -> runKVDB brt $ kvDBF simpleConn)
-    MockedKVDB mocked -> withRunModeClassless brt rrItemDict
-        (defer $ \_ -> getMockedKVDBValue brt $ mockedKvDbActDictF mocked)
-  pure $ next res
+interpret brt (RunKVDBSimple dbName kvDBF mockedKvDbActDictF rrItemDict next) =
+  next <$> runKVDB brt dbName kvDBF mockedKvDbActDictF rrItemDict
 
 runBackend :: forall st rt eff a. BackendRuntime -> BackendFlow st rt a -> InterpreterMT' rt st eff a
 runBackend backendRuntime = foldFree (\(BackendFlowWrapper x) -> runExists (interpret backendRuntime) x)
