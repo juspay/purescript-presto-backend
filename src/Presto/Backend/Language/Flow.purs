@@ -33,6 +33,7 @@ import Control.Monad.Free (Free, liftF)
 import Data.Either (Either(..), note, hush, isLeft)
 import Data.Exists (Exists, mkExists)
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
+import Data.Newtype (class Newtype)
 import Data.Foreign (Foreign, toForeign)
 import Data.Foreign.Class (class Encode, class Decode, encode, decode)
 import Data.Foreign.Generic (encodeJSON)
@@ -198,9 +199,10 @@ findAll dbName options = do
   pure $ fromCustomEitherEx eResEx
 
 query
-  :: forall a st rt
+  :: forall r a st rt
    . Encode a
   => Decode a
+  => Newtype a {|r}
   => String -> String -> BackendFlow st rt (Either Error (Array a))
 query dbName rawq = do
   eResEx <- wrap $ RunDB dbName
