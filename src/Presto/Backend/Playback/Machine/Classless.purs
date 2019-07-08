@@ -169,7 +169,9 @@ replay playerRt rrItemDict lAct = do
       case eNextRRItemRes of 
         Left err -> replayError playerRt err 
         Right (Tuple nextRRItem nextRes) -> replayWithMock rrItemDict lAct proxy nextRes
-    NoMock -> force lAct  
+    NoMock ->do 
+      popNextRRItemAndResult
+      force lAct  
     Skip -> replayError playerRt $ PlaybackError {errorType : UnexpectedRecordingEnd , errorMessage : "not sure what to do with skip"}
 
 record :: forall eff rt st rrItem native. RecorderRuntime  -> RRItemDict rrItem native  ->  Lazy (InterpreterMT' rt st eff native)  -> InterpreterMT' rt st eff native
