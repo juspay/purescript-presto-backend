@@ -5,7 +5,6 @@ module Presto.Backend.Runtime.Types
 
 import Prelude
 
-import Cache (SimpleConn)
 import Control.Monad.Aff (Aff)
 import Control.Monad.Eff.Exception (Error)
 import Control.Monad.Except.Trans (ExceptT) as E
@@ -16,8 +15,7 @@ import Data.StrMap (StrMap)
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (APIRunner)
 import Presto.Backend.Playback.Types (RecorderRuntime, PlayerRuntime)
-import Sequelize.Types (Conn)
-import Presto.Backend.Language.Types.DB
+import Presto.Backend.Language.Types.DB (Connection)
 import Presto.Backend.Language.Types.DB as DB
 
 type InterpreterMT rt st err eff a = R.ReaderT rt (S.StateT st (E.ExceptT err (BackendAff eff))) a
@@ -31,11 +29,6 @@ data RunningMode
   = RegularMode
   | RecordingMode RecorderRuntime
   | ReplayingMode PlayerRuntime
-
-
-data Connection
-  = SqlConn SqlConn
-  | Redis SimpleConn
 
 
 newtype BackendRuntime = BackendRuntime

@@ -54,6 +54,25 @@ data GetDBConnEntry = GetDBConnEntry
   , mockedConn :: MockedSqlConn
   }
 
+data GetKVDBConnEntry = GetKVDBConnEntry
+  { dbName     :: String
+  , mockedConn :: MockedKVDBConn
+  }
+
+data RunKVDBEntryEither = RunKVDBEntryEither
+  { dbName     :: String
+  , dbMethod   :: String
+  , jsonResult :: EitherEx DBError String
+  , params     :: String
+  }
+
+data RunKVDBEntrySimple = RunKVDBEntrySimple
+  { dbName     :: String
+  , dbMethod   :: String
+  , jsonResult :: String
+  , params     :: String
+  }
+
 mkRunSysCmdEntry :: String -> String -> RunSysCmdEntry
 mkRunSysCmdEntry cmd result = RunSysCmdEntry { cmd, result }
 
@@ -98,8 +117,12 @@ mkRunDBEntry dbName dbMethod options model aRes = RunDBEntry
   }
 
 mkGetDBConnEntry :: String -> SqlConn -> GetDBConnEntry
-mkGetDBConnEntry dbName (Sequelize _) = GetDBConnEntry { dbName, mockedConn : MockedSqlConn dbName }
+mkGetDBConnEntry dbName (Sequelize _)          = GetDBConnEntry { dbName, mockedConn : MockedSqlConn dbName }
 mkGetDBConnEntry dbName (MockedSql mockedConn) = GetDBConnEntry { dbName, mockedConn }
+
+mkGetKVDBConnEntry :: String -> KVDBConn -> GetKVDBConnEntry
+mkGetKVDBConnEntry dbName (Redis _)               = GetKVDBConnEntry { dbName, mockedConn : MockedKVDBConn dbName }
+mkGetKVDBConnEntry dbName (MockedKVDB mockedConn) = GetKVDBConnEntry { dbName, mockedConn }
 
 derive instance genericLogEntry :: Generic LogEntry _
 derive instance eqLogEntry :: Eq LogEntry
@@ -120,7 +143,6 @@ instance mockedResultLogEntry :: MockedResult LogEntry Unit where
 derive instance genericCallAPIEntry :: Generic CallAPIEntry _
 derive instance eqCallAPIEntry :: Eq CallAPIEntry
 
-
 instance decodeCallAPIEntry :: Decode CallAPIEntry where decode = defaultDecode
 instance encodeCallAPIEntry :: Encode CallAPIEntry where encode = defaultEncode
 
@@ -129,7 +151,6 @@ instance rrItemCallAPIEntry :: RRItem CallAPIEntry where
   fromRecordingEntry (RecordingEntry re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "CallAPIEntry"
   isMocked _ = true
-
 
 instance mockedResultCallAPIEntry
   :: Decode b
@@ -196,7 +217,6 @@ instance mockedResultRunDBEntry
       pure eResult
 
 
-
 derive instance genericGetDBConnEntry :: Generic GetDBConnEntry _
 derive instance eqGetDBConnEntry :: Eq GetDBConnEntry
 instance decodeGetDBConnEntry :: Decode GetDBConnEntry where decode = defaultDecode
@@ -209,3 +229,17 @@ instance rrItemGetDBConnEntry :: RRItem GetDBConnEntry where
 
 instance mockedResultGetDBConnEntry :: MockedResult GetDBConnEntry SqlConn where
   parseRRItem (GetDBConnEntry entry) = Just $ MockedSql entry.mockedConn
+
+
+derive instance genericGetKVDBConnEntry :: Generic GetKVDBConnEntry _
+derive instance eqGetKVDBConnEntry :: Eq GetKVDBConnEntry
+instance decodeGetKVDBConnEntry :: Decode GetKVDBConnEntry where decode = defaultDecode
+instance encodeGetKVDBConnEntry :: Encode GetKVDBConnEntry where encode = defaultEncode
+instance rrItemGetKVDBConnEntry :: RRItem GetKVDBConnEntry where
+  toRecordingEntry = RecordingEntry <<< encodeJSON
+  fromRecordingEntry (RecordingEntry re) = hush $ E.runExcept $ decodeJSON re
+  getTag   _ = "GetKVDBConnEntry"
+  isMocked _ = true
+
+instance mockedResultGetKVDBConnEntry :: MockedResult GetKVDBConnEntry KVDBConn where
+  parseRRItem (GetKVDBConnEntry entry) = Just $ MockedKVDB entry.mockedConn
