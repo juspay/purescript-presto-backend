@@ -1,4 +1,4 @@
-module Presto.Backend.Types.MaybeEx
+module Presto.Backend.Language.Types.MaybeEx
   ( MaybeEx (..)
   , fromMaybeEx
   , toMaybeEx

@@ -1,4 +1,7 @@
-module Presto.Backend.Runtime.Types where
+module Presto.Backend.Runtime.Types
+  ( module Presto.Backend.Runtime.Types
+  , module DB
+  ) where
 
 import Prelude
 
@@ -14,6 +17,8 @@ import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (APIRunner)
 import Presto.Backend.Playback.Types (RecorderRuntime, PlayerRuntime)
 import Sequelize.Types (Conn)
+import Presto.Backend.Language.Types.DB
+import Presto.Backend.Language.Types.DB as DB
 
 type InterpreterMT rt st err eff a = R.ReaderT rt (S.StateT st (E.ExceptT err (BackendAff eff))) a
 type InterpreterMT' rt st eff a = InterpreterMT rt st (Tuple Error st) eff a
@@ -27,19 +32,11 @@ data RunningMode
   | RecordingMode RecorderRuntime
   | ReplayingMode PlayerRuntime
 
-type Cache = {
-    name :: String
-  , connection :: SimpleConn
-}
-
-type DB = {
-    name :: String
-  , connection :: Conn
-}
 
 data Connection
-  = Sequelize Conn
+  = SqlConn SqlConn
   | Redis SimpleConn
+
 
 newtype BackendRuntime = BackendRuntime
   { apiRunner   :: APIRunner
