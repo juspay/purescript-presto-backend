@@ -14,11 +14,11 @@ import Data.Lazy (Lazy, force, defer)
 import Data.Maybe (Maybe(..), isJust)
 import Data.Newtype (class Newtype)
 import Data.Tuple (Tuple(..))
-import Presto.Backend.DB.Types (DBError)
+-- import Presto.Backend.DB.Types (DBError)
 import Presto.Backend.Runtime.Common (jsonStringify)
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (APIResult(..), ErrorPayload, ErrorResponse, Response)
-import Presto.Backend.Types.EitherEx (EitherEx(..))
+-- import Presto.Backend.Types.EitherEx (EitherEx(..))
 import Presto.Core.Utils.Encoding (defaultDecode, defaultEncode, defaultEnumDecode, defaultEnumEncode)
 import Presto.Backend.Language.Types.EitherEx (EitherEx(..))
 import Presto.Backend.Language.Types.DB
@@ -208,8 +208,8 @@ derive instance eqGetDBConnEntry :: Eq GetDBConnEntry
 instance decodeGetDBConnEntry :: Decode GetDBConnEntry where decode = defaultDecode
 instance encodeGetDBConnEntry :: Encode GetDBConnEntry where encode = defaultEncode
 instance rrItemGetDBConnEntry :: RRItem GetDBConnEntry where
-  toRecordingEntry = RecordingEntry <<< encodeJSON
-  fromRecordingEntry (RecordingEntry re) = hush $ E.runExcept $ decodeJSON re
+  toRecordingEntry rrItem mode = (RecordingEntry mode ) <<< encodeJSON $ rrItem
+  fromRecordingEntry (RecordingEntry mode re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "GetDBConnEntry"
   isMocked _ = true
 
