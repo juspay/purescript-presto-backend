@@ -1,4 +1,4 @@
-module Presto.Backend.Language.Runtime.API
+module Presto.Backend.Runtime.API
   ( runAPIInteraction
   ) where
 

@@ -6,6 +6,7 @@ import Presto.Backend.Playback.Types
 import Control.Monad.Except (runExcept) as E
 import Data.Either (Either(..), note, hush, isLeft)
 import Data.Foreign.Class (class Encode, class Decode, encode, decode)
+import Data.Foreign (Foreign)
 import Data.Foreign.Generic (defaultOptions, genericDecode, genericDecodeJSON, genericEncode, genericEncodeJSON, encodeJSON, decodeJSON)
 import Data.Foreign.Generic.Class (class GenericDecode, class GenericEncode)
 import Data.Generic.Rep (class Generic)
@@ -19,6 +20,10 @@ import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (APIResult(..), ErrorPayload, ErrorResponse, Response)
 import Presto.Backend.Types.EitherEx (EitherEx(..))
 import Presto.Core.Utils.Encoding (defaultDecode, defaultEncode, defaultEnumDecode, defaultEnumEncode)
+import Presto.Backend.Language.Types.EitherEx (EitherEx(..))
+import Presto.Backend.Language.Types.DB
+import Presto.Backend.Playback.Types
+
 
 data LogEntry = LogEntry
   { tag     :: String
@@ -43,6 +48,13 @@ data RunDBEntry = RunDBEntry
   { dbName     :: String
   , dbMethod   :: String
   , jsonResult :: EitherEx DBError String
+  , options :: String
+  , model :: String
+  }
+
+data GetDBConnEntry = GetDBConnEntry
+  { dbName     :: String
+  , mockedConn :: MockedSqlConn
   }
 
 mkRunSysCmdEntry :: String -> String -> RunSysCmdEntry
@@ -76,13 +88,21 @@ mkRunDBEntry
   => Decode b
   => String
   -> String
+  -> Array Foreign
+  -> String
   -> EitherEx DBError b
   -> RunDBEntry
-mkRunDBEntry dbName dbMethod aRes = RunDBEntry
+mkRunDBEntry dbName dbMethod options model aRes = RunDBEntry
   { dbName
   , dbMethod
   , jsonResult : encodeJSON <$> aRes
+  , options : encodeJSON options
+  , model : model
   }
+
+mkGetDBConnEntry :: String -> SqlConn -> GetDBConnEntry
+mkGetDBConnEntry dbName (Sequelize _) = GetDBConnEntry { dbName, mockedConn : MockedSqlConn dbName }
+mkGetDBConnEntry dbName (MockedSql mockedConn) = GetDBConnEntry { dbName, mockedConn }
 
 derive instance genericLogEntry :: Generic LogEntry _
 derive instance eqLogEntry :: Eq LogEntry
@@ -184,3 +204,18 @@ instance mockedResultRunDBEntry
             (resultEx :: b) <- hush $ E.runExcept $ decodeJSON strResp
             Just $ RightEx resultEx
       pure eResult
+
+
+
+derive instance genericGetDBConnEntry :: Generic GetDBConnEntry _
+derive instance eqGetDBConnEntry :: Eq GetDBConnEntry
+instance decodeGetDBConnEntry :: Decode GetDBConnEntry where decode = defaultDecode
+instance encodeGetDBConnEntry :: Encode GetDBConnEntry where encode = defaultEncode
+instance rrItemGetDBConnEntry :: RRItem GetDBConnEntry where
+  toRecordingEntry = RecordingEntry <<< encodeJSON
+  fromRecordingEntry (RecordingEntry re) = hush $ E.runExcept $ decodeJSON re
+  getTag   _ = "GetDBConnEntry"
+  isMocked _ = true
+
+instance mockedResultGetDBConnEntry :: MockedResult GetDBConnEntry SqlConn where
+  parseRRItem (GetDBConnEntry entry) = Just $ MockedSql entry.mockedConn

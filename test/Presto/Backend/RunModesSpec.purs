@@ -12,10 +12,13 @@ import Control.Monad.Reader.Trans (runReaderT)
 import Control.Monad.State.Trans (runStateT)
 import Control.Monad.Error.Class (throwError)
 import Control.Monad.Eff.Exception (error)
+import Data.Options (Options(..), (:=))
 import Data.Array (length, index)
 import Data.Tuple (Tuple(..))
+import Data.Tuple.Nested ((/\))
 import Data.Maybe (Maybe(..), isJust)
 import Data.Either (Either(..), isLeft, isRight)
+import Data.Foreign (toForeign)
 import Data.Foreign.Generic (defaultOptions, genericDecode, genericDecodeJSON, genericEncode, genericEncodeJSON, encodeJSON, decodeJSON)
 import Data.Foreign.Generic.Class (class GenericDecode, class GenericEncode)
 import Data.Foreign.Class (class Encode, class Decode, encode, decode)
@@ -29,12 +32,18 @@ import Debug.Trace (spy)
 import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual, fail)
 
-import Presto.Backend.Flow (BackendFlow, log, callAPI, runSysCmd, doAffRR)
-import Presto.Backend.Interpreter (BackendRuntime(..), Connection(..), RunningMode(..), runBackend)
-import Presto.Backend.Playback.Types (RecordingEntry(..), PlaybackError(..), PlaybackErrorType(..))
+import Sequelize.Class (class Model)
+import Sequelize.Types (Conn, Instance, SEQUELIZE)
+import Presto.Backend.Flow (BackendFlow, log, callAPI, runSysCmd, doAffRR, findOne, getDBConn)
 import Presto.Backend.Types.API (class RestEndpoint, APIResult, Request(..), Headers(..), Response(..), ErrorPayload(..), Method(..), defaultDecodeResponse)
-import Presto.Backend.Types.EitherEx
+import Presto.Backend.Language.Types.EitherEx
+import Presto.Backend.Language.Types.DB (SqlConn(..), MockedSqlConn(..), SequelizeConn(..))
+import Presto.Backend.Playback.Types (RecordingEntry(..), PlaybackError(..), PlaybackErrorType(..))
+import Presto.Backend.Runtime.Types (Connection(..), BackendRuntime(..), RunningMode(..))
+import Presto.Backend.Runtime.Interpreter (runBackend)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
+import Presto.Backend.TestData.DBModel
+import Presto.Backend.TestData.Common
 
 data SomeRequest = SomeRequest
   { code   :: Int
@@ -65,6 +74,7 @@ instance someRestEndpoint :: RestEndpoint SomeRequest SomeResponse where
     , payload : encodeJSON r
     , headers : h
     }
+  -- You can spy the values going through the function:
   -- decodeResponse resp = const (defaultDecodeResponse resp) $ spy resp
   decodeResponse = defaultDecodeResponse
 
@@ -123,6 +133,27 @@ runSysCmdScript = runSysCmd "echo 'ABC'"
 
 doAffScript :: BackendFlow Unit Unit String
 doAffScript = doAffRR (pure "This is result.")
+
+testDB :: String
+testDB = "TestDB"
+
+dbScript0 :: BackendFlow Unit Unit SqlConn
+dbScript0 = getDBConn testDB
+
+dbScript1 :: BackendFlow Unit Unit (Maybe Car)
+dbScript1 = do
+  let carOpts = Options [ "model" /\ (toForeign "testModel") ]
+  eMbCar <- findOne testDB carOpts
+  case eMbCar of
+    Left err    -> do
+      log "Error" err
+      pure Nothing
+    Right Nothing -> do
+      log "Not found" "car"
+      pure Nothing
+    Right (Just car) -> do
+      log "Found a car" car
+      pure $ Just car
 
 runTests :: Spec _ Unit
 runTests = do
@@ -321,3 +352,25 @@ runTests = do
         Right (Tuple n unit) -> n `shouldEqual` "This is result."
         Left err -> fail $ show err
       curStep `shouldEqual` 1
+
+    it "Record / replay test: getDBConn success" $ do
+      recordingRef <- liftEff $ newRef { entries : [] }
+      let conns = StrMap.singleton testDB $ SqlConn $ MockedSql $ MockedSqlConn testDB
+      let (BackendRuntime rt') = backendRuntime $ RecordingMode { recordingRef }
+      let rt = BackendRuntime $ rt' { connections = conns }
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend rt dbScript0) unit) unit)
+      case eResult of
+        Right (Tuple (MockedSql (MockedSqlConn dbName)) unit) -> dbName `shouldEqual` testDB
+        Left err -> fail $ show err
+        _ -> fail "Unknown result"
+    --
+    -- it "Record / replay test: db success test1" $ do
+    --   recordingRef <- liftEff $ newRef { entries : [] }
+    --   let conns = StrMap.singleton testDB $ SqlConn $ MockedSql $ MockedSqlConn testDB
+    --   let (BackendRuntime rt') = backendRuntime $ RecordingMode { recordingRef }
+    --   let rt = BackendRuntime $ rt' { connections = conns }
+    --   eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend rt dbScript1) unit) unit)
+    --   case eResult of
+    --     Right (Tuple (MockedSql (MockedSqlConn dbName)) unit) -> dbName `shouldEqual` testDB
+    --     Left err -> fail $ show err
+    --     _ -> fail "Unknown result"

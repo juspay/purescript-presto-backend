@@ -28,33 +28,33 @@ import Cache.Multi (Multi)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Aff (Aff)
 import Control.Monad.Eff.Exception (Error, error, message)
+import Control.Monad.Except (runExcept) as E
 import Control.Monad.Free (Free, liftF)
-import Data.Either (Either(..))
+import Data.Either (Either(..), note, hush, isLeft)
 import Data.Exists (Exists, mkExists)
-import Data.Foreign (Foreign)
-import Data.Foreign.Class (class Decode, class Encode)
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
+import Data.Foreign (Foreign, toForeign)
+import Data.Foreign.Class (class Encode, class Decode, encode, decode)
 import Data.Foreign.Generic (encodeJSON)
 import Data.Lazy (defer)
-import Data.Maybe (Maybe(..))
 import Data.Options (Options)
+import Data.Options (options) as Opt
 import Data.Time.Duration (Milliseconds, Seconds)
-import Presto.Backend.DB (findOne, findAll, create, createWithOpts, query, update, delete) as DB
+import Presto.Backend.DBImpl (findOne, findAll, create, createWithOpts, query, update, update', delete, getModelByName) as DB
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (ErrorResponse, APIResult)
 import Presto.Backend.APIInteract (apiInteract)
-import Presto.Backend.Types.EitherEx (EitherEx(..), fromCustomEitherEx, toCustomEitherEx)
+import Presto.Backend.Language.Types.EitherEx (EitherEx(..), fromCustomEitherEx, toCustomEitherEx)
 import Presto.Backend.Playback.Types as Playback
 import Presto.Backend.Playback.Entries as Playback
 import Presto.Backend.Types.API (class RestEndpoint, Headers, makeRequest)
-import Presto.Backend.DB.Types (DBError(..), toDBMaybeResult, fromDBMaybeResult)
+import Presto.Backend.Language.Types.DB (SqlConn, MockedSqlConn, DBError(..), toDBMaybeResult, fromDBMaybeResult)
+import Presto.Backend.DB.Mock.Types as SqlDBMock
+import Presto.Backend.DB.Mock.Actions as SqlDBMock
 import Presto.Core.Types.Language.Interaction (Interaction)
-import Sequelize.Class (class Model)
-import Sequelize.Types (Conn, Instance, SEQUELIZE)
-
-import Data.Maybe (Maybe(..), fromMaybe, maybe)
-import Control.Monad.Except (runExcept) as E
-import Data.Either (Either(..), note, hush, isLeft)
-import Data.Foreign.Class (class Encode, class Decode, encode, decode)
+import Sequelize.Class (class Model, class EncodeModel, class DecodeModel, encodeModel, decodeModel)
+import Sequelize.Types (Conn, Instance, SEQUELIZE, ModelOf)
+import Unsafe.Coerce (unsafeCoerce)
 
 data BackendFlowCommands next st rt s =
       Ask (rt -> next)
@@ -72,16 +72,26 @@ data BackendFlowCommands next st rt s =
         (Playback.RRItemDict Playback.DoAffEntry s)
         (s -> next)
 
-    | ThrowException String (s -> next)
+    | Log String s (Unit -> next)
+    | Fork (BackendFlow st rt s) (Unit -> next)
 
-    | RunDB (forall eff. Aff (sequelize :: SEQUELIZE | eff) (EitherEx DBError s))
+    | RunSysCmd String
+        (Playback.RRItemDict Playback.RunSysCmdEntry String)
+        (String -> next)
+
+    | ThrowException String
+
+    | GetDBConn String
+        (Playback.RRItemDict Playback.GetDBConnEntry SqlConn)
+        (SqlConn -> next)
+
+    | RunDB String
+        (forall eff. Conn -> Aff (sequelize :: SEQUELIZE | eff) (EitherEx DBError s))
+        (MockedSqlConn -> SqlDBMock.DBActionDict)
         (Playback.RRItemDict Playback.RunDBEntry (EitherEx DBError s))
         (EitherEx DBError s -> next)
 
-    | GetDBConn String (Conn -> next)
     | GetCacheConn String (SimpleConn -> next)
-    | Log String s (Unit -> next)
-
     | SetCache SimpleConn String String (Either Error Unit -> next)
     | SetCacheWithExpiry SimpleConn String String Milliseconds (Either Error Unit -> next)
     | GetCache SimpleConn String (Either Error (Maybe String) -> next)
@@ -90,9 +100,6 @@ data BackendFlowCommands next st rt s =
     | Enqueue SimpleConn String String (Either Error Unit -> next)
     | Dequeue SimpleConn String (Either Error (Maybe String) -> next)
     | GetQueueIdx SimpleConn String Int (Either Error (Maybe String) -> next)
-
-    | Fork (BackendFlow st rt s) (Unit -> next)
-
     | Expire SimpleConn String Seconds (Either Error Boolean -> next)
     | Incr SimpleConn String (Either Error Int -> next)
     | SetHash SimpleConn String String String (Either Error Boolean -> next)
@@ -115,9 +122,6 @@ data BackendFlowCommands next st rt s =
     | DequeueInMulti String Multi (Multi -> next)
     | GetQueueIdxInMulti String Int Multi (Multi -> next)
     | Exec Multi (Either Error (Array Foreign) -> next)
-    | RunSysCmd String
-        (Playback.RRItemDict Playback.RunSysCmdEntry String)
-        (String -> next)
 
 
 type BackendFlowCommandsWrapper st rt s next = BackendFlowCommands next st rt s
@@ -141,9 +145,6 @@ put st = wrap $ Put st id
 modify :: forall st rt. (st -> st) -> BackendFlow st rt st
 modify fst = wrap $ Modify fst id
 
-throwException :: forall st rt a. String -> BackendFlow st rt a
-throwException errorMessage = wrap $ ThrowException errorMessage id
-
 doAff :: forall st rt a. (forall eff. BackendAff eff a) -> BackendFlow st rt a
 doAff aff = wrap $ DoAff aff id
 
@@ -155,18 +156,32 @@ doAffRR
   -> BackendFlow st rt a
 doAffRR aff = wrap $ DoAffRR aff (Playback.mkEntryDict Playback.mkDoAffEntry) id
 
--- TODO: TASK: add options, model and other input params to recording so it they be compared.
--- TODO: Think what to do with getDBCon.
+log :: forall st rt a. String -> a -> BackendFlow st rt Unit
+log tag message = wrap $ Log tag message id
+
+forkFlow :: forall st rt a. BackendFlow st rt a -> BackendFlow st rt Unit
+forkFlow flow = wrap $ Fork flow id
+
+runSysCmd :: forall st rt. String -> BackendFlow st rt String
+runSysCmd cmd = wrap $ RunSysCmd cmd (Playback.mkEntryDict $ Playback.mkRunSysCmdEntry cmd) id
+
+throwException :: forall st rt a. String -> BackendFlow st rt a
+throwException errorMessage = wrap $ ThrowException errorMessage
+
+getDBConn :: forall st rt. String -> BackendFlow st rt SqlConn
+getDBConn dbName = wrap $ GetDBConn dbName
+  (Playback.mkEntryDict $ Playback.mkGetDBConnEntry dbName)
+  id
 
 findOne
   :: forall model st rt
    . Model model
   => String -> Options model -> BackendFlow st rt (Either Error (Maybe model))
 findOne dbName options = do
-  conn <- getDBConn dbName
-  eResEx <- wrap $ RunDB
-    (toDBMaybeResult <$> DB.findOne conn options)
-    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "findOne")
+  eResEx <- wrap $ RunDB dbName
+    (\conn     -> toDBMaybeResult <$> DB.findOne conn options)
+    (\connMock -> SqlDBMock.mkDbActionDict $ SqlDBMock.mkFindOne dbName)
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "findOne" [Opt.options options] "")
     id
   pure $ fromDBMaybeResult eResEx
 
@@ -175,10 +190,10 @@ findAll
    . Model model
   => String -> Options model -> BackendFlow st rt (Either Error (Array model))
 findAll dbName options = do
-  conn <- getDBConn dbName
-  eResEx <- wrap $ RunDB
-    (toCustomEitherEx <$> DB.findAll conn options)
-    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "findAll")
+  eResEx <- wrap $ RunDB dbName
+    (\conn -> toCustomEitherEx <$> DB.findAll conn options)
+    (\connMock -> SqlDBMock.mkDbActionDict $ SqlDBMock.mkFindAll dbName)
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "findAll" [Opt.options options] "")
     id
   pure $ fromCustomEitherEx eResEx
 
@@ -188,51 +203,57 @@ query
   => Decode a
   => String -> String -> BackendFlow st rt (Either Error (Array a))
 query dbName rawq = do
-  conn <- getDBConn dbName
-  eResEx <- wrap $ RunDB
-    (toCustomEitherEx <$> DB.query conn rawq)
-    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "query")
+  eResEx <- wrap $ RunDB dbName
+    (\conn -> toCustomEitherEx <$> DB.query conn rawq)
+    (\connMock -> SqlDBMock.mkDbActionDict $ SqlDBMock.mkQuery dbName)
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "query" [toForeign rawq] "")
     id
   pure $ fromCustomEitherEx eResEx
 
 create :: forall model st rt. Model model => String -> model -> BackendFlow st rt (Either Error (Maybe model))
 create dbName model = do
-  conn <- getDBConn dbName
-  eResEx <- wrap $ RunDB
-    (toDBMaybeResult <$> DB.create conn model)
-    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "create")
+  eResEx <- wrap $ RunDB dbName
+    (\conn -> toDBMaybeResult <$> DB.create conn model)
+    (\connMock -> SqlDBMock.mkDbActionDict $ SqlDBMock.mkCreate dbName)
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "create" [] (encodeJSON model))
     id
   pure $ fromDBMaybeResult eResEx
 
 createWithOpts :: forall model st rt. Model model => String -> model -> Options model -> BackendFlow st rt (Either Error (Maybe model))
 createWithOpts dbName model options = do
-  conn <- getDBConn dbName
-  eResEx <- wrap $ RunDB
-    (toDBMaybeResult <$> DB.createWithOpts conn model options)
-    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "createWithOpts")
+  eResEx <- wrap $ RunDB dbName
+    (\conn -> toDBMaybeResult <$> DB.createWithOpts conn model options)
+    (\connMock -> SqlDBMock.mkDbActionDict $ SqlDBMock.mkCreateWithOpts dbName)
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "createWithOpts" [Opt.options options] (encodeJSON model))
     id
   pure $ fromDBMaybeResult eResEx
 
 update :: forall model st rt. Model model => String -> Options model -> Options model -> BackendFlow st rt (Either Error (Array model))
 update dbName updateValues whereClause = do
-  conn <- getDBConn dbName
-  eResEx <- wrap $ RunDB
-    (toCustomEitherEx <$> DB.update conn updateValues whereClause)
-    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "update")
+  eResEx <- wrap $ RunDB dbName
+    (\conn -> toCustomEitherEx <$> DB.update conn updateValues whereClause)
+    (\connMock -> SqlDBMock.mkDbActionDict $ SqlDBMock.mkUpdate dbName)
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "update" [(Opt.options updateValues),(Opt.options whereClause)] "")
+    id
+  pure $ fromCustomEitherEx eResEx
+
+update' :: forall model st rt. Model model => String -> Options model -> Options model -> BackendFlow st rt (Either Error Int)
+update' dbName updateValues whereClause = do
+  eResEx <- wrap $ RunDB dbName
+    (\conn -> toCustomEitherEx <$> DB.update' conn updateValues whereClause)
+    (\connMock -> SqlDBMock.mkDbActionDict $ SqlDBMock.mkUpdate dbName)
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "update'" [(Opt.options updateValues),(Opt.options whereClause)] "")
     id
   pure $ fromCustomEitherEx eResEx
 
 delete :: forall model st rt. Model model => String -> Options model -> BackendFlow st rt (Either Error Int)
 delete dbName options = do
-  conn <- getDBConn dbName
-  eResEx <- wrap $ RunDB
-    (toCustomEitherEx <$> DB.delete conn options)
-    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "delete")
+  eResEx <- wrap $ RunDB dbName
+    (\conn -> toCustomEitherEx <$> DB.delete conn options)
+    (\connMock -> SqlDBMock.mkDbActionDict $ SqlDBMock.mkDelete dbName)
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "delete" [Opt.options options] "")
     id
   pure $ fromCustomEitherEx eResEx
-
-getDBConn :: forall st rt. String -> BackendFlow st rt Conn
-getDBConn dbName = wrap $ GetDBConn dbName id
 
 getCacheConn :: forall st rt. String -> BackendFlow st rt SimpleConn
 getCacheConn dbName = wrap $ GetCacheConn dbName id
@@ -290,9 +311,6 @@ setCacheWithExpiry :: forall st rt. String -> String -> String -> Milliseconds -
 setCacheWithExpiry cacheName key value ttl = do
   cacheConn <- getCacheConn cacheName
   wrap $ SetCacheWithExpiry cacheConn key value ttl id
-
-log :: forall st rt a. String -> a -> BackendFlow st rt Unit
-log tag message = wrap $ Log tag message id
 
 expireInMulti :: forall st rt. String -> Seconds -> Multi -> BackendFlow st rt Multi
 expireInMulti key ttl multi = wrap $ ExpireInMulti key ttl multi id
@@ -373,9 +391,3 @@ setMessageHandler :: forall st rt. String -> (forall eff. (String -> String -> E
 setMessageHandler cacheName f = do
   cacheConn <- getCacheConn cacheName
   wrap $ SetMessageHandler cacheConn f id
-
-runSysCmd :: forall st rt. String -> BackendFlow st rt String
-runSysCmd cmd = wrap $ RunSysCmd cmd (Playback.mkEntryDict $ Playback.mkRunSysCmdEntry cmd) id
-
-forkFlow :: forall st rt a. BackendFlow st rt a -> BackendFlow st rt Unit
-forkFlow flow = wrap $ Fork flow id
