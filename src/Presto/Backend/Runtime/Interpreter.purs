@@ -54,8 +54,8 @@ import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), BackendFlowCom
 import Presto.Backend.SystemCommands (runSysCmd)
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Language.Types.EitherEx
-import Presto.Backend.Language.Types.DB (SqlConn(..), MockedSqlConn(..), SequelizeConn(..))
-import Presto.Backend.Runtime.Common (jsonStringify, lift3)
+import Presto.Backend.Language.Types.DB (KVDBConn(..), SqlConn(..), MockedSqlConn(..), MockedKVDBConn(..))
+import Presto.Backend.Runtime.Common (jsonStringify, lift3, throwException', getDBConn', getKVDBConn')
 import Presto.Backend.Runtime.Types (InterpreterMT, InterpreterMT', LogRunner, RunningMode(..), Connection(..), BackendRuntime(..))
 import Presto.Backend.Runtime.Types as X
 import Presto.Backend.Playback.Types
@@ -63,7 +63,9 @@ import Presto.Backend.Playback.Machine
 import Presto.Backend.Playback.Machine.Classless
 import Presto.Backend.Playback.Entries
 import Presto.Backend.Runtime.API (runAPIInteraction)
+import Presto.Backend.Runtime.KVDBInterpreter (runKVDB)
 import Presto.Backend.DB.Mock.Types (DBActionDict)
+import Presto.Backend.KVDB.Mock.Types (KVDBActionDict)
 import Type.Proxy (Proxy(..))
 
 forkF :: forall eff rt st a. BackendRuntime -> BackendFlow st rt a -> InterpreterMT rt st (Tuple Error st) eff Unit
@@ -73,21 +75,11 @@ forkF runtime flow = do
   let m = E.runExceptT ( S.runStateT ( R.runReaderT ( runBackend runtime flow ) rt) st)
   R.lift $ S.lift $ E.lift $ forkAff m *> pure unit
 
-throwException' :: forall st rt s eff a. String -> InterpreterMT' rt st eff a
-throwException' errorMessage = do
-  st <- R.lift S.get
-  R.lift $ S.lift $ E.ExceptT $ pure $ Left $ Tuple (error errorMessage) st
+getMockedDBValue :: forall st rt eff a. BackendRuntime -> DBActionDict -> InterpreterMT' rt st eff a
+getMockedDBValue brt mockedDbActDict = throwException' "Mocking is not yet implemented for DB."
 
-getDBConn' :: forall st rt eff. BackendRuntime -> String -> InterpreterMT' rt st eff SqlConn
-getDBConn' brt@(BackendRuntime rt) dbName = do
-  let mbConn = lookup dbName rt.connections
-  case mbConn of
-    Just (SqlConn sqlConn) -> pure sqlConn
-    Just _  -> throwException' "No DB found"
-    Nothing -> throwException' "No DB found"
-
-getMockedValue :: forall st rt eff a. BackendRuntime -> DBActionDict -> InterpreterMT' rt st eff a
-getMockedValue brt mockedDbActDict = throwException' "Mocking is not yet implemented."
+getMockedKVDBValue :: forall st rt eff a. BackendRuntime -> KVDBActionDict -> InterpreterMT' rt st eff a
+getMockedKVDBValue brt mockedKvDbActDict = throwException' "Mocking is not yet implemented for KV DB."
 
 interpret :: forall st rt s eff a. BackendRuntime -> BackendFlowCommandsWrapper st rt s a -> InterpreterMT' rt st eff a
 interpret _ (Ask next) = R.ask >>= (pure <<< next)
@@ -129,83 +121,37 @@ interpret brt@(BackendRuntime rt) (GetDBConn dbName rrItemDict next) = do
     (defer $ \_ -> getDBConn' brt dbName)
   pure $ next res
 
-interpret brt@(BackendRuntime rt) (RunDB dbName dbAffF mockedDbActDict rrItemDict next) = do
+interpret brt@(BackendRuntime rt) (RunDB dbName dbAffF mockedDbActDictF rrItemDict next) = do
   conn' <- getDBConn' brt dbName
-  result <- case conn' of
-    Sequelize (SequelizeConn conn) -> withRunModeClassless brt rrItemDict
+  res <- case conn' of
+    Sequelize conn -> withRunModeClassless brt rrItemDict
         (defer $ \_ -> lift3 $ rt.affRunner $ dbAffF conn)
     MockedSql mocked -> withRunModeClassless brt rrItemDict
-        (defer $ \_ -> getMockedValue brt $ mockedDbActDict mocked)
-  pure $ next result
+        (defer $ \_ -> getMockedDBValue brt $ mockedDbActDictF mocked)
+  pure $ next res
 
-interpret brt@(BackendRuntime rt) (GetCacheConn cacheName next) = do
-  let maybeCache = lookup cacheName rt.connections
-  case maybeCache of
-    Just (Redis simpleConn) -> (pure <<< next) simpleConn
-    Just _  -> throwException' "No DB found"
-    Nothing -> throwException' "No DB found"
+interpret brt@(BackendRuntime rt) (GetKVDBConn dbName rrItemDict next) = do
+  res <- withRunModeClassless brt rrItemDict
+    (defer $ \_ -> getKVDBConn' brt dbName)
+  pure $ next res
 
-interpret _ (SetCache cacheConn key value next) = (R.lift $ S.lift $ E.lift $ void <$> set cacheConn key value Nothing NoOptions) >>= (pure <<< next)
+interpret brt (RunKVDBEither dbName kvDBF mockedKvDbActDictF rrItemDict next) = do
+  conn' <- getKVDBConn' brt dbName
+  res <- case conn' of
+    Redis simpleConn -> withRunModeClassless brt rrItemDict
+        (defer $ \_ -> runKVDB brt $ kvDBF simpleConn)
+    MockedKVDB mocked -> withRunModeClassless brt rrItemDict
+        (defer $ \_ -> getMockedKVDBValue brt $ mockedKvDbActDictF mocked)
+  pure $ next res
 
-interpret _ (SetCacheWithExpiry cacheConn key value ttl next) = (R.lift $ S.lift $ E.lift $ void <$> set cacheConn key value (Just ttl) NoOptions) >>= (pure <<< next)
-
-interpret _ (GetCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ get cacheConn key) >>= (pure <<< next)
-
-interpret _ (KeyExistsCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ exists cacheConn key) >>= (pure <<< next)
-
-interpret _ (DelCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ del cacheConn (NEArray.singleton key)) >>= (pure <<< next)
-
-interpret _ (Expire cacheConn key ttl next) = (R.lift $ S.lift $ E.lift $ expire cacheConn key ttl) >>= (pure <<< next)
-
-interpret _ (Incr cacheConn key next) = (R.lift $ S.lift $ E.lift $ incr cacheConn key) >>= (pure <<< next)
-
-interpret _ (SetHash cacheConn key field value next) = (R.lift $ S.lift $ E.lift $ hset cacheConn key field value) >>= (pure <<< next)
-
-interpret _ (GetHashKey cacheConn key field next) = (R.lift $ S.lift $ E.lift $ hget cacheConn key field) >>= (pure <<< next)
-
-interpret _ (PublishToChannel cacheConn channel message next) = (R.lift $ S.lift $ E.lift $ publish cacheConn channel message) >>= (pure <<< next)
-
-interpret _ (Subscribe cacheConn channel next) = (R.lift $ S.lift $ E.lift $ subscribe cacheConn (NEArray.singleton channel)) >>= (pure <<< next)
-
-interpret _ (SetMessageHandler cacheConn f next) = (R.lift $ S.lift $ E.lift $ liftEff $ setMessageHandler cacheConn f) >>= (pure <<< next)
-
-interpret _ (Enqueue cacheConn listName value next) = (R.lift $ S.lift $ E.lift $ void <$> rpush cacheConn listName value) >>= (pure <<< next)
-
-interpret _ (Dequeue cacheConn listName next) = (R.lift $ S.lift $ E.lift $ lpop cacheConn listName) >>= (pure <<< next)
-
-interpret _ (GetQueueIdx cacheConn listName index next) = (R.lift $ S.lift $ E.lift $ lindex cacheConn listName index) >>= (pure <<< next)
-
-interpret _ (GetMulti cacheConn next) = (R.lift $ S.lift $ E.lift $ liftEff $ newMulti cacheConn) >>= (pure <<< next)
-
-interpret _ (SetCacheInMulti key val multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< setMulti key val Nothing NoOptions $ multi ) >>= (pure <<< next)
-
-interpret _ (GetCacheInMulti key multi next) = (R.lift <<< S.lift <<< E.lift <<< pure <<< next $ multi)
-
-interpret _ (DelCacheInMulti key multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< getMulti key $ multi) >>= (pure <<< next )
-
-interpret _ (SetCacheWithExpiryInMulti key val ttl multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< setMulti key val (Just ttl) NoOptions $ multi )>>= (pure <<< next )
-
-interpret _ (ExpireInMulti key ttl multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< expireMulti key ttl $ multi) >>= (pure <<< next)
-
-interpret _ (IncrInMulti key multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< incrMulti key $ multi) >>= (pure <<< next)
-
-interpret _ (SetHashInMulti key field value multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< hsetMulti key field value $ multi) >>= (pure <<< next )
-
-interpret _ (GetHashInMulti key value multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< hgetMulti key value $ multi) >>= (pure <<< next )
-
-interpret _ (PublishToChannelInMulti channel message multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< publishMulti channel message $ multi) >>= (pure <<< next)
-
-interpret _ (SubscribeInMulti channel multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< subscribeMulti channel $ multi) >>= (pure <<< next)
-
-interpret _ (EnqueueInMulti listName val multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< rpushMulti listName val $ multi) >>= (pure <<< next)
-
-interpret _ (DequeueInMulti listName multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< lpopMulti listName $ multi) >>= (pure <<< next)
-
-interpret _ (GetQueueIdxInMulti listName index multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< lindexMulti listName index $ multi) >>= (pure <<< next)
-
-interpret _ (Exec multi next) = (R.lift <<< S.lift <<< E.lift <<< execMulti $ multi) >>= (pure <<< next)
-
-interpret _ _ = throwException' "Not implemented yet!"
+interpret brt (RunKVDBSimple dbName kvDBF mockedKvDbActDictF rrItemDict next) = do
+  conn' <- getKVDBConn' brt dbName
+  res <- case conn' of
+    Redis simpleConn -> withRunModeClassless brt rrItemDict
+        (defer $ \_ -> runKVDB brt $ kvDBF simpleConn)
+    MockedKVDB mocked -> withRunModeClassless brt rrItemDict
+        (defer $ \_ -> getMockedKVDBValue brt $ mockedKvDbActDictF mocked)
+  pure $ next res
 
 runBackend :: forall st rt eff a. BackendRuntime -> BackendFlow st rt a -> InterpreterMT' rt st eff a
 runBackend backendRuntime = foldFree (\(BackendFlowWrapper x) -> runExists (interpret backendRuntime) x)

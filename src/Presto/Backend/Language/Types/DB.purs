@@ -37,27 +37,24 @@ toDBMaybeResult = either (LeftEx <<< toDBError) (RightEx <<< toMaybeEx)
 fromDBMaybeResult :: forall a. EitherEx DBError (MaybeEx a) -> Either Error (Maybe a)
 fromDBMaybeResult = eitherEx (Left <<< fromDBError) (Right <<< fromMaybeEx)
 
--- type Cache =
---   { name :: String
---   , connection :: SimpleConn
---   }
---
--- type DB =
---   { name :: String
---   , connection :: Conn
---   }
-
 -- TODO: this should be reworked.
 -- DB facilities design is not good enough.
 -- For now, mocking approach is suboptimal, fast & dirty.
 
-data MockedSqlConn = MockedSqlConn String
-data SequelizeConn = SequelizeConn Conn
+data MockedSqlConn  = MockedSqlConn String
+data MockedKVDBConn = MockedKVDBConn String
 
 data SqlConn
   = MockedSql MockedSqlConn
-  | Sequelize SequelizeConn
+  | Sequelize Conn
 
+data KVDBConn
+  = MockedKVDB MockedKVDBConn
+  | Redis SimpleConn
+
+data Connection
+  = SqlConn SqlConn
+  | KVDBConn KVDBConn
 
 derive instance genericDBError :: Generic DBError _
 instance decodeDBError         :: Decode  DBError where decode  = defaultDecode
@@ -77,3 +74,10 @@ instance encodeMockedSqlConn         :: Encode  MockedSqlConn where encode  = de
 instance eqMockedSqlConn             :: Eq      MockedSqlConn where eq      = GEq.genericEq
 instance showMockedSqlConn           :: Show    MockedSqlConn where show    = GShow.genericShow
 instance ordMockedSqlConn            :: Ord     MockedSqlConn where compare = GOrd.genericCompare
+
+derive instance genericMockedKVDBConn :: Generic MockedKVDBConn _
+instance decodeMockedKVDBConn         :: Decode  MockedKVDBConn where decode  = defaultDecode
+instance encodeMockedKVDBConn         :: Encode  MockedKVDBConn where encode  = defaultEncode
+instance eqMockedKVDBConn             :: Eq      MockedKVDBConn where eq      = GEq.genericEq
+instance showMockedKVDBConn           :: Show    MockedKVDBConn where show    = GShow.genericShow
+instance ordMockedKVDBConn            :: Ord     MockedKVDBConn where compare = GOrd.genericCompare
