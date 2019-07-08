@@ -7,3 +7,4 @@ node_modules
 .psci
 output
 .psc-ide-port
+.DS_Store

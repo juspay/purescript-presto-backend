@@ -23,12 +23,17 @@ import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
 import Sequelize.Models.Types (DataType(..))
 import Type.Proxy (Proxy)
 
-data RecordingEntry = RecordingEntry String
-data Mode = Normal | NoVerify | NoMock | Skip 
--- derive instance modeEq :: Eq Mode 
--- derive instance genericMode :: Generic Mode _
--- instance modeEncode :: Encode Mode where encode = defaultEnumEncode 
--- instance modeDecode :: Decode Mode where decode = defaultEnumDecode
+data RecordingEntry = RecordingEntry EntryReplayingMode String
+
+data EntryReplayingMode = Normal | NoVerify | NoMock | Skip 
+
+derive instance modeEq :: Eq EntryReplayingMode 
+derive instance genericEntryReplayingMode :: Generic EntryReplayingMode _
+instance entryReplayingModeEncode :: Encode EntryReplayingMode where encode = defaultEncode 
+instance entryReplayingModeDecode :: Decode EntryReplayingMode where decode = defaultDecode
+instance showEntryReplayingMode :: Show EntryReplayingMode where show = GShow.genericShow 
+instance ordEntryReplayingMode :: Ord EntryReplayingMode where compare = GOrd.genericCompare
+
 
 type DisableEntries  = String
 -- TODO: it might be Data.Sequence.Ordered is better
@@ -67,12 +72,10 @@ newtype PlaybackError = PlaybackError
 
 
 class (Eq rrItem, Decode rrItem, Encode rrItem) <= RRItem rrItem where
-  toRecordingEntry   :: rrItem -> RecordingEntry
+  toRecordingEntry   :: rrItem -> EntryReplayingMode -> RecordingEntry
   fromRecordingEntry :: RecordingEntry -> Maybe rrItem
   getTag             :: Proxy rrItem -> String
   isMocked           :: Proxy rrItem -> Boolean
-  getMode             :: Proxy rrItem -> Mode 
-
 
 -- Class for conversions of RRItem and native results.
 -- Native result can be unencodable completely.
@@ -110,7 +113,7 @@ instance ordPlaybackError            :: Ord     PlaybackError where compare = GO
 
 -- Classless types
 newtype RRItemDict rrItem native = RRItemDict
-  { toRecordingEntry   :: rrItem -> RecordingEntry
+  { toRecordingEntry   :: rrItem -> EntryReplayingMode -> RecordingEntry
   , fromRecordingEntry :: RecordingEntry -> Maybe rrItem
   , getTag             :: Proxy rrItem -> String
   , isMocked           :: Proxy rrItem -> Boolean
@@ -118,22 +121,18 @@ newtype RRItemDict rrItem native = RRItemDict
   , mkEntry            :: native -> rrItem
   , compare            :: rrItem -> rrItem -> Boolean
   , encodeJSON         :: rrItem -> String
-  , getMode            :: Proxy rrItem -> Mode 
   }
 
 
 
-toRecordingEntry' :: forall rrItem native. RRItemDict rrItem native -> rrItem -> RecordingEntry
-toRecordingEntry' (RRItemDict d) = d.toRecordingEntry
+toRecordingEntry' :: forall rrItem native. RRItemDict rrItem native -> rrItem -> EntryReplayingMode -> RecordingEntry
+toRecordingEntry' (RRItemDict d) mode = d.toRecordingEntry mode 
 
 fromRecordingEntry' :: forall rrItem native. RRItemDict rrItem native -> RecordingEntry -> Maybe rrItem
 fromRecordingEntry' (RRItemDict d) = d.fromRecordingEntry
 
 getTag' :: forall rrItem native. RRItemDict rrItem native -> Proxy rrItem -> String
 getTag' (RRItemDict d) = d.getTag
-
-getMode' :: forall rrItem native. RRItemDict rrItem native -> Proxy rrItem -> Mode 
-getMode' (RRItemDict d) = d.getMode
 
 isMocked' :: forall rrItem native. RRItemDict rrItem native -> Proxy rrItem -> Boolean
 isMocked' (RRItemDict d) = d.isMocked
@@ -160,6 +159,5 @@ mkEntryDict mkEntry = RRItemDict
   , parseRRItem        : parseRRItem
   , mkEntry            : mkEntry
   , compare            : (==)
-  , encodeJSON         : encodeJSON
-  , getMode            : getMode 
+  , encodeJSON         : encodeJSON 
   }

@@ -22,7 +22,7 @@ import Data.Either (Either(..), note, hush, isLeft)
 import Data.Foreign.Generic (encodeJSON)
 import Data.Foreign.Generic as G
 import Data.Lazy (Lazy, force)
-import Data.Maybe (Maybe(..), isJust)
+import Data.Maybe (Maybe(..), fromMaybe, isJust)
 import Data.Tuple (Tuple(..))
 import Presto.Backend.APIInteract (apiInteract)
 import Presto.Backend.Runtime.Common (jsonStringify, lift3)
@@ -80,6 +80,17 @@ popNextRecordingEntry playerRt = do
   let mbItem = Array.index playerRt.recording.entries cur
   when (isJust mbItem) $ writeRef playerRt.stepRef $ cur + 1
   pure mbItem
+
+getCurrentEntryReplayMode
+  :: forall eff
+   . PlayerRuntime
+  -> Eff (ref :: REF | eff) (Maybe EntryReplayingMode)
+getCurrentEntryReplayMode playerRt = do
+  cur <- readRef playerRt.stepRef
+  let mbItem = Array.index playerRt.recording.entries cur
+  case mbItem of 
+    (Just (RecordingEntry mode item)) -> pure $ Just mode 
+    Nothing -> pure $ Nothing
 
 popNextRRItem
   :: forall eff rrItem native
@@ -142,7 +153,8 @@ replay
 replay playerRt rrItemDict lAct = do
   let proxy = Proxy :: Proxy rrItem
   let tag = getTag' rrItemDict proxy
-  let mode = getMode' rrItemDict proxy 
+  mode' <- lift3 $ liftEff $ getCurrentEntryReplayMode playerRt
+  let mode = fromMaybe Normal mode'
   case mode of 
     Normal -> do 
       eNextRRItemRes <- lift3 $ liftEff $ popNextRRItemAndResult playerRt rrItemDict proxy
@@ -150,29 +162,22 @@ replay playerRt rrItemDict lAct = do
         Left err -> replayError playerRt err
         Right (Tuple nextRRItem nextRes) -> do
           res <- replayWithMock rrItemDict lAct proxy nextRes
-          if not (elem tag playerRt.disableVerify) then do            
-            compareRRItems playerRt rrItemDict nextRRItem $ mkEntry' rrItemDict res
-            pure res
-            else pure res
+          when (not (elem tag playerRt.disableVerify)) $ compareRRItems playerRt rrItemDict nextRRItem $ mkEntry' rrItemDict res
+          pure res
     NoVerify -> do
       eNextRRItemRes <- lift3 $ liftEff $ popNextRRItemAndResult playerRt rrItemDict proxy 
       case eNextRRItemRes of 
         Left err -> replayError playerRt err 
-        Right (Tuple nextRRItem nextRes) -> do 
-          res <- replayWithMock rrItemDict lAct proxy nextRes  
-          pure res
-    NoMock -> do 
-      res <- force lAct 
-      pure res 
-    Skip -> do 
-      replayError playerRt $ PlaybackError {errorType : UnexpectedRecordingEnd , errorMessage : "not sure what to do with skip"}
+        Right (Tuple nextRRItem nextRes) -> replayWithMock rrItemDict lAct proxy nextRes
+    NoMock -> force lAct  
+    Skip -> replayError playerRt $ PlaybackError {errorType : UnexpectedRecordingEnd , errorMessage : "not sure what to do with skip"}
 
 record :: forall eff rt st rrItem native. RecorderRuntime  -> RRItemDict rrItem native  ->  Lazy (InterpreterMT' rt st eff native)  -> InterpreterMT' rt st eff native
 record recorderRt rrItemDict lAct = do
   native <- force lAct
   let tag = getTag' rrItemDict (Proxy :: Proxy rrItem)
   if not ( elem tag recorderRt.disableEntries ) then do
-      lift3 $ liftEff $ pushRecordingEntry recorderRt $ toRecordingEntry' rrItemDict $ mkEntry' rrItemDict native
+      lift3 $ liftEff $ pushRecordingEntry recorderRt $ toRecordingEntry' rrItemDict (mkEntry' rrItemDict native) Normal 
       pure native
     else pure native
 

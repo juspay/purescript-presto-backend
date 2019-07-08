@@ -28,6 +28,7 @@ data LogEntry = LogEntry
 data CallAPIEntry = CallAPIEntry
   { jsonRequest :: String
   , jsonResult  :: EitherEx ErrorResponse String
+
   }
 
 data RunSysCmdEntry = RunSysCmdEntry
@@ -91,11 +92,10 @@ instance decodeLogEntry :: Decode LogEntry where decode = defaultDecode
 instance encodeLogEntry :: Encode LogEntry where encode = defaultEncode
 
 instance rrItemLogEntry :: RRItem LogEntry where
-  toRecordingEntry = RecordingEntry <<< encodeJSON
-  fromRecordingEntry (RecordingEntry re) = hush $ E.runExcept $ decodeJSON re
+  toRecordingEntry rrItem mode = (RecordingEntry mode ) <<< encodeJSON $ rrItem
+  fromRecordingEntry (RecordingEntry mode re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "LogEntry"
   isMocked _ = true
-  getMode  _ = Normal 
   
 
 instance mockedResultLogEntry :: MockedResult LogEntry Unit where
@@ -110,11 +110,10 @@ instance decodeCallAPIEntry :: Decode CallAPIEntry where decode = defaultDecode
 instance encodeCallAPIEntry :: Encode CallAPIEntry where encode = defaultEncode
 
 instance rrItemCallAPIEntry :: RRItem CallAPIEntry where
-  toRecordingEntry = RecordingEntry <<< encodeJSON
-  fromRecordingEntry (RecordingEntry re) = hush $ E.runExcept $ decodeJSON re
+  toRecordingEntry rrItem mode = (RecordingEntry mode) <<< encodeJSON $ rrItem 
+  fromRecordingEntry (RecordingEntry mode re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "CallAPIEntry"
   isMocked _ = true
-  getMode  _ = Normal 
 
 
 
@@ -136,11 +135,10 @@ instance decodeRunSysCmdEntry :: Decode RunSysCmdEntry where decode = defaultDec
 instance encodeRunSysCmdEntry :: Encode RunSysCmdEntry where encode = defaultEncode
 
 instance rrItemRunSysCmdEntry :: RRItem RunSysCmdEntry where
-  toRecordingEntry = RecordingEntry <<< encodeJSON
-  fromRecordingEntry (RecordingEntry re) = hush $ E.runExcept $ decodeJSON re
+  toRecordingEntry rrItem mode = (RecordingEntry mode) <<< encodeJSON $ rrItem
+  fromRecordingEntry (RecordingEntry mode re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "RunSysCmdEntry"
   isMocked _ = true
-  getMode  _ = Normal 
 
 instance mockedResultRunSysCmdEntry :: MockedResult RunSysCmdEntry String where
   parseRRItem (RunSysCmdEntry e) = Just e.result
@@ -153,11 +151,10 @@ instance decodeDoAffEntry :: Decode DoAffEntry where decode = defaultDecode
 instance encodeDoAffEntry :: Encode DoAffEntry where encode = defaultEncode
 
 instance rrItemDoAffEntry :: RRItem DoAffEntry where
-  toRecordingEntry = RecordingEntry <<< encodeJSON
-  fromRecordingEntry (RecordingEntry re) = hush $ E.runExcept $ decodeJSON re
+  toRecordingEntry rrItem mode = (RecordingEntry mode) <<< encodeJSON $ rrItem 
+  fromRecordingEntry (RecordingEntry mode re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "DoAffEntry"
   isMocked _ = true
-  getMode  _ = Normal 
 
 instance mockedResultDoAffEntry :: Decode b => MockedResult DoAffEntry b where
   parseRRItem (DoAffEntry r) = hush $ E.runExcept $ decodeJSON r.jsonResult
@@ -169,11 +166,10 @@ derive instance eqRunDBEntry :: Eq RunDBEntry
 instance decodeRunDBEntry :: Decode RunDBEntry where decode = defaultDecode
 instance encodeRunDBEntry :: Encode RunDBEntry where encode = defaultEncode
 instance rrItemRunDBEntry :: RRItem RunDBEntry where
-  toRecordingEntry = RecordingEntry <<< encodeJSON
-  fromRecordingEntry (RecordingEntry re) = hush $ E.runExcept $ decodeJSON re
+  toRecordingEntry rrItem mode = (RecordingEntry mode) <<< encodeJSON $ rrItem
+  fromRecordingEntry (RecordingEntry mode re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "RunDBEntry"
   isMocked _ = true
-  getMode  _ = Normal 
 
 instance mockedResultRunDBEntry
   :: Decode b => MockedResult RunDBEntry (EitherEx DBError b) where
