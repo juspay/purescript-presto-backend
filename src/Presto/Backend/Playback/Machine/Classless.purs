@@ -144,17 +144,28 @@ replay playerRt rrItemDict lAct = do
   let tag = getTag' rrItemDict proxy
   let mode = getMode' rrItemDict proxy 
   case mode of 
-    Normal -> pure unit 
-    _ -> pure unit 
-  eNextRRItemRes <- lift3 $ liftEff $ popNextRRItemAndResult playerRt rrItemDict proxy
-  case eNextRRItemRes of
-    Left err -> replayError playerRt err
-    Right (Tuple nextRRItem nextRes) -> do
-      res <- replayWithMock rrItemDict lAct proxy nextRes
-      if not (elem tag playerRt.disableVerify) then do            
-        compareRRItems playerRt rrItemDict nextRRItem $ mkEntry' rrItemDict res
-        pure res
-        else pure res
+    Normal -> do 
+      eNextRRItemRes <- lift3 $ liftEff $ popNextRRItemAndResult playerRt rrItemDict proxy
+      case eNextRRItemRes of
+        Left err -> replayError playerRt err
+        Right (Tuple nextRRItem nextRes) -> do
+          res <- replayWithMock rrItemDict lAct proxy nextRes
+          if not (elem tag playerRt.disableVerify) then do            
+            compareRRItems playerRt rrItemDict nextRRItem $ mkEntry' rrItemDict res
+            pure res
+            else pure res
+    NoVerify -> do
+      eNextRRItemRes <- lift3 $ liftEff $ popNextRRItemAndResult playerRt rrItemDict proxy 
+      case eNextRRItemRes of 
+        Left err -> replayError playerRt err 
+        Right (Tuple nextRRItem nextRes) -> do 
+          res <- replayWithMock rrItemDict lAct proxy nextRes  
+          pure res
+    NoMock -> do 
+      res <- force lAct 
+      pure res 
+    Skip -> do 
+      replayError playerRt $ PlaybackError {errorType : UnexpectedRecordingEnd , errorMessage : "not sure what to do with skip"}
 
 record :: forall eff rt st rrItem native. RecorderRuntime  -> RRItemDict rrItem native  ->  Lazy (InterpreterMT' rt st eff native)  -> InterpreterMT' rt st eff native
 record recorderRt rrItemDict lAct = do
