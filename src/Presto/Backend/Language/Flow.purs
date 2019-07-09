@@ -99,7 +99,7 @@ data BackendFlowCommands next st rt s
     | RunKVDBEither String
         (KVDB.KVDB (EitherEx DBError s))
         (MockedKVDBConn -> KVDBMock.KVDBActionDict)
-        (Playback.RRItemDict Playback.RunKVDBEntryEither (EitherEx DBError s))
+        (Playback.RRItemDict Playback.RunKVDBEitherEntry (EitherEx DBError s))
         (EitherEx DBError s -> next)
 
     | RunKVDBSimple String
@@ -256,6 +256,85 @@ getKVDBConn dbName = wrap $ GetKVDBConn dbName
   (Playback.mkEntryDict $ Playback.mkGetKVDBConnEntry dbName)
   id
 
+-- setCache :: forall st rt. String -> String ->  String -> BackendFlow st rt (Either Error Unit)
+-- setCache dbName key value = do
+--   eRes <- wrap $ RunKVDBEither dbName
+--       (toCustomEitherEx <$> KVDB.setCache key value )
+--       KVDBMock.mkKVDBActionDict
+--       (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "setCache" "")
+--       id
+--   pure $ fromCustomEitherEx eRes
+
+-- getCache :: forall st rt. String -> String -> BackendFlow st rt (Either Error (Maybe String))
+-- getCache dbName key = do
+--   cacheConn <- getCacheConn dbName
+--   wrap $ GetCache cacheConn key id
+--
+-- keyExistsCache :: forall st rt. String -> String -> BackendFlow st rt (Either Error Boolean)
+-- keyExistsCache dbName key = do
+--   cacheConn <- getCacheConn dbName
+--   wrap $ KeyExistsCache cacheConn key id
+
+-- delCache :: forall st rt. String -> String -> BackendFlow st rt (Either Error Int)
+-- delCache dbName key = do
+--   cacheConn <- getCacheConn dbName
+--   wrap $ DelCache cacheConn key id
+
+-- setCacheWithExpiry :: forall st rt. String -> String -> String -> Milliseconds -> BackendFlow st rt (Either Error Unit)
+-- setCacheWithExpiry dbName key value ttl = do
+--   cacheConn <- getCacheConn dbName
+--   wrap $ SetCacheWithExpiry cacheConn key value ttl id
+
+-- expire :: forall st rt. String -> String -> Seconds -> BackendFlow st rt (Either Error Boolean)
+-- expire dbName key ttl = do
+--   cacheConn <- getCacheConn dbName
+--   wrap $ Expire cacheConn key ttl id
+
+-- incr :: forall st rt. String -> String -> BackendFlow st rt (Either Error Int)
+-- incr dbName key = do
+--   cacheConn <- getCacheConn dbName
+--   wrap $ Incr cacheConn key id
+
+-- setHash :: forall st rt. String -> String -> String -> String -> BackendFlow st rt (Either Error Boolean)
+-- setHash dbName key field value = do
+--   cacheConn <- getCacheConn dbName
+--   wrap $ SetHash cacheConn key field value id
+
+-- getHashKey :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error (Maybe String))
+-- getHashKey dbName key field = do
+--   cacheConn <- getCacheConn dbName
+--   wrap $ GetHashKey cacheConn key field id
+
+-- publishToChannel :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error Int)
+-- publishToChannel dbName channel message = do
+--   cacheConn <- getCacheConn dbName
+--   wrap $ PublishToChannel cacheConn channel message id
+--
+-- subscribeToMulti :: forall st rt. String -> Multi -> BackendFlow st rt Multi
+-- subscribeToMulti channel multi = wrap $ SubscribeInMulti channel multi id
+--
+-- subscribe :: forall st rt. String -> String -> BackendFlow st rt (Either Error Unit)
+-- subscribe dbName channel = do
+--   cacheConn <- getCacheConn dbName
+--   wrap $ Subscribe cacheConn channel id
+
+-- enqueue :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error Unit)
+-- enqueue dbName listName value = do
+--   cacheConn <- getCacheConn dbName
+--   wrap $ Enqueue cacheConn listName value id
+
+-- dequeue :: forall st rt. String -> String -> BackendFlow st rt (Either Error (Maybe String))
+-- dequeue dbName listName = do
+--   cacheConn <- getCacheConn dbName
+--   wrap $ Dequeue cacheConn listName id
+
+-- getQueueIdx :: forall st rt. String -> String -> Int -> BackendFlow st rt (Either Error (Maybe String))
+-- getQueueIdx dbName listName index = do
+--   cacheConn <- getCacheConn dbName
+--   wrap $ GetQueueIdx cacheConn listName index id
+
+-- Multi methods
+
 newMulti :: forall st rt. String -> BackendFlow st rt Multi
 newMulti dbName =
   wrap $ RunKVDBSimple dbName
@@ -273,11 +352,6 @@ setCacheInMulti key value multi = let
     (Playback.mkEntryDict $ Playback.mkRunKVDBSimpleEntry dbName "setCacheInMulti" "")
     id
 
--- setCache :: forall st rt. String -> String ->  String -> BackendFlow st rt (Either Error Unit)
--- setCache dbName key value = do
---   cacheConn <- getCacheConn dbName
---   wrap $ SetCache cacheConn key value id
-
 -- Why this function returns Multi???
 getCacheInMulti :: forall st rt. String -> Multi -> BackendFlow st rt Multi
 getCacheInMulti key multi = let
@@ -289,16 +363,6 @@ getCacheInMulti key multi = let
     id
 
 
--- getCache :: forall st rt. String -> String -> BackendFlow st rt (Either Error (Maybe String))
--- getCache dbName key = do
---   cacheConn <- getCacheConn dbName
---   wrap $ GetCache cacheConn key id
---
--- keyExistsCache :: forall st rt. String -> String -> BackendFlow st rt (Either Error Boolean)
--- keyExistsCache dbName key = do
---   cacheConn <- getCacheConn dbName
---   wrap $ KeyExistsCache cacheConn key id
-
 delCacheInMulti :: forall st rt. String -> Multi -> BackendFlow st rt Multi
 delCacheInMulti key multi = let
   dbName = KVDB.getKVDBName multi
@@ -307,11 +371,6 @@ delCacheInMulti key multi = let
     KVDBMock.mkKVDBActionDict
     (Playback.mkEntryDict $ Playback.mkRunKVDBSimpleEntry dbName "delCacheInMulti" "")
     id
-
--- delCache :: forall st rt. String -> String -> BackendFlow st rt (Either Error Int)
--- delCache dbName key = do
---   cacheConn <- getCacheConn dbName
---   wrap $ DelCache cacheConn key id
 
 setCacheWithExpireInMulti :: forall st rt. String -> String -> Milliseconds -> Multi -> BackendFlow st rt Multi
 setCacheWithExpireInMulti key value ttl multi = let
@@ -322,11 +381,6 @@ setCacheWithExpireInMulti key value ttl multi = let
     (Playback.mkEntryDict $ Playback.mkRunKVDBSimpleEntry dbName "setCacheWithExpireInMulti" "")
     id
 
--- setCacheWithExpiry :: forall st rt. String -> String -> String -> Milliseconds -> BackendFlow st rt (Either Error Unit)
--- setCacheWithExpiry dbName key value ttl = do
---   cacheConn <- getCacheConn dbName
---   wrap $ SetCacheWithExpiry cacheConn key value ttl id
-
 expireInMulti :: forall st rt. String -> Seconds -> Multi -> BackendFlow st rt Multi
 expireInMulti key ttl multi = let
   dbName = KVDB.getKVDBName multi
@@ -335,11 +389,6 @@ expireInMulti key ttl multi = let
     KVDBMock.mkKVDBActionDict
     (Playback.mkEntryDict $ Playback.mkRunKVDBSimpleEntry dbName "expireInMulti" "")
     id
-
--- expire :: forall st rt. String -> String -> Seconds -> BackendFlow st rt (Either Error Boolean)
--- expire dbName key ttl = do
---   cacheConn <- getCacheConn dbName
---   wrap $ Expire cacheConn key ttl id
 
 incrInMulti :: forall st rt. String -> Multi -> BackendFlow st rt Multi
 incrInMulti key multi = let
@@ -350,11 +399,6 @@ incrInMulti key multi = let
     (Playback.mkEntryDict $ Playback.mkRunKVDBSimpleEntry dbName "incrInMulti" "")
     id
 
--- incr :: forall st rt. String -> String -> BackendFlow st rt (Either Error Int)
--- incr dbName key = do
---   cacheConn <- getCacheConn dbName
---   wrap $ Incr cacheConn key id
-
 setHashInMulti :: forall st rt. String -> String -> String -> Multi -> BackendFlow st rt Multi
 setHashInMulti key field value multi = let
   dbName = KVDB.getKVDBName multi
@@ -363,11 +407,6 @@ setHashInMulti key field value multi = let
     KVDBMock.mkKVDBActionDict
     (Playback.mkEntryDict $ Playback.mkRunKVDBSimpleEntry dbName "setHashInMulti" "")
     id
-
--- setHash :: forall st rt. String -> String -> String -> String -> BackendFlow st rt (Either Error Boolean)
--- setHash dbName key field value = do
---   cacheConn <- getCacheConn dbName
---   wrap $ SetHash cacheConn key field value id
 
 -- Why this function returns Multi???
 getHashKeyInMulti :: forall st rt. String -> String -> Multi -> BackendFlow st rt Multi
@@ -379,11 +418,6 @@ getHashKeyInMulti key field multi = let
     (Playback.mkEntryDict $ Playback.mkRunKVDBSimpleEntry dbName "getHashKeyInMulti" "")
     id
 
--- getHashKey :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error (Maybe String))
--- getHashKey dbName key field = do
---   cacheConn <- getCacheConn dbName
---   wrap $ GetHashKey cacheConn key field id
-
 publishToChannelInMulti :: forall st rt. String -> String -> Multi -> BackendFlow st rt Multi
 publishToChannelInMulti channel message multi = let
   dbName = KVDB.getKVDBName multi
@@ -393,19 +427,6 @@ publishToChannelInMulti channel message multi = let
     (Playback.mkEntryDict $ Playback.mkRunKVDBSimpleEntry dbName "publishToChannelInMulti" "")
     id
 
--- publishToChannel :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error Int)
--- publishToChannel dbName channel message = do
---   cacheConn <- getCacheConn dbName
---   wrap $ PublishToChannel cacheConn channel message id
---
--- subscribeToMulti :: forall st rt. String -> Multi -> BackendFlow st rt Multi
--- subscribeToMulti channel multi = wrap $ SubscribeInMulti channel multi id
---
--- subscribe :: forall st rt. String -> String -> BackendFlow st rt (Either Error Unit)
--- subscribe dbName channel = do
---   cacheConn <- getCacheConn dbName
---   wrap $ Subscribe cacheConn channel id
-
 enqueueInMulti :: forall st rt. String -> String -> Multi -> BackendFlow st rt Multi
 enqueueInMulti listName value multi = let
   dbName = KVDB.getKVDBName multi
@@ -414,11 +435,6 @@ enqueueInMulti listName value multi = let
     KVDBMock.mkKVDBActionDict
     (Playback.mkEntryDict $ Playback.mkRunKVDBSimpleEntry dbName "enqueueInMulti" "")
     id
-
--- enqueue :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error Unit)
--- enqueue dbName listName value = do
---   cacheConn <- getCacheConn dbName
---   wrap $ Enqueue cacheConn listName value id
 
 -- Why this function returns Multi???
 dequeueInMulti :: forall st rt. String -> Multi -> BackendFlow st rt Multi
@@ -430,11 +446,6 @@ dequeueInMulti listName multi = let
     (Playback.mkEntryDict $ Playback.mkRunKVDBSimpleEntry dbName "dequeueInMulti" "")
     id
 
--- dequeue :: forall st rt. String -> String -> BackendFlow st rt (Either Error (Maybe String))
--- dequeue dbName listName = do
---   cacheConn <- getCacheConn dbName
---   wrap $ Dequeue cacheConn listName id
-
 -- Why this function returns Multi???
 getQueueIdxInMulti :: forall st rt. String -> Int -> Multi -> BackendFlow st rt Multi
 getQueueIdxInMulti listName index multi = let
@@ -445,13 +456,15 @@ getQueueIdxInMulti listName index multi = let
     (Playback.mkEntryDict $ Playback.mkRunKVDBSimpleEntry dbName "getQueueIdxInMulti" "")
     id
 
--- getQueueIdx :: forall st rt. String -> String -> Int -> BackendFlow st rt (Either Error (Maybe String))
--- getQueueIdx dbName listName index = do
---   cacheConn <- getCacheConn dbName
---   wrap $ GetQueueIdx cacheConn listName index id
---
--- execMulti :: forall st rt. Multi -> BackendFlow st rt (Either Error (Array Foreign))
--- execMulti multi = wrap $ Exec multi id
+execMulti :: forall st rt. Multi -> BackendFlow st rt (Either Error (Array Foreign))
+execMulti multi = do
+  let dbName = KVDB.getKVDBName multi
+  eRes <- wrap $ RunKVDBEither dbName
+      (toCustomEitherEx <$> KVDB.execMulti multi)
+      KVDBMock.mkKVDBActionDict
+      (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "execMulti" "")
+      id
+  pure $ fromCustomEitherEx eRes
 
 -- setMessageHandler :: forall st rt. String -> (forall eff. (String -> String -> Eff eff Unit)) -> BackendFlow st rt Unit
 -- setMessageHandler dbName f = do

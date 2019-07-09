@@ -60,7 +60,7 @@ data GetKVDBConnEntry = GetKVDBConnEntry
   , mockedConn :: MockedKVDBConn
   }
 
-data RunKVDBEntryEither = RunKVDBEntryEither
+data RunKVDBEitherEntry = RunKVDBEitherEntry
   { dbName     :: String
   , dbMethod   :: String
   , params     :: String
@@ -99,7 +99,7 @@ mkCallAPIEntry jReq aRes = CallAPIEntry
   , jsonResult  : encodeJSON <$> aRes
   }
 
-mkRunKVDBEntryEither
+mkRunKVDBEitherEntry
   :: forall b
    . Encode b
   => Decode b
@@ -107,8 +107,8 @@ mkRunKVDBEntryEither
   -> String
   -> String
   -> EitherEx DBError b
-  -> RunKVDBEntryEither
-mkRunKVDBEntryEither dbName dbMethod params aRes = RunKVDBEntryEither
+  -> RunKVDBEitherEntry
+mkRunKVDBEitherEntry dbName dbMethod params aRes = RunKVDBEitherEntry
   { dbName
   , dbMethod
   , params
@@ -280,19 +280,19 @@ instance mockedResultGetKVDBConnEntry :: MockedResult GetKVDBConnEntry KVDBConn 
 
 
 
-derive instance genericRunKVDBEntryEither :: Generic RunKVDBEntryEither _
-derive instance eqRunKVDBEntryEither :: Eq RunKVDBEntryEither
-instance decodeRunKVDBEntryEither :: Decode RunKVDBEntryEither where decode = defaultDecode
-instance encodeRunKVDBEntryEither :: Encode RunKVDBEntryEither where encode = defaultEncode
-instance rrItemRunKVDBEntryEither :: RRItem RunKVDBEntryEither where
+derive instance genericRunKVDBEitherEntry :: Generic RunKVDBEitherEntry _
+derive instance eqRunKVDBEitherEntry :: Eq RunKVDBEitherEntry
+instance decodeRunKVDBEitherEntry :: Decode RunKVDBEitherEntry where decode = defaultDecode
+instance encodeRunKVDBEitherEntry :: Encode RunKVDBEitherEntry where encode = defaultEncode
+instance rrItemRunKVDBEitherEntry :: RRItem RunKVDBEitherEntry where
   toRecordingEntry = RecordingEntry <<< encodeJSON
   fromRecordingEntry (RecordingEntry re) = hush $ E.runExcept $ decodeJSON re
-  getTag   _ = "RunKVDBEntryEither"
+  getTag   _ = "RunKVDBEitherEntry"
   isMocked _ = true
 
-instance mockedResultRunKVDBEntryEither
-  :: Decode b => MockedResult RunKVDBEntryEither (EitherEx DBError b) where
-    parseRRItem (RunKVDBEntryEither dbe) = do
+instance mockedResultRunKVDBEitherEntry
+  :: Decode b => MockedResult RunKVDBEitherEntry (EitherEx DBError b) where
+    parseRRItem (RunKVDBEitherEntry dbe) = do
       eResult <- case dbe.jsonResult of
         LeftEx  errResp -> Just $ LeftEx errResp
         RightEx strResp -> do

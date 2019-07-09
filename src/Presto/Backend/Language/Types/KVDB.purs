@@ -25,6 +25,9 @@ data Multi = Multi KVDBName MultiGUID
 getKVDBName :: Multi -> KVDBName
 getKVDBName (Multi name _) = name
 
+getMultiGUID :: Multi -> MultiGUID
+getMultiGUID (Multi _ guid) = guid
+
 derive instance genericMulti :: Generic Multi _
 instance decodeMulti         :: Decode  Multi where decode  = defaultDecode
 instance encodeMulti         :: Encode  Multi where encode  = defaultEncode
