@@ -58,7 +58,7 @@ data KVDBMethod next s
     | PublishToChannel String String (Either Error Int -> next)
     | Subscribe String (Either Error Unit -> next)
 
-    | GetMulti (Multi -> next)
+    | NewMulti (Multi -> next)
     | SetCacheInMulti String String Multi (Multi -> next)
     | GetCacheInMulti String Multi (Multi -> next)
     | DelCacheInMulti String Multi (Multi -> next)
@@ -86,7 +86,7 @@ wrapKVDBMethod :: forall next s. KVDBMethod next s -> KVDB next
 wrapKVDBMethod = liftF <<< KVDBWrapper <<< mkExists
 
 newMulti :: forall st rt. KVDB Multi
-newMulti = wrapKVDBMethod $ GetMulti id
+newMulti = wrapKVDBMethod $ NewMulti id
 
 setCacheInMulti :: forall st rt. String -> String -> Multi -> KVDB Multi
 setCacheInMulti key value multi = wrapKVDBMethod $ SetCacheInMulti key value multi id

@@ -39,7 +39,7 @@ import Presto.Backend.Types.API (class RestEndpoint, APIResult, Request(..), Hea
 import Presto.Backend.Language.Types.EitherEx
 import Presto.Backend.Language.Types.DB (SqlConn(..), MockedSqlConn(..), KVDBConn(..), MockedKVDBConn(..))
 import Presto.Backend.Playback.Types (RecordingEntry(..), PlaybackError(..), PlaybackErrorType(..))
-import Presto.Backend.Runtime.Types (Connection(..), BackendRuntime(..), RunningMode(..))
+import Presto.Backend.Runtime.Types (Connection(..), BackendRuntime(..), RunningMode(..), KVDBRuntime(..))
 import Presto.Backend.Runtime.Interpreter (runBackend)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
 import Presto.Backend.TestData.DBModel
@@ -155,26 +155,44 @@ dbScript1 = do
       log "Found a car" car
       pure $ Just car
 
+mkBackendRuntime kvdbRuntime mode = BackendRuntime
+  { apiRunner
+  , connections : StrMap.empty
+  , logRunner
+  , affRunner
+  , kvdbRuntime
+  , mode
+  }
+
+createKVDBRuntime = do
+  multiesRef' <- newRef StrMap.empty
+  pure $ KVDBRuntime
+    { multiesRef : multiesRef'
+    }
+
+createRegularBackendRuntime = do
+  kvdbRuntime <- createKVDBRuntime
+  pure $ mkBackendRuntime kvdbRuntime RegularMode
+
+createRecordingBackendRuntime = do
+  kvdbRuntime  <- createKVDBRuntime
+  recordingRef <- newRef { entries : [] }
+  let brt = mkBackendRuntime kvdbRuntime $ RecordingMode { recordingRef }
+  pure $ Tuple brt recordingRef
+
 runTests :: Spec _ Unit
 runTests = do
-  let backendRuntime mode = BackendRuntime
-        { apiRunner   : apiRunner
-        , connections : StrMap.empty
-        , logRunner   : logRunner
-        , affRunner   : affRunner
-        , mode        : mode
-        }
-  let backendRuntimeRegular = backendRuntime RegularMode
-
   describe "Regular mode tests" do
     it "Log regular mode test" $ do
-      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRegular logScript) unit) unit)
+      brt <- liftEff createRegularBackendRuntime
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt logScript) unit) unit)
       case eResult of
         Left err -> fail $ show err
         Right _  -> pure unit
 
     it "CallAPI regular mode test" $ do
-      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRegular callAPIScript) unit) unit)
+      brt <- liftEff createRegularBackendRuntime
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt callAPIScript) unit) unit)
       case eResult of
         Left err -> fail $ show err
         Right (Tuple (Tuple eRes1 eRes2) _) -> do
@@ -183,9 +201,8 @@ runTests = do
 
   describe "Recording/replaying mode tests" do
     it "Record test" $ do
-      recordingRef <- liftEff $ newRef { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
-      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording logAndCallAPIScript) unit) unit)
+      Tuple brt recordingRef <- liftEff createRecordingBackendRuntime
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt logAndCallAPIScript) unit) unit)
       case eResult of
         Left err -> fail $ show err
         Right _  -> do
@@ -199,19 +216,20 @@ runTests = do
             )
 
     it "Record / replay test: log and callAPI success" $ do
-      recordingRef <- liftEff $ newRef { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
-      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording logAndCallAPIScript) unit) unit)
+      Tuple brt recordingRef <- liftEff createRecordingBackendRuntime
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt logAndCallAPIScript) unit) unit)
       isRight eResult `shouldEqual` true
 
-      stepRef   <- liftEff $ newRef 0
-      errorRef  <- liftEff $ newRef Nothing
-      recording <- liftEff $ readRef recordingRef
+      stepRef     <- liftEff $ newRef 0
+      errorRef    <- liftEff $ newRef Nothing
+      recording   <- liftEff $ readRef recordingRef
+      kvdbRuntime <- liftEff createKVDBRuntime
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
             , logRunner   : failingLogRunner
             , affRunner   : failingAffRunner
+            , kvdbRuntime
             , mode        : ReplayingMode
               { recording
               , stepRef
@@ -224,19 +242,20 @@ runTests = do
       curStep `shouldEqual` 4
 
     it "Record / replay test: index out of range" $ do
-      recordingRef <- liftEff $ newRef { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
-      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording logAndCallAPIScript) unit) unit)
+      Tuple brt recordingRef <- liftEff createRecordingBackendRuntime
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt logAndCallAPIScript) unit) unit)
       isRight eResult `shouldEqual` true
 
       stepRef   <- liftEff $ newRef 10
       errorRef  <- liftEff $ newRef Nothing
       recording <- liftEff $ readRef recordingRef
+      kvdbRuntime <- liftEff createKVDBRuntime
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
             , logRunner   : failingLogRunner
             , affRunner   : failingAffRunner
+            , kvdbRuntime
             , mode        : ReplayingMode
               { recording
               , stepRef
@@ -254,19 +273,20 @@ runTests = do
       curStep `shouldEqual` 10
 
     it "Record / replay test: started from the middle" $ do
-      recordingRef <- liftEff $ newRef { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
-      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording logAndCallAPIScript) unit) unit)
+      Tuple brt recordingRef <- liftEff createRecordingBackendRuntime
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt logAndCallAPIScript) unit) unit)
       isRight eResult `shouldEqual` true
 
-      stepRef   <- liftEff $ newRef 2
-      errorRef  <- liftEff $ newRef Nothing
-      recording <- liftEff $ readRef recordingRef
+      stepRef     <- liftEff $ newRef 2
+      errorRef    <- liftEff $ newRef Nothing
+      recording   <- liftEff $ readRef recordingRef
+      kvdbRuntime <- liftEff createKVDBRuntime
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
             , logRunner   : failingLogRunner
             , affRunner   : failingAffRunner
+            , kvdbRuntime
             , mode        : ReplayingMode
               { recording
               , stepRef
@@ -281,21 +301,22 @@ runTests = do
       curStep `shouldEqual` 3
 
     it "Record / replay test: runSysCmd success" $ do
-      recordingRef <- liftEff $ newRef { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
-      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording runSysCmdScript) unit) unit)
+      Tuple brt recordingRef <- liftEff createRecordingBackendRuntime
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt runSysCmdScript) unit) unit)
       case eResult of
         Right (Tuple n unit) -> n `shouldEqual` "ABC\n"
         _ -> fail $ show eResult
 
-      stepRef   <- liftEff $ newRef 0
-      errorRef  <- liftEff $ newRef Nothing
-      recording <- liftEff $ readRef recordingRef
+      stepRef     <- liftEff $ newRef 0
+      errorRef    <- liftEff $ newRef Nothing
+      recording   <- liftEff $ readRef recordingRef
+      kvdbRuntime <- liftEff createKVDBRuntime
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
             , logRunner   : failingLogRunner
             , affRunner   : failingAffRunner
+            , kvdbRuntime
             , mode        : ReplayingMode
               { recording
               , stepRef
@@ -310,21 +331,22 @@ runTests = do
       curStep `shouldEqual` 1
 
     it "Record / replay test: doAff success" $ do
-      recordingRef <- liftEff $ newRef { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef }
-      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording doAffScript) unit) unit)
+      Tuple brt recordingRef <- liftEff createRecordingBackendRuntime
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt doAffScript) unit) unit)
       case eResult of
         Right (Tuple n unit) -> n `shouldEqual` "This is result."
         _ -> fail $ show eResult
 
-      stepRef   <- liftEff $ newRef 0
-      errorRef  <- liftEff $ newRef Nothing
-      recording <- liftEff $ readRef recordingRef
+      stepRef     <- liftEff $ newRef 0
+      errorRef    <- liftEff $ newRef Nothing
+      recording   <- liftEff $ readRef recordingRef
+      kvdbRuntime <- liftEff createKVDBRuntime
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
             , logRunner   : failingLogRunner
             , affRunner   : failingAffRunner
+            , kvdbRuntime
             , mode        : ReplayingMode
               { recording
               , stepRef
@@ -339,9 +361,8 @@ runTests = do
       curStep `shouldEqual` 1
 
     it "Record / replay test: getDBConn success" $ do
-      recordingRef <- liftEff $ newRef { entries : [] }
+      Tuple (BackendRuntime rt') recordingRef <- liftEff createRecordingBackendRuntime
       let conns = StrMap.singleton testDB $ SqlConn $ MockedSql $ MockedSqlConn testDB
-      let (BackendRuntime rt') = backendRuntime $ RecordingMode { recordingRef }
       let rt = BackendRuntime $ rt' { connections = conns }
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend rt dbScript0) unit) unit)
       case eResult of

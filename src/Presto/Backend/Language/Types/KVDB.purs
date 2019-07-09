@@ -20,8 +20,6 @@ import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
 -- Custom types that represents the native Multi in our system.
 data Multi = Multi String
 
-type MultiCatalogue = StrMap Multi
-
 derive instance genericMulti :: Generic Multi _
 instance decodeMulti         :: Decode  Multi where decode  = defaultDecode
 instance encodeMulti         :: Encode  Multi where encode  = defaultEncode
