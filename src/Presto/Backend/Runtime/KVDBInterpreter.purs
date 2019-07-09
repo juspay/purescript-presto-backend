@@ -241,8 +241,10 @@ interpretKVDB kvdbRt _ _ (GetQueueIdxInMulti listName index multi next) = do
 interpretKVDB kvdbRt _ _ (Exec multi next) = do
   mbNativeMulti <- lift3 $ liftEff $ getNativeMulti kvdbRt multi
   case mbNativeMulti of
-    Nothing -> throwException' $ "Multi not found: " <> show multi
-    Just nativeMulti -> next <$> (liftAff $ execMulti nativeMulti)
+    Nothing          -> throwException' $ "Multi not found: " <> show multi
+    Just nativeMulti -> do
+      lift3 $ liftEff $ unregisterMulti kvdbRt multi
+      next <$> (liftAff $ execMulti nativeMulti)
 
 -- interpretKVDB _ _ simpleConn (SetMessageHandler f next) =
 --   (lift3 $ liftEff $ setMessageHandler f) >>= (pure <<< next)
