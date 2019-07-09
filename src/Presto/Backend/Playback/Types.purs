@@ -24,14 +24,14 @@ import Sequelize.Models.Types (DataType(..))
 import Type.Proxy (Proxy)
 
 data RecordingEntry = RecordingEntry EntryReplayingMode String
+data GlobalReplayingMode = GlobalNormal | GlobalNoVerify | GlobalNoMocking
+data EntryReplayingMode = Normal | NoVerify | NoMock -- | Skip
 
-data EntryReplayingMode = Normal | NoVerify | NoMock | Skip 
-
-derive instance modeEq :: Eq EntryReplayingMode 
+derive instance modeEq :: Eq EntryReplayingMode
 derive instance genericEntryReplayingMode :: Generic EntryReplayingMode _
-instance entryReplayingModeEncode :: Encode EntryReplayingMode where encode = defaultEncode 
+instance entryReplayingModeEncode :: Encode EntryReplayingMode where encode = defaultEncode
 instance entryReplayingModeDecode :: Decode EntryReplayingMode where decode = defaultDecode
-instance showEntryReplayingMode :: Show EntryReplayingMode where show = GShow.genericShow 
+instance showEntryReplayingMode :: Show EntryReplayingMode where show = GShow.genericShow
 instance ordEntryReplayingMode :: Ord EntryReplayingMode where compare = GOrd.genericCompare
 
 
@@ -45,9 +45,8 @@ type Recording =
 -- For now, Ref is used, but it's not thread safe.
 -- So having a sequential flow is preferred.
 type RecorderRuntime =
-  { recordingRef :: Ref Recording                                       --why we are using ref ??
-                                       -- this is a data type for recording
-   ,disableEntries :: Array DisableEntries     
+  { recordingRef :: Ref Recording
+   ,disableEntries :: Array DisableEntries
   }
 
 type PlayerRuntime =
@@ -56,7 +55,7 @@ type PlayerRuntime =
   , disableMocking :: Array DisableEntries
   , skip :: Array DisableEntries
   , stepRef   :: Ref Int
-  , errorRef  :: Ref (Maybe PlaybackError)      -- this is a record having fields error type and message
+  , errorRef  :: Ref (Maybe PlaybackError)
   }
 
 data PlaybackErrorType
@@ -126,7 +125,7 @@ newtype RRItemDict rrItem native = RRItemDict
 
 
 toRecordingEntry' :: forall rrItem native. RRItemDict rrItem native -> rrItem -> EntryReplayingMode -> RecordingEntry
-toRecordingEntry' (RRItemDict d) mode = d.toRecordingEntry mode 
+toRecordingEntry' (RRItemDict d) mode = d.toRecordingEntry mode
 
 fromRecordingEntry' :: forall rrItem native. RRItemDict rrItem native -> RecordingEntry -> Maybe rrItem
 fromRecordingEntry' (RRItemDict d) = d.fromRecordingEntry
@@ -159,5 +158,5 @@ mkEntryDict mkEntry = RRItemDict
   , parseRRItem        : parseRRItem
   , mkEntry            : mkEntry
   , compare            : (==)
-  , encodeJSON         : encodeJSON 
+  , encodeJSON         : encodeJSON
   }

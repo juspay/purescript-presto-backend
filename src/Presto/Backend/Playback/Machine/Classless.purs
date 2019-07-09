@@ -145,42 +145,63 @@ compareRRItems playerRt rrItemDict nextRRItem rrItem = do
   let actual   = encodeJSON' rrItemDict rrItem
   replayError playerRt $ itemMismatch expected actual
 
+
+replayWithGlobalConfig
+  :: forall eff rt st rrItem native. PlayerRuntime
+  -> RRItemDict rrItem native
+  -> Lazy (InterpreterMT' rt st eff native)
+  -> Either PlaybackError (Tuple rrItem native)
+  -> InterpreterMT' rt st eff native
+replayWithGlobalConfig playerRt rrItemDict lAct eNextRRItemRes  = do
+  let proxy = Proxy :: Proxy rrItem
+  let tag   = getTag' rrItemDict proxy
+  let config = checkForReplayConfig playerRt tag
+  case config of
+    GlobalNoVerify  -> case eNextRRItemRes of
+                        Left err -> replayError playerRt err
+                        Right (Tuple nextRRItem nextRes) -> replayWithMock rrItemDict lAct proxy nextRes
+    GlobalNoMocking -> force lAct
+    GlobalNormal    -> case eNextRRItemRes of
+                        Left err -> replayError playerRt err
+                        Right (Tuple nextRRItem nextRes) -> do
+                          res <- replayWithMock rrItemDict lAct proxy nextRes
+                          compareRRItems playerRt rrItemDict nextRRItem $ mkEntry' rrItemDict res
+                          pure res
+
+checkForReplayConfig :: PlayerRuntime -> String -> GlobalReplayingMode
+checkForReplayConfig  playerRt tag | elem tag playerRt.disableMocking  = GlobalNoMocking
+                                   | elem tag playerRt.disableVerify   = GlobalNoVerify
+                                   | otherwise                         = GlobalNormal
+
 replay
-  :: forall eff rt st rrItem native. PlayerRuntime -> RRItemDict rrItem native
+  :: forall eff rt st rrItem native. PlayerRuntime
+  -> RRItemDict rrItem native
   -> Lazy (InterpreterMT' rt st eff native)
   -> InterpreterMT' rt st eff native
 replay playerRt rrItemDict lAct = do
   let proxy = Proxy :: Proxy rrItem
-  let tag = getTag' rrItemDict proxy
-  mode' <- lift3 $ liftEff $ getCurrentEntryReplayMode playerRt
-  let mode = fromMaybe Normal mode'
-  case mode of 
-    Normal -> do 
-      eNextRRItemRes <- lift3 $ liftEff $ popNextRRItemAndResult playerRt rrItemDict proxy
-      case eNextRRItemRes of
-        Left err -> replayError playerRt err
-        Right (Tuple nextRRItem nextRes) -> do
-          res <- replayWithMock rrItemDict lAct proxy nextRes
-          when (not (elem tag playerRt.disableVerify)) $ compareRRItems playerRt rrItemDict nextRRItem $ mkEntry' rrItemDict res
-          pure res
-    NoVerify -> do
-      eNextRRItemRes <- lift3 $ liftEff $ popNextRRItemAndResult playerRt rrItemDict proxy 
-      case eNextRRItemRes of 
-        Left err -> replayError playerRt err 
-        Right (Tuple nextRRItem nextRes) -> replayWithMock rrItemDict lAct proxy nextRes
-    NoMock -> do
-        -- popNextRRItemAndResult
-        force lAct  
-    Skip -> replayError playerRt $ PlaybackError {errorType : UnexpectedRecordingEnd , errorMessage : "not sure what to do with skip"}
+  entryMode' <- lift3 $ liftEff $ getCurrentEntryReplayMode playerRt
+  let entryReplayMode = fromMaybe Normal entryMode'
+  eNextRRItemRes <- lift3 $ liftEff $ popNextRRItemAndResult playerRt rrItemDict proxy
+  case entryReplayMode of
+    Normal -> replayWithGlobalConfig playerRt rrItemDict lAct eNextRRItemRes
+    NoMock -> force lAct
+    NoVerify -> case eNextRRItemRes of
+                    Left err -> replayError playerRt err
+                    Right (Tuple nextRRItem nextRes) ->  replayWithMock rrItemDict lAct proxy nextRes
+    -- Skip -> replayError playerRt $ PlaybackError {errorType : UnexpectedRecordingEnd , errorMessage : "not sure what to do with skip"}
 
-record :: forall eff rt st rrItem native. RecorderRuntime  -> RRItemDict rrItem native  ->  Lazy (InterpreterMT' rt st eff native)  -> InterpreterMT' rt st eff native
+
+record
+  :: forall eff rt st rrItem native. RecorderRuntime
+  -> RRItemDict rrItem native
+  ->  Lazy (InterpreterMT' rt st eff native)
+  -> InterpreterMT' rt st eff native
 record recorderRt rrItemDict lAct = do
   native <- force lAct
   let tag = getTag' rrItemDict (Proxy :: Proxy rrItem)
-  if not ( elem tag recorderRt.disableEntries ) then do
-      lift3 $ liftEff $ pushRecordingEntry recorderRt $ toRecordingEntry' rrItemDict (mkEntry' rrItemDict native) Normal 
-      pure native
-    else pure native
+  when ( not $ elem tag recorderRt.disableEntries ) $ lift3 $ liftEff $ pushRecordingEntry recorderRt $ toRecordingEntry' rrItemDict (mkEntry' rrItemDict native) Normal
+  pure native
 
 withRunModeClassless
   :: forall eff rt st rrItem native
@@ -188,17 +209,7 @@ withRunModeClassless
   -> RRItemDict rrItem native
   -> Lazy (InterpreterMT' rt st eff native)
   -> InterpreterMT' rt st eff native
-withRunModeClassless brt@(BackendRuntime rt) rrItemDict lAct =
-  case rt.mode of
+withRunModeClassless brt@(BackendRuntime rt) rrItemDict lAct = case rt.mode of
   RegularMode              -> force lAct
   RecordingMode recorderRt -> record recorderRt rrItemDict lAct
-  ReplayingMode playerRt   -> do
-                              let proxy = Proxy :: Proxy rrItem
-                              let tag = getTag' rrItemDict proxy
-                              if elem tag playerRt.disableMocking then do
-                                force lAct
-                                else replay playerRt   rrItemDict lAct
-
-
-
-
+  ReplayingMode playerRt   -> replay playerRt   rrItemDict lAct
