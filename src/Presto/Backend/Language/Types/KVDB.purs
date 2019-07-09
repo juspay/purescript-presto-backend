@@ -18,7 +18,12 @@ import Data.Maybe (Maybe(..), maybe)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
 
 -- Custom types that represents the native Multi in our system.
-data Multi = Multi String
+type KVDBName = String
+type MultiGUID = String
+data Multi = Multi KVDBName MultiGUID
+
+getKVDBName :: Multi -> KVDBName
+getKVDBName (Multi name _) = name
 
 derive instance genericMulti :: Generic Multi _
 instance decodeMulti         :: Decode  Multi where decode  = defaultDecode

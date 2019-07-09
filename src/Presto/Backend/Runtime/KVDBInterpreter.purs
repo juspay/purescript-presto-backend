@@ -71,18 +71,20 @@ getMockedKVDBValue brt mockedKvDbActDict = throwException' "Mocking is not yet i
 registerNewMulti
   :: forall eff
    . KVDBRuntime
+  -> String
   -> Native.Multi
   -> Eff (ref :: REF, uuid :: GENUUID | eff) Multi
-registerNewMulti (KVDBRuntime rt) nativeMulti = do
+registerNewMulti (KVDBRuntime rt) kvdbName nativeMulti = do
   uuid <- genUUID
   let uuidStr = show uuid
   catalogue <- readRef rt.multiesRef
   writeRef rt.multiesRef $ StrMap.insert uuidStr nativeMulti catalogue
-  pure $ Multi uuidStr
+  pure $ Multi kvdbName uuidStr
 
 interpretKVDB
   :: forall st rt s eff a
    . KVDBRuntime
+  -> String
   -> SimpleConn
   -> KVDBMethodWrapper s a
   -> InterpreterMT' rt st eff a
@@ -90,79 +92,80 @@ interpretKVDB
 -- interpretKVDB _ simpleConn (SetCache key value next) =
 --  (R.lift $ S.lift $ E.lift $ void <$> set key value Nothing NoOptions) >>= (pure <<< next)
 
--- interpretKVDB _ simpleConn (SetCacheWithExpiry key value ttl next) = (R.lift $ S.lift $ E.lift $ void <$> set key value (Just ttl) NoOptions) >>= (pure <<< next)
+-- interpretKVDB _ dbName simpleConn (SetCacheWithExpiry key value ttl next) = (R.lift $ S.lift $ E.lift $ void <$> set key value (Just ttl) NoOptions) >>= (pure <<< next)
 --
--- interpretKVDB _ simpleConn (GetCache key next) = (R.lift $ S.lift $ E.lift $ get key) >>= (pure <<< next)
+-- interpretKVDB _ dbName simpleConn (GetCache key next) = (R.lift $ S.lift $ E.lift $ get key) >>= (pure <<< next)
 --
--- interpretKVDB _ simpleConn (KeyExistsCache key next) = (R.lift $ S.lift $ E.lift $ exists key) >>= (pure <<< next)
+-- interpretKVDB _ dbName simpleConn (KeyExistsCache key next) = (R.lift $ S.lift $ E.lift $ exists key) >>= (pure <<< next)
 --
--- interpretKVDB _ simpleConn (DelCache key next) = (R.lift $ S.lift $ E.lift $ del (NEArray.singleton key)) >>= (pure <<< next)
+-- interpretKVDB _ dbName simpleConn (DelCache key next) = (R.lift $ S.lift $ E.lift $ del (NEArray.singleton key)) >>= (pure <<< next)
 --
--- interpretKVDB _ simpleConn (Expire key ttl next) = (R.lift $ S.lift $ E.lift $ expire key ttl) >>= (pure <<< next)
+-- interpretKVDB _ dbName simpleConn (Expire key ttl next) = (R.lift $ S.lift $ E.lift $ expire key ttl) >>= (pure <<< next)
 --
--- interpretKVDB _ simpleConn (Incr key next) = (R.lift $ S.lift $ E.lift $ incr key) >>= (pure <<< next)
+-- interpretKVDB _ dbName simpleConn (Incr key next) = (R.lift $ S.lift $ E.lift $ incr key) >>= (pure <<< next)
 --
--- interpretKVDB _ simpleConn (SetHash key field value next) = (R.lift $ S.lift $ E.lift $ hset key field value) >>= (pure <<< next)
+-- interpretKVDB _ dbName simpleConn (SetHash key field value next) = (R.lift $ S.lift $ E.lift $ hset key field value) >>= (pure <<< next)
 --
--- interpretKVDB _ simpleConn (GetHashKey key field next) = (R.lift $ S.lift $ E.lift $ hget key field) >>= (pure <<< next)
+-- interpretKVDB _ dbName simpleConn (GetHashKey key field next) = (R.lift $ S.lift $ E.lift $ hget key field) >>= (pure <<< next)
 --
--- interpretKVDB _ simpleConn (PublishToChannel channel message next) = (R.lift $ S.lift $ E.lift $ publish channel message) >>= (pure <<< next)
+-- interpretKVDB _ dbName simpleConn (PublishToChannel channel message next) = (R.lift $ S.lift $ E.lift $ publish channel message) >>= (pure <<< next)
 --
--- interpretKVDB _ simpleConn (Subscribe channel next) = (R.lift $ S.lift $ E.lift $ subscribe (NEArray.singleton channel)) >>= (pure <<< next)
+-- interpretKVDB _ dbName simpleConn (Subscribe channel next) = (R.lift $ S.lift $ E.lift $ subscribe (NEArray.singleton channel)) >>= (pure <<< next)
 --
--- interpretKVDB _ simpleConn (SetMessageHandler f next) = (R.lift $ S.lift $ E.lift $ liftEff $ setMessageHandler f) >>= (pure <<< next)
+-- interpretKVDB _ dbName simpleConn (SetMessageHandler f next) = (R.lift $ S.lift $ E.lift $ liftEff $ setMessageHandler f) >>= (pure <<< next)
 --
--- interpretKVDB _ simpleConn (Enqueue listName value next) = (R.lift $ S.lift $ E.lift $ void <$> rpush listName value) >>= (pure <<< next)
+-- interpretKVDB _ dbName simpleConn (Enqueue listName value next) = (R.lift $ S.lift $ E.lift $ void <$> rpush listName value) >>= (pure <<< next)
 --
--- interpretKVDB _ simpleConn (Dequeue listName next) = (R.lift $ S.lift $ E.lift $ lpop listName) >>= (pure <<< next)
+-- interpretKVDB _ dbName simpleConn (Dequeue listName next) = (R.lift $ S.lift $ E.lift $ lpop listName) >>= (pure <<< next)
 --
--- interpretKVDB _ simpleConn (GetQueueIdx listName index next) = (R.lift $ S.lift $ E.lift $ lindex listName index) >>= (pure <<< next)
+-- interpretKVDB _ dbName simpleConn (GetQueueIdx listName index next) = (R.lift $ S.lift $ E.lift $ lindex listName index) >>= (pure <<< next)
 --
-interpretKVDB kvdbRt@(KVDBRuntime rt) simpleConn (NewMulti next) = do
+interpretKVDB kvdbRt@(KVDBRuntime rt) dbName simpleConn (NewMulti next) = do
   nativeMulti <- lift3 $ liftEff $ newMulti simpleConn
-  multi <- lift3 $ liftEff $ registerNewMulti kvdbRt nativeMulti
+  multi <- lift3 $ liftEff $ registerNewMulti kvdbRt dbName nativeMulti
   pure $ next multi
 
 --
--- interpretKVDB _ simpleConn (SetCacheInMulti key val multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< setMulti key val Nothing NoOptions $ multi ) >>= (pure <<< next)
+-- interpretKVDB _ _ simpleConn (SetCacheInMulti key val multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< setMulti key val Nothing NoOptions $ multi ) >>= (pure <<< next)
 --
--- interpretKVDB _ simpleConn (GetCacheInMulti key multi next) = (R.lift <<< S.lift <<< E.lift <<< pure <<< next $ multi)
+-- interpretKVDB _ _ simpleConn (GetCacheInMulti key multi next) = (R.lift <<< S.lift <<< E.lift <<< pure <<< next $ multi)
 --
 -- -- Is this a bug? "getMulti"
--- interpretKVDB _ simpleConn (DelCacheInMulti key multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< getMulti key $ multi) >>= (pure <<< next )
+-- interpretKVDB _ _ simpleConn (DelCacheInMulti key multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< getMulti key $ multi) >>= (pure <<< next )
 --
--- interpretKVDB _ simpleConn (SetCacheWithExpiryInMulti key val ttl multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< setMulti key val (Just ttl) NoOptions $ multi )>>= (pure <<< next )
+-- interpretKVDB _ _ simpleConn (SetCacheWithExpiryInMulti key val ttl multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< setMulti key val (Just ttl) NoOptions $ multi )>>= (pure <<< next )
 --
--- interpretKVDB _ simpleConn (ExpireInMulti key ttl multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< expireMulti key ttl $ multi) >>= (pure <<< next)
+-- interpretKVDB _ _ simpleConn (ExpireInMulti key ttl multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< expireMulti key ttl $ multi) >>= (pure <<< next)
 --
--- interpretKVDB _ simpleConn (IncrInMulti key multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< incrMulti key $ multi) >>= (pure <<< next)
+-- interpretKVDB _ _ simpleConn (IncrInMulti key multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< incrMulti key $ multi) >>= (pure <<< next)
 --
--- interpretKVDB _ simpleConn (SetHashInMulti key field value multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< hsetMulti key field value $ multi) >>= (pure <<< next )
+-- interpretKVDB _ _ simpleConn (SetHashInMulti key field value multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< hsetMulti key field value $ multi) >>= (pure <<< next )
 --
--- interpretKVDB _ simpleConn (GetHashInMulti key value multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< hgetMulti key value $ multi) >>= (pure <<< next )
+-- interpretKVDB _ _ simpleConn (GetHashInMulti key value multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< hgetMulti key value $ multi) >>= (pure <<< next )
 --
--- interpretKVDB _ simpleConn (PublishToChannelInMulti channel message multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< publishMulti channel message $ multi) >>= (pure <<< next)
+-- interpretKVDB _ _ simpleConn (PublishToChannelInMulti channel message multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< publishMulti channel message $ multi) >>= (pure <<< next)
 --
--- interpretKVDB _ simpleConn (SubscribeInMulti channel multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< subscribeMulti channel $ multi) >>= (pure <<< next)
+-- interpretKVDB _ _ simpleConn (SubscribeInMulti channel multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< subscribeMulti channel $ multi) >>= (pure <<< next)
 --
--- interpretKVDB _ simpleConn (EnqueueInMulti listName val multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< rpushMulti listName val $ multi) >>= (pure <<< next)
+-- interpretKVDB _ _ simpleConn (EnqueueInMulti listName val multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< rpushMulti listName val $ multi) >>= (pure <<< next)
 --
--- interpretKVDB _ simpleConn (DequeueInMulti listName multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< lpopMulti listName $ multi) >>= (pure <<< next)
+-- interpretKVDB _ _ simpleConn (DequeueInMulti listName multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< lpopMulti listName $ multi) >>= (pure <<< next)
 --
--- interpretKVDB _ simpleConn (GetQueueIdxInMulti listName index multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< lindexMulti listName index $ multi) >>= (pure <<< next)
+-- interpretKVDB _ _ simpleConn (GetQueueIdxInMulti listName index multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< lindexMulti listName index $ multi) >>= (pure <<< next)
 --
--- interpretKVDB _ simpleConn (Exec multi next) = (R.lift <<< S.lift <<< E.lift <<< execMulti $ multi) >>= (pure <<< next)
+-- interpretKVDB _ _ simpleConn (Exec multi next) = (R.lift <<< S.lift <<< E.lift <<< execMulti $ multi) >>= (pure <<< next)
 
-interpretKVDB _ _ _ = throwException' "Not implemented yet!"
+interpretKVDB _ _ _ _ = throwException' "KV DB Method is not implemented yet."
 
 runKVDB'
   :: forall st rt eff a
    . BackendRuntime
+  -> String
   -> SimpleConn
   -> KVDB a
   -> InterpreterMT' rt st eff a
-runKVDB' (BackendRuntime rt) simpleConn =
-  foldFree (\(KVDBWrapper x) -> runExists (interpretKVDB rt.kvdbRuntime simpleConn) x)
+runKVDB' (BackendRuntime rt) dbName simpleConn =
+  foldFree (\(KVDBWrapper x) -> runExists (interpretKVDB rt.kvdbRuntime dbName simpleConn) x)
 
 runKVDB
   :: forall st rt eff rrItem a
@@ -176,6 +179,6 @@ runKVDB brt dbName kvDBAct mockedKvDbActDictF rrItemDict = do
   conn' <- getKVDBConn' brt dbName
   case conn' of
     Redis simpleConn -> withRunModeClassless brt rrItemDict
-        (defer $ \_ -> runKVDB' brt simpleConn kvDBAct)
+        (defer $ \_ -> runKVDB' brt dbName simpleConn kvDBAct)
     MockedKVDB mocked -> withRunModeClassless brt rrItemDict
         (defer $ \_ -> getMockedKVDBValue brt $ mockedKvDbActDictF mocked)

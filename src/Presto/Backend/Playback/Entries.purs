@@ -19,6 +19,7 @@ import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (APIResult(..), ErrorPayload, ErrorResponse, Response)
 import Presto.Backend.Language.Types.EitherEx (EitherEx(..))
 import Presto.Backend.Language.Types.DB
+import Presto.Backend.Language.Types.KVDB (Multi)
 import Presto.Backend.Playback.Types
 
 
@@ -62,15 +63,15 @@ data GetKVDBConnEntry = GetKVDBConnEntry
 data RunKVDBEntryEither = RunKVDBEntryEither
   { dbName     :: String
   , dbMethod   :: String
-  , jsonResult :: EitherEx DBError String
   , params     :: String
+  , jsonResult :: EitherEx DBError String
   }
 
 data RunKVDBSimpleEntry = RunKVDBSimpleEntry
   { dbName     :: String
   , dbMethod   :: String
-  , jsonResult :: String
   , params     :: String
+  , jsonResult :: String
   }
 
 mkRunSysCmdEntry :: String -> String -> RunSysCmdEntry
@@ -110,8 +111,8 @@ mkRunKVDBEntryEither
 mkRunKVDBEntryEither dbName dbMethod params aRes = RunKVDBEntryEither
   { dbName
   , dbMethod
-  , jsonResult : encodeJSON <$> aRes
   , params
+  , jsonResult : encodeJSON <$> aRes
   }
 
 mkRunKVDBSimpleEntry
@@ -126,8 +127,8 @@ mkRunKVDBSimpleEntry
 mkRunKVDBSimpleEntry dbName dbMethod params aRes = RunKVDBSimpleEntry
   { dbName
   , dbMethod
-  , jsonResult : encodeJSON aRes
   , params
+  , jsonResult : encodeJSON aRes
   }
 
 mkGetDBConnEntry :: String -> SqlConn -> GetDBConnEntry

@@ -94,6 +94,7 @@ setCacheInMulti key value multi = wrapKVDBMethod $ SetCacheInMulti key value mul
 setCache :: forall st rt. String ->  String -> KVDB (Either Error Unit)
 setCache key value = wrapKVDBMethod $ SetCache key value id
 
+-- Why this function returns Multi???
 getCacheInMulti :: forall st rt. String -> Multi -> KVDB Multi
 getCacheInMulti key multi = wrapKVDBMethod $ GetCacheInMulti key multi id
 
