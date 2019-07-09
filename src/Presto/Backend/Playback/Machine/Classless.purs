@@ -87,10 +87,9 @@ getCurrentEntryReplayMode
   -> Eff (ref :: REF | eff) (Maybe EntryReplayingMode)
 getCurrentEntryReplayMode playerRt = do
   cur <- readRef playerRt.stepRef
-  let mbItem = Array.index playerRt.recording.entries cur
-  case mbItem of 
-    (Just (RecordingEntry mode item)) -> pure $ Just mode 
-    Nothing -> pure $ Nothing
+  pure $ do
+    (RecordingEntry mode item) <- Array.index playerRt.recording.entries cur
+    pure $ mode 
 
 popNextRRItem
   :: forall eff rrItem native
