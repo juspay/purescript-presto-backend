@@ -6,6 +6,8 @@ module Presto.Backend.Language.Types.EitherEx
   , eitherEx
   , fromCustomEitherEx
   , toCustomEitherEx
+  , fromCustomEitherExF
+  , toCustomEitherExF
   ) where
 
 import Prelude
@@ -34,6 +36,21 @@ fromEitherEx = eitherEx Left Right
 toEitherEx :: forall l r. Either l r -> EitherEx l r
 toEitherEx = either LeftEx RightEx
 
+fromCustomEitherExF
+  :: forall a b err1 err2
+   . CustomEitherEx err1 err2 a
+  => (a -> b)
+  -> EitherEx err2 a
+  -> Either   err1 b
+fromCustomEitherExF f e = f <$> fromCustomEitherEx e
+
+toCustomEitherExF
+  :: forall a b err1 err2
+   . CustomEitherEx err1 err2 b
+  => (b -> a)
+  -> Either   err1 b
+  -> EitherEx err2 a
+toCustomEitherExF f e = f <$> toCustomEitherEx e
 
 derive instance genericEitherEx :: Generic (EitherEx l r) _
 derive instance functorEither :: Functor (EitherEx l)

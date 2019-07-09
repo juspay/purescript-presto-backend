@@ -23,40 +23,41 @@ module Presto.Backend.Flow where
 
 import Prelude
 
-import Control.Monad.Eff (Eff)
 import Control.Monad.Aff (Aff)
+import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (Error, error, message)
 import Control.Monad.Except (runExcept) as E
 import Control.Monad.Free (Free, liftF)
 import Data.Either (Either(..), note, hush, isLeft)
 import Data.Exists (Exists, mkExists)
-import Data.Maybe (Maybe(..), fromMaybe, maybe)
-import Data.Newtype (class Newtype)
-import Data.Functor (($>))
 import Data.Foreign (Foreign, toForeign)
 import Data.Foreign.Class (class Encode, class Decode, encode, decode)
 import Data.Foreign.Generic (encodeJSON)
+import Data.Functor (($>))
 import Data.Lazy (defer)
+import Data.Maybe (Maybe(..), fromMaybe, maybe)
+import Data.Newtype (class Newtype)
 import Data.Options (Options)
 import Data.Options (options) as Opt
 import Data.Time.Duration (Milliseconds, Seconds)
-import Presto.Backend.DBImpl (findOne, findAll, create, createWithOpts, query, update, update', delete, getModelByName) as DB
-import Presto.Backend.Types (BackendAff)
-import Presto.Backend.Types.API (ErrorResponse, APIResult)
 import Presto.Backend.APIInteract (apiInteract)
-import Presto.Backend.Language.Types.EitherEx (EitherEx(..), fromCustomEitherEx, toCustomEitherEx)
-import Presto.Backend.Language.Types.UnitEx (UnitEx(..))
-import Presto.Backend.Language.Types.FunctorEx ((<<$>>))
-import Presto.Backend.Playback.Types as Playback
-import Presto.Backend.Playback.Entries as Playback
-import Presto.Backend.Types.API (class RestEndpoint, Headers, makeRequest)
-import Presto.Backend.Language.Types.DB (SqlConn, MockedSqlConn, KVDBConn, MockedKVDBConn, DBError(..), toDBMaybeResult, fromDBMaybeResult)
+import Presto.Backend.DB.Mock.Actions as SqlDBMock
+import Presto.Backend.DB.Mock.Types as SqlDBMock
+import Presto.Backend.DBImpl (findOne, findAll, create, createWithOpts, query, update, update', delete, getModelByName) as DB
+import Presto.Backend.KVDB.Mock.Types as KVDBMock
 import Presto.Backend.Language.KVDB as KVDB
+import Presto.Backend.Language.Types (toMaybeEx, fromMaybeEx)
+import Presto.Backend.Language.Types.DB (SqlConn, MockedSqlConn, KVDBConn, MockedKVDBConn, DBError(..), toDBMaybeResult, fromDBMaybeResult)
+import Presto.Backend.Language.Types.EitherEx (EitherEx(..), fromCustomEitherEx, toCustomEitherEx, fromCustomEitherExF, toCustomEitherExF)
+import Presto.Backend.Language.Types.FunctorEx ((<<$>>))
 import Presto.Backend.Language.Types.KVDB (Multi)
 import Presto.Backend.Language.Types.KVDB as KVDB
-import Presto.Backend.DB.Mock.Types as SqlDBMock
-import Presto.Backend.DB.Mock.Actions as SqlDBMock
-import Presto.Backend.KVDB.Mock.Types as KVDBMock
+import Presto.Backend.Language.Types.UnitEx (UnitEx(..), toUnitEx, fromUnitEx)
+import Presto.Backend.Playback.Entries as Playback
+import Presto.Backend.Playback.Types as Playback
+import Presto.Backend.Types (BackendAff)
+import Presto.Backend.Types.API (ErrorResponse, APIResult)
+import Presto.Backend.Types.API (class RestEndpoint, Headers, makeRequest)
 import Presto.Core.Types.Language.Interaction (Interaction)
 import Sequelize.Class (class Model, class EncodeModel, class DecodeModel, encodeModel, decodeModel)
 import Sequelize.Types (Conn, Instance, SEQUELIZE, ModelOf)
@@ -266,31 +267,31 @@ getKVDBConn dbName = wrap $ GetKVDBConn dbName
 setCache :: forall st rt. String -> String ->  String -> BackendFlow st rt (Either Error Unit)
 setCache dbName key value = do
   eRes <- wrap $ RunKVDBEither dbName
-      (toCustomEitherEx <$> KVDB.setCache key value Nothing)
+      (toCustomEitherExF toUnitEx <$> KVDB.setCache key value Nothing)
       KVDBMock.mkKVDBActionDict
       (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "setCache" "")
       id
-  pure $ fromCustomEitherEx eRes
+  pure $ fromCustomEitherExF fromUnitEx eRes
 
 -- Not sure about this method.
 -- Should we wrap Unit?
 setCacheWithExpiry :: forall st rt. String -> String -> String -> Milliseconds -> BackendFlow st rt (Either Error Unit)
 setCacheWithExpiry dbName key value ttl = do
   eRes <- wrap $ RunKVDBEither dbName
-      (toCustomEitherEx <$> KVDB.setCache key value (Just ttl))
+      (toCustomEitherExF toUnitEx <$> KVDB.setCache key value (Just ttl))
       KVDBMock.mkKVDBActionDict
       (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "setCacheWithExpiry" "")
       id
-  pure $ fromCustomEitherEx eRes
+  pure $ fromCustomEitherExF fromUnitEx eRes
 
 getCache :: forall st rt. String -> String -> BackendFlow st rt (Either Error (Maybe String))
 getCache dbName key = do
   eRes <- wrap $ RunKVDBEither dbName
-      (toCustomEitherEx <$> KVDB.getCache key)
+      (toDBMaybeResult <$> KVDB.getCache key)
       KVDBMock.mkKVDBActionDict
       (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "getCache" "")
       id
-  pure $ fromCustomEitherEx eRes
+  pure $ fromDBMaybeResult eRes
 
 keyExistsCache :: forall st rt. String -> String -> BackendFlow st rt (Either Error Boolean)
 keyExistsCache dbName key = do
@@ -360,40 +361,40 @@ publishToChannel dbName channel message = do
 subscribe :: forall st rt. String -> String -> BackendFlow st rt (Either Error Unit)
 subscribe dbName channel = do
   eRes <- wrap $ RunKVDBEither dbName
-      (toCustomEitherEx <$> KVDB.subscribe channel)
+      (toCustomEitherExF toUnitEx <$> KVDB.subscribe channel)
       KVDBMock.mkKVDBActionDict
       (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "subscribe" "")
       id
-  pure $ fromCustomEitherEx eRes
+  pure $ fromCustomEitherExF fromUnitEx eRes
 
 -- Not sure about this method.
 -- Should we wrap Unit?
 enqueue :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error Unit)
 enqueue dbName listName value = do
   eRes <- wrap $ RunKVDBEither dbName
-      (toCustomEitherEx <$> KVDB.enqueue listName value)
+      (toCustomEitherExF toUnitEx <$> KVDB.enqueue listName value)
       KVDBMock.mkKVDBActionDict
       (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "enqueue" "")
       id
-  pure $ fromCustomEitherEx eRes
+  pure $ fromCustomEitherExF fromUnitEx eRes
 
 dequeue :: forall st rt. String -> String -> BackendFlow st rt (Either Error (Maybe String))
 dequeue dbName listName = do
   eRes <- wrap $ RunKVDBEither dbName
-      (toCustomEitherEx <$> KVDB.dequeue listName)
+      (toDBMaybeResult <$> KVDB.dequeue listName)
       KVDBMock.mkKVDBActionDict
       (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "dequeue" "")
       id
-  pure $ fromCustomEitherEx eRes
+  pure $ fromDBMaybeResult eRes
 
 getQueueIdx :: forall st rt. String -> String -> Int -> BackendFlow st rt (Either Error (Maybe String))
 getQueueIdx dbName listName index = do
   eRes <- wrap $ RunKVDBEither dbName
-      (toCustomEitherEx <$> KVDB.getQueueIdx listName index)
+      (toDBMaybeResult <$> KVDB.getQueueIdx listName index)
       KVDBMock.mkKVDBActionDict
       (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "getQueueIdx" "")
       id
-  pure $ fromCustomEitherEx eRes
+  pure $ fromDBMaybeResult eRes
 
 -- Multi methods
 
