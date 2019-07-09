@@ -55,7 +55,7 @@ import Presto.Backend.Language.KVDB (KVDB, KVDBMethod(..), KVDBMethodWrapper, KV
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Language.Types.EitherEx
 import Presto.Backend.Language.Types.DB (KVDBConn(..), MockedKVDBConn(..), DBError(..))
-import Presto.Backend.Language.Types.KVDB (Multi(..))
+import Presto.Backend.Language.Types.KVDB (Multi(..), getMultiGUID)
 import Presto.Backend.KVDB.Mock.Types (KVDBActionDict)
 import Presto.Backend.Runtime.Common (jsonStringify, lift3, throwException', getDBConn', getKVDBConn')
 import Presto.Backend.Runtime.Types (InterpreterMT, InterpreterMT', LogRunner, RunningMode(..), Connection(..), BackendRuntime(..), KVDBRuntime(..))
@@ -68,18 +68,70 @@ import Type.Proxy (Proxy(..))
 getMockedKVDBValue :: forall st rt eff a. BackendRuntime -> KVDBActionDict -> InterpreterMT' rt st eff a
 getMockedKVDBValue brt mockedKvDbActDict = throwException' "Mocking is not yet implemented for KV DB."
 
+getNativeMulti
+  :: forall eff
+   . KVDBRuntime
+  -> Multi
+  -> Eff (ref :: REF | eff) (Maybe Native.Multi)
+getNativeMulti (KVDBRuntime rt) multi = do
+  let guid = getMultiGUID multi
+  catalogue <- readRef rt.multiesRef
+  pure $ StrMap.lookup guid catalogue
+
+registerNativeMulti
+  :: forall eff
+   . KVDBRuntime
+  -> String
+  -> Native.Multi
+  -> Eff (ref :: REF | eff) Unit
+registerNativeMulti (KVDBRuntime rt) uuidStr nativeMulti = do
+  catalogue <- readRef rt.multiesRef
+  writeRef rt.multiesRef $ StrMap.insert uuidStr nativeMulti catalogue
+
 registerNewMulti
   :: forall eff
    . KVDBRuntime
   -> String
   -> Native.Multi
   -> Eff (ref :: REF, uuid :: GENUUID | eff) Multi
-registerNewMulti (KVDBRuntime rt) kvdbName nativeMulti = do
-  uuid <- genUUID
-  let uuidStr = show uuid
-  catalogue <- readRef rt.multiesRef
-  writeRef rt.multiesRef $ StrMap.insert uuidStr nativeMulti catalogue
+registerNewMulti kvdbRt@(KVDBRuntime rt) kvdbName nativeMulti = do
+  uuidStr <- show <$> genUUID
+  registerNativeMulti kvdbRt uuidStr nativeMulti
   pure $ Multi kvdbName uuidStr
+
+unregisterMulti
+  :: forall eff
+   . KVDBRuntime
+  -> Multi
+  -> Eff (ref :: REF | eff) Unit
+unregisterMulti (KVDBRuntime rt) multi = do
+  let guid = getMultiGUID multi
+  catalogue <- readRef rt.multiesRef
+  writeRef rt.multiesRef $ StrMap.delete guid catalogue
+
+updateNativeMulti
+  :: forall eff
+   . KVDBRuntime
+  -> Multi
+  -> Native.Multi
+  -> Eff (ref :: REF | eff) Unit
+updateNativeMulti kvdbRt multi newNativeMulti = do
+  let uuidStr = getMultiGUID multi
+  registerNativeMulti kvdbRt uuidStr newNativeMulti
+
+withNativeMulti
+  :: forall rt st eff a
+   . KVDBRuntime
+  -> Multi
+  -> (Native.Multi -> InterpreterMT' rt st eff Native.Multi)
+  -> InterpreterMT' rt st eff Unit
+withNativeMulti kvdbRt multi act = do
+  mbNativeMulti <- lift3 $ liftEff $ getNativeMulti kvdbRt multi
+  case mbNativeMulti of
+    Nothing -> throwException' $ "Multi not found: " <> show multi
+    Just nativeMulti -> do
+      nativeMulti' <- act nativeMulti
+      lift3 $ liftEff $ updateNativeMulti kvdbRt multi nativeMulti'
 
 interpretKVDB
   :: forall st rt s eff a
@@ -122,37 +174,64 @@ interpretKVDB
 --
 interpretKVDB kvdbRt@(KVDBRuntime rt) dbName simpleConn (NewMulti next) = do
   nativeMulti <- lift3 $ liftEff $ newMulti simpleConn
-  multi <- lift3 $ liftEff $ registerNewMulti kvdbRt dbName nativeMulti
+  multi       <- lift3 $ liftEff $ registerNewMulti kvdbRt dbName nativeMulti
   pure $ next multi
 
---
--- interpretKVDB _ _ simpleConn (SetCacheInMulti key val multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< setMulti key val Nothing NoOptions $ multi ) >>= (pure <<< next)
---
--- interpretKVDB _ _ simpleConn (GetCacheInMulti key multi next) = (R.lift <<< S.lift <<< E.lift <<< pure <<< next $ multi)
---
--- -- Is this a bug? "getMulti"
--- interpretKVDB _ _ simpleConn (DelCacheInMulti key multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< getMulti key $ multi) >>= (pure <<< next )
---
--- interpretKVDB _ _ simpleConn (SetCacheWithExpiryInMulti key val ttl multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< setMulti key val (Just ttl) NoOptions $ multi )>>= (pure <<< next )
---
--- interpretKVDB _ _ simpleConn (ExpireInMulti key ttl multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< expireMulti key ttl $ multi) >>= (pure <<< next)
---
--- interpretKVDB _ _ simpleConn (IncrInMulti key multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< incrMulti key $ multi) >>= (pure <<< next)
---
--- interpretKVDB _ _ simpleConn (SetHashInMulti key field value multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< hsetMulti key field value $ multi) >>= (pure <<< next )
---
--- interpretKVDB _ _ simpleConn (GetHashInMulti key value multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< hgetMulti key value $ multi) >>= (pure <<< next )
---
--- interpretKVDB _ _ simpleConn (PublishToChannelInMulti channel message multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< publishMulti channel message $ multi) >>= (pure <<< next)
---
--- interpretKVDB _ _ simpleConn (SubscribeInMulti channel multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< subscribeMulti channel $ multi) >>= (pure <<< next)
---
--- interpretKVDB _ _ simpleConn (EnqueueInMulti listName val multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< rpushMulti listName val $ multi) >>= (pure <<< next)
---
--- interpretKVDB _ _ simpleConn (DequeueInMulti listName multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< lpopMulti listName $ multi) >>= (pure <<< next)
---
--- interpretKVDB _ _ simpleConn (GetQueueIdxInMulti listName index multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< lindexMulti listName index $ multi) >>= (pure <<< next)
---
+interpretKVDB kvdbRt _ simpleConn (SetCacheInMulti key val multi next) = do
+  withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< setMulti key val Nothing NoOptions
+  pure $ next multi
+
+-- Is this a bug? This method does nothing.
+interpretKVDB kvdbRt _ simpleConn (GetCacheInMulti key multi next) =
+  -- (R.lift <<< S.lift <<< E.lift <<< pure <<< next $ multi)
+  throwException' "GetCacheInMulti not implemented."
+
+-- Is this a bug? "getMulti"
+interpretKVDB kvdbRt _ simpleConn (DelCacheInMulti key multi next) = do
+  withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< getMulti key
+  pure $ next multi
+
+-- Is this a bug? "setMulti"
+interpretKVDB kvdbRt _ simpleConn (SetCacheWithExpiryInMulti key val ttl multi next) = do
+  withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< setMulti key val (Just ttl) NoOptions
+  pure $ next multi
+
+interpretKVDB kvdbRt _ simpleConn (ExpireInMulti key ttl multi next) = do
+  withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< expireMulti key ttl
+  pure $ next multi
+
+interpretKVDB kvdbRt _ simpleConn (IncrInMulti key multi next) = do
+  withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< incrMulti key
+  pure $ next multi
+
+interpretKVDB kvdbRt _ simpleConn (SetHashInMulti key field value multi next) = do
+  withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< hsetMulti key field value
+  pure $ next multi
+
+interpretKVDB kvdbRt _ simpleConn (GetHashInMulti key value multi next) = do
+  withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< hgetMulti key value
+  pure $ next multi
+
+interpretKVDB kvdbRt _ simpleConn (PublishToChannelInMulti channel message multi next) = do
+  withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< publishMulti channel message
+  pure $ next multi
+
+interpretKVDB kvdbRt _ simpleConn (SubscribeInMulti channel multi next) = do
+  withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< subscribeMulti channel
+  pure $ next multi
+
+interpretKVDB kvdbRt _ simpleConn (EnqueueInMulti listName val multi next) = do
+  withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< rpushMulti listName val
+  pure $ next multi
+
+interpretKVDB kvdbRt _ simpleConn (DequeueInMulti listName multi next) = do
+  withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< lpopMulti listName
+  pure $ next multi
+
+interpretKVDB kvdbRt _ simpleConn (GetQueueIdxInMulti listName index multi next) = do
+  withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< lindexMulti listName index
+  pure $ next multi
+
 -- interpretKVDB _ _ simpleConn (Exec multi next) = (R.lift <<< S.lift <<< E.lift <<< execMulti $ multi) >>= (pure <<< next)
 
 interpretKVDB _ _ _ _ = throwException' "KV DB Method is not implemented yet."
