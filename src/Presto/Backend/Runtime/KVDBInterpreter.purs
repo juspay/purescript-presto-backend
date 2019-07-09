@@ -31,6 +31,7 @@ import Cache.Multi as Native
 import Cache.List (lindex, lpop, rpush)
 import Cache.Multi (execMulti, expireMulti, getMulti, hgetMulti, hsetMulti, incrMulti, lindexMulti, lpopMulti, newMulti, publishMulti, rpushMulti, setMulti, subscribeMulti)
 import Control.Monad.Aff (Aff, forkAff)
+import Control.Monad.Aff.Class (liftAff)
 import Control.Monad.Eff.Ref (REF, Ref, newRef, readRef, writeRef, modifyRef)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (liftEff)
@@ -232,7 +233,11 @@ interpretKVDB kvdbRt _ simpleConn (GetQueueIdxInMulti listName index multi next)
   withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< lindexMulti listName index
   pure $ next multi
 
--- interpretKVDB _ _ simpleConn (Exec multi next) = (R.lift <<< S.lift <<< E.lift <<< execMulti $ multi) >>= (pure <<< next)
+interpretKVDB kvdbRt _ simpleConn (Exec multi next) = do
+  mbNativeMulti <- lift3 $ liftEff $ getNativeMulti kvdbRt multi
+  case mbNativeMulti of
+    Nothing -> throwException' $ "Multi not found: " <> show multi
+    Just nativeMulti -> next <$> (liftAff $ execMulti nativeMulti)
 
 interpretKVDB _ _ _ _ = throwException' "KV DB Method is not implemented yet."
 
