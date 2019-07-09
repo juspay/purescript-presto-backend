@@ -142,7 +142,7 @@ callAPI
   => Headers -> a -> BackendFlow st rt (APIResult b)
 callAPI headers a = wrap $ CallAPI
   (apiInteract a headers)
-  (Playback.mkEntryDict (Playback.mkCallAPIEntry (defer $ \_ -> encodeJSON $ makeRequest a headers) ))
+  (Playback.mkEntryDict (Playback.mkCallAPIEntry (defer $ \_ -> encode $ makeRequest a headers)))
   id
 
 doAff :: forall st rt a. (forall eff. BackendAff eff a) -> BackendFlow st rt a

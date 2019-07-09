@@ -45,9 +45,9 @@ data DoAffEntry = DoAffEntry
 data RunDBEntry = RunDBEntry
   { dbName     :: String
   , dbMethod   :: String
+  , options    :: Array Foreign
+  , model      :: Foreign
   , jsonResult :: EitherEx DBError Foreign
-  , options :: Array Foreign
-  , model :: Foreign
   }
 
 data GetDBConnEntry = GetDBConnEntry
@@ -64,14 +64,14 @@ data RunKVDBEitherEntry = RunKVDBEitherEntry
   { dbName     :: String
   , dbMethod   :: String
   , params     :: String
-  , jsonResult :: EitherEx DBError String
+  , jsonResult :: EitherEx DBError Foreign
   }
 
 data RunKVDBSimpleEntry = RunKVDBSimpleEntry
   { dbName     :: String
   , dbMethod   :: String
   , params     :: String
-  , jsonResult :: String
+  , jsonResult :: Foreign
   }
 
 mkRunSysCmdEntry :: String -> String -> RunSysCmdEntry
@@ -99,7 +99,7 @@ mkCallAPIEntry jReq aRes = CallAPIEntry
   , jsonResult  : encode <$> aRes
   }
 
-mkRunKVDBEitherEntry
+mkRunDBEntry
   :: forall b
    . Encode b
   => Decode b
@@ -108,13 +108,29 @@ mkRunKVDBEitherEntry
   -> Array Foreign
   -> Foreign
   -> EitherEx DBError b
+  -> RunDBEntry
+mkRunDBEntry dbName dbMethod options model aRes = RunDBEntry
+  { dbName
+  , dbMethod
+  , options
+  , model
+  , jsonResult : encode <$> aRes
+  }
+
+mkRunKVDBEitherEntry
+  :: forall b
+   . Encode b
+  => Decode b
+  => String
+  -> String
+  -> String
+  -> EitherEx DBError b
   -> RunKVDBEitherEntry
 mkRunKVDBEitherEntry dbName dbMethod params aRes = RunKVDBEitherEntry
   { dbName
   , dbMethod
+  , params
   , jsonResult : encode <$> aRes
-  , options : options
-  , model : model
   }
 
 mkRunKVDBSimpleEntry
@@ -130,7 +146,7 @@ mkRunKVDBSimpleEntry dbName dbMethod params aRes = RunKVDBSimpleEntry
   { dbName
   , dbMethod
   , params
-  , jsonResult : encodeJSON aRes
+  , jsonResult : encode aRes
   }
 
 mkGetDBConnEntry :: String -> SqlConn -> GetDBConnEntry
@@ -141,23 +157,6 @@ mkGetKVDBConnEntry :: String -> KVDBConn -> GetKVDBConnEntry
 mkGetKVDBConnEntry dbName (Redis _)               = GetKVDBConnEntry { dbName, mockedConn : MockedKVDBConn dbName }
 mkGetKVDBConnEntry dbName (MockedKVDB mockedConn) = GetKVDBConnEntry { dbName, mockedConn }
 
-mkRunDBEntry
-  :: forall b
-   . Encode b
-  => Decode b
-  => String
-  -> String
-  -> Array Foreign
-  -> String
-  -> EitherEx DBError b
-  -> RunDBEntry
-mkRunDBEntry dbName dbMethod options model aRes = RunDBEntry
-  { dbName
-  , dbMethod
-  , jsonResult : encodeJSON <$> aRes
-  , options : encodeJSON options
-  , model : model
-  }
 derive instance genericLogEntry :: Generic LogEntry _
 derive instance eqLogEntry :: Eq LogEntry
 
@@ -283,10 +282,9 @@ instance mockedResultGetKVDBConnEntry :: MockedResult GetKVDBConnEntry KVDBConn 
 
 
 
-
-
 derive instance genericRunKVDBEitherEntry :: Generic RunKVDBEitherEntry _
-derive instance eqRunKVDBEitherEntry :: Eq RunKVDBEitherEntry
+instance eqRunKVDBEitherEntry :: Eq RunKVDBEitherEntry where
+  eq e1 e2 = encodeJSON e1 == encodeJSON e2
 instance decodeRunKVDBEitherEntry :: Decode RunKVDBEitherEntry where decode = defaultDecode
 instance encodeRunKVDBEitherEntry :: Encode RunKVDBEitherEntry where encode = defaultEncode
 instance rrItemRunKVDBEitherEntry :: RRItem RunKVDBEitherEntry where
@@ -301,13 +299,14 @@ instance mockedResultRunKVDBEitherEntry
       eResult <- case dbe.jsonResult of
         LeftEx  errResp -> Just $ LeftEx errResp
         RightEx strResp -> do
-            (resultEx :: b) <- hush $ E.runExcept $ decodeJSON strResp
+            (resultEx :: b) <- hush $ E.runExcept $ decode strResp
             Just $ RightEx resultEx
       pure eResult
 
 
 derive instance genericRunKVDBSimpleEntry :: Generic RunKVDBSimpleEntry _
-derive instance eqRunKVDBSimpleEntry      :: Eq RunKVDBSimpleEntry
+instance eqRunKVDBSimpleEntry :: Eq RunKVDBSimpleEntry where
+  eq e1 e2 = encodeJSON e1 == encodeJSON e2
 instance decodeRunKVDBSimpleEntry         :: Decode RunKVDBSimpleEntry where decode = defaultDecode
 instance encodeRunKVDBSimpleEntry         :: Encode RunKVDBSimpleEntry where encode = defaultEncode
 instance rrItemRunKVDBSimpleEntry         :: RRItem RunKVDBSimpleEntry where
@@ -317,4 +316,4 @@ instance rrItemRunKVDBSimpleEntry         :: RRItem RunKVDBSimpleEntry where
   isMocked _ = true
 
 instance mockedResultRunKVDBSimpleEntry :: Decode b => MockedResult RunKVDBSimpleEntry b where
-    parseRRItem (RunKVDBSimpleEntry r) = hush $ E.runExcept $ decodeJSON r.jsonResult
+    parseRRItem (RunKVDBSimpleEntry r) = hush $ E.runExcept $ decode r.jsonResult
