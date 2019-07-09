@@ -44,9 +44,9 @@ data DoAffEntry = DoAffEntry
 data RunDBEntry = RunDBEntry
   { dbName     :: String
   , dbMethod   :: String
-  , jsonResult :: EitherEx DBError String
-  , options :: String
-  , model :: String
+  , jsonResult :: EitherEx DBError Foreign --String
+  , options :: Array Foreign --String
+  , model :: Foreign --String
   }
 
 data GetDBConnEntry = GetDBConnEntry
@@ -86,14 +86,14 @@ mkRunDBEntry
   => String
   -> String
   -> Array Foreign
-  -> String
+  -> Foreign --String
   -> EitherEx DBError b
   -> RunDBEntry
 mkRunDBEntry dbName dbMethod options model aRes = RunDBEntry
   { dbName
   , dbMethod
-  , jsonResult : encodeJSON <$> aRes
-  , options : encodeJSON options
+  , jsonResult : encode <$> aRes
+  , options : options -- encodeJSON options
   , model : model
   }
 
@@ -176,7 +176,9 @@ instance mockedResultDoAffEntry :: Decode b => MockedResult DoAffEntry b where
 
 
 derive instance genericRunDBEntry :: Generic RunDBEntry _
-derive instance eqRunDBEntry :: Eq RunDBEntry
+-- derive instance eqRunDBEntry :: Eq RunDBEntry
+instance eqRunDBEntry :: Eq RunDBEntry where
+  eq (RunDBEntry e1) (RunDBEntry e2) = jsonStringify e1 == jsonStringify e2
 instance decodeRunDBEntry :: Decode RunDBEntry where decode = defaultDecode
 instance encodeRunDBEntry :: Encode RunDBEntry where encode = defaultEncode
 instance rrItemRunDBEntry :: RRItem RunDBEntry where
@@ -191,7 +193,7 @@ instance mockedResultRunDBEntry
       eResult <- case dbe.jsonResult of
         LeftEx  errResp -> Just $ LeftEx errResp
         RightEx strResp -> do
-            (resultEx :: b) <- hush $ E.runExcept $ decodeJSON strResp
+            (resultEx :: b) <- hush $ E.runExcept $ decode strResp
             Just $ RightEx resultEx
       pure eResult
 
