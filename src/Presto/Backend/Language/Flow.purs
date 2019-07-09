@@ -259,14 +259,27 @@ getKVDBConn dbName = wrap $ GetKVDBConn dbName
   (Playback.mkEntryDict $ Playback.mkGetKVDBConnEntry dbName)
   id
 
+-- Not sure about this method.
+-- Should we wrap Unit?
 setCache :: forall st rt. String -> String ->  String -> BackendFlow st rt (Either Error Unit)
 setCache dbName key value = do
   eRes <- wrap $ RunKVDBEither dbName
-      (const UnitEx <<$>> toCustomEitherEx <$> KVDB.setCache key value)
+      (toCustomEitherEx <$> KVDB.setCache key value Nothing)
       KVDBMock.mkKVDBActionDict
       (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "setCache" "")
       id
-  pure (fromCustomEitherEx eRes $> unit)
+  pure $ fromCustomEitherEx eRes
+
+-- Not sure about this method.
+-- Should we wrap Unit?
+setCacheWithExpiry :: forall st rt. String -> String -> String -> Milliseconds -> BackendFlow st rt (Either Error Unit)
+setCacheWithExpiry dbName key value ttl = do
+  eRes <- wrap $ RunKVDBEither dbName
+      (toCustomEitherEx <$> KVDB.setCache key value (Just ttl))
+      KVDBMock.mkKVDBActionDict
+      (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "setCacheWithExpiry" "")
+      id
+  pure $ fromCustomEitherEx eRes
 
 getCache :: forall st rt. String -> String -> BackendFlow st rt (Either Error (Maybe String))
 getCache dbName key = do
@@ -295,11 +308,6 @@ delCache dbName key = do
       id
   pure $ fromCustomEitherEx eRes
 
--- setCacheWithExpiry :: forall st rt. String -> String -> String -> Milliseconds -> BackendFlow st rt (Either Error Unit)
--- setCacheWithExpiry dbName key value ttl = do
---   cacheConn <- getCacheConn dbName
---   wrap $ SetCacheWithExpiry cacheConn key value ttl id
-
 expire :: forall st rt. String -> String -> Seconds -> BackendFlow st rt (Either Error Boolean)
 expire dbName key ttl = do
   eRes <- wrap $ RunKVDBEither dbName
@@ -327,10 +335,14 @@ setHash dbName key field value = do
       id
   pure $ fromCustomEitherEx eRes
 
--- getHashKey :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error (Maybe String))
--- getHashKey dbName key field = do
---   cacheConn <- getCacheConn dbName
---   wrap $ GetHashKey cacheConn key field id
+getHashKey :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error (Maybe String))
+getHashKey dbName key field = do
+  eRes <- wrap $ RunKVDBEither dbName
+      (toDBMaybeResult <$> KVDB.getHashKey key field)
+      KVDBMock.mkKVDBActionDict
+      (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "getHashKey" "")
+      id
+  pure $ fromDBMaybeResult eRes
 
 publishToChannel :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error Int)
 publishToChannel dbName channel message = do
@@ -341,25 +353,45 @@ publishToChannel dbName channel message = do
       id
   pure $ fromCustomEitherEx eRes
 
--- subscribe :: forall st rt. String -> String -> BackendFlow st rt (Either Error Unit)
--- subscribe dbName channel = do
---   cacheConn <- getCacheConn dbName
---   wrap $ Subscribe cacheConn channel id
+-- Not sure about this method.
+-- Should we wrap Unit?
+subscribe :: forall st rt. String -> String -> BackendFlow st rt (Either Error Unit)
+subscribe dbName channel = do
+  eRes <- wrap $ RunKVDBEither dbName
+      (toCustomEitherEx <$> KVDB.subscribe channel)
+      KVDBMock.mkKVDBActionDict
+      (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "subscribe" "")
+      id
+  pure $ fromCustomEitherEx eRes
 
--- enqueue :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error Unit)
--- enqueue dbName listName value = do
---   cacheConn <- getCacheConn dbName
---   wrap $ Enqueue cacheConn listName value id
+-- Not sure about this method.
+-- Should we wrap Unit?
+enqueue :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error Unit)
+enqueue dbName listName value = do
+  eRes <- wrap $ RunKVDBEither dbName
+      (toCustomEitherEx <$> KVDB.enqueue listName value)
+      KVDBMock.mkKVDBActionDict
+      (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "enqueue" "")
+      id
+  pure $ fromCustomEitherEx eRes
 
--- dequeue :: forall st rt. String -> String -> BackendFlow st rt (Either Error (Maybe String))
--- dequeue dbName listName = do
---   cacheConn <- getCacheConn dbName
---   wrap $ Dequeue cacheConn listName id
+dequeue :: forall st rt. String -> String -> BackendFlow st rt (Either Error (Maybe String))
+dequeue dbName listName = do
+  eRes <- wrap $ RunKVDBEither dbName
+      (toCustomEitherEx <$> KVDB.dequeue listName)
+      KVDBMock.mkKVDBActionDict
+      (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "dequeue" "")
+      id
+  pure $ fromCustomEitherEx eRes
 
--- getQueueIdx :: forall st rt. String -> String -> Int -> BackendFlow st rt (Either Error (Maybe String))
--- getQueueIdx dbName listName index = do
---   cacheConn <- getCacheConn dbName
---   wrap $ GetQueueIdx cacheConn listName index id
+getQueueIdx :: forall st rt. String -> String -> Int -> BackendFlow st rt (Either Error (Maybe String))
+getQueueIdx dbName listName index = do
+  eRes <- wrap $ RunKVDBEither dbName
+      (toCustomEitherEx <$> KVDB.getQueueIdx listName index)
+      KVDBMock.mkKVDBActionDict
+      (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "getQueueIdx" "")
+      id
+  pure $ fromCustomEitherEx eRes
 
 -- Multi methods
 
@@ -375,7 +407,7 @@ setCacheInMulti :: forall st rt. String -> String -> Multi -> BackendFlow st rt 
 setCacheInMulti key value multi = let
   dbName = KVDB.getKVDBName multi
   in wrap $ RunKVDBSimple dbName
-    (KVDB.setCacheInMulti key value multi)
+    (KVDB.setCacheInMulti key value Nothing multi)
     KVDBMock.mkKVDBActionDict
     (Playback.mkEntryDict $ Playback.mkRunKVDBSimpleEntry dbName "setCacheInMulti" "")
     id
@@ -390,7 +422,6 @@ getCacheInMulti key multi = let
     (Playback.mkEntryDict $ Playback.mkRunKVDBSimpleEntry dbName "getCacheInMulti" "")
     id
 
-
 delCacheInMulti :: forall st rt. String -> Multi -> BackendFlow st rt Multi
 delCacheInMulti key multi = let
   dbName = KVDB.getKVDBName multi
@@ -404,7 +435,7 @@ setCacheWithExpireInMulti :: forall st rt. String -> String -> Milliseconds -> M
 setCacheWithExpireInMulti key value ttl multi = let
   dbName = KVDB.getKVDBName multi
   in wrap $ RunKVDBSimple dbName
-    (KVDB.setCacheWithExpireInMulti key value ttl multi)
+    (KVDB.setCacheInMulti key value (Just ttl) multi)
     KVDBMock.mkKVDBActionDict
     (Playback.mkEntryDict $ Playback.mkRunKVDBSimpleEntry dbName "setCacheWithExpireInMulti" "")
     id
