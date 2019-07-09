@@ -25,7 +25,7 @@ import Type.Proxy (Proxy)
 
 data RecordingEntry = RecordingEntry EntryReplayingMode String
 data GlobalReplayingMode = GlobalNormal | GlobalNoVerify | GlobalNoMocking
-data EntryReplayingMode = Normal | NoVerify | NoMock | Skip
+data EntryReplayingMode = Normal | NoVerify | NoMock -- | Skip
 
 derive instance modeEq :: Eq EntryReplayingMode
 derive instance genericEntryReplayingMode :: Generic EntryReplayingMode _
@@ -55,7 +55,7 @@ type PlayerRuntime =
   , disableMocking :: Array DisableEntries
   , skip :: Array DisableEntries
   , stepRef   :: Ref Int
-  , errorRef  :: Ref (Maybe PlaybackError)      
+  , errorRef  :: Ref (Maybe PlaybackError)
   }
 
 data PlaybackErrorType
