@@ -20,7 +20,6 @@ foreign import jsonStringify :: forall a. a -> String
 lift3 :: forall eff err rt st a. BackendAff eff a -> InterpreterMT' rt st eff a
 lift3 m = R.lift (S.lift (E.lift m))
 
-
 throwException' :: forall st rt s eff a. String -> InterpreterMT' rt st eff a
 throwException' errorMessage = do
   st <- R.lift S.get
