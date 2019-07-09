@@ -43,8 +43,7 @@ import Presto.Backend.Language.Types.KVDB (Multi)
 import Presto.Core.Types.Language.Interaction (Interaction)
 
 data KVDBMethod next s
-    = SetCache String String (Either Error Unit -> next)
-    | SetCacheWithExpiry String String Milliseconds (Either Error Unit -> next)
+    = SetCache String String (Maybe Milliseconds) (Either Error Unit -> next)
     | GetCache String (Either Error (Maybe String) -> next)
     | KeyExistsCache String (Either Error Boolean -> next)
     | DelCache String (Either Error Int -> next)
@@ -59,10 +58,9 @@ data KVDBMethod next s
     | Subscribe String (Either Error Unit -> next)
 
     | NewMulti (Multi -> next)
-    | SetCacheInMulti String String Multi (Multi -> next)
+    | SetCacheInMulti String String (Maybe Milliseconds) Multi (Multi -> next)
     | GetCacheInMulti String Multi (Multi -> next)
     | DelCacheInMulti String Multi (Multi -> next)
-    | SetCacheWithExpiryInMulti String String Milliseconds Multi (Multi -> next)
     | ExpireInMulti String Seconds Multi (Multi -> next)
     | IncrInMulti String Multi (Multi -> next)
     | SetHashInMulti String String String Multi (Multi -> next)
@@ -88,11 +86,11 @@ wrapKVDBMethod = liftF <<< KVDBWrapper <<< mkExists
 newMulti :: forall st rt. KVDB Multi
 newMulti = wrapKVDBMethod $ NewMulti id
 
-setCacheInMulti :: forall st rt. String -> String -> Multi -> KVDB Multi
-setCacheInMulti key value multi = wrapKVDBMethod $ SetCacheInMulti key value multi id
+setCacheInMulti :: forall st rt. String -> String -> Maybe Milliseconds -> Multi -> KVDB Multi
+setCacheInMulti key value mbTtl multi = wrapKVDBMethod $ SetCacheInMulti key value mbTtl multi id
 
-setCache :: forall st rt. String ->  String -> KVDB (Either Error Unit)
-setCache key value = wrapKVDBMethod $ SetCache key value id
+setCache :: forall st rt. String -> String -> Maybe Milliseconds -> KVDB (Either Error Unit)
+setCache key value mbTtl = wrapKVDBMethod $ SetCache key value mbTtl id
 
 -- Why this function returns Multi???
 getCacheInMulti :: forall st rt. String -> Multi -> KVDB Multi
@@ -109,12 +107,6 @@ delCacheInMulti key multi = wrapKVDBMethod $ DelCacheInMulti key multi id
 
 delCache :: forall st rt. String -> KVDB (Either Error Int)
 delCache key = wrapKVDBMethod $ DelCache key id
-
-setCacheWithExpireInMulti :: forall st rt. String -> String -> Milliseconds -> Multi -> KVDB Multi
-setCacheWithExpireInMulti key value ttl multi = wrapKVDBMethod $ SetCacheWithExpiryInMulti key value ttl multi id
-
-setCacheWithExpiry :: forall st rt. String -> String -> Milliseconds -> KVDB (Either Error Unit)
-setCacheWithExpiry key value ttl = wrapKVDBMethod $ SetCacheWithExpiry key value ttl id
 
 expireInMulti :: forall st rt. String -> Seconds -> Multi -> KVDB Multi
 expireInMulti key ttl multi = wrapKVDBMethod $ ExpireInMulti key ttl multi id

@@ -143,102 +143,109 @@ interpretKVDB
   -> InterpreterMT' rt st eff a
 
 -- TODO: why ignoring Boolean result here?
-interpretKVDB _ _ simpleConn (SetCache key value next) = do
-  (R.lift $ S.lift $ E.lift $ void <$> set simpleConn key value Nothing NoOptions) >>= (pure <<< next)
+interpretKVDB _ _ simpleConn (SetCache key value mbTtl next) =
+  (lift3 $ void <$> set simpleConn key value mbTtl NoOptions) >>= (pure <<< next)
 
--- interpretKVDB _ dbName simpleConn (SetCacheWithExpiry key value ttl next) = (lift3 $ void <$> set key value (Just ttl) NoOptions) >>= (pure <<< next)
---
--- interpretKVDB _ dbName simpleConn (GetCache key next) = (lift3 $ get key) >>= (pure <<< next)
---
--- interpretKVDB _ dbName simpleConn (KeyExistsCache key next) = (lift3 $ exists key) >>= (pure <<< next)
---
--- interpretKVDB _ dbName simpleConn (DelCache key next) = (lift3 $ del (NEArray.singleton key)) >>= (pure <<< next)
---
--- interpretKVDB _ dbName simpleConn (Expire key ttl next) = (lift3 $ expire key ttl) >>= (pure <<< next)
---
--- interpretKVDB _ dbName simpleConn (Incr key next) = (lift3 $ incr key) >>= (pure <<< next)
---
--- interpretKVDB _ dbName simpleConn (SetHash key field value next) = (lift3 $ hset key field value) >>= (pure <<< next)
---
--- interpretKVDB _ dbName simpleConn (GetHashKey key field next) = (lift3 $ hget key field) >>= (pure <<< next)
---
--- interpretKVDB _ dbName simpleConn (PublishToChannel channel message next) = (lift3 $ publish channel message) >>= (pure <<< next)
---
--- interpretKVDB _ dbName simpleConn (Subscribe channel next) = (lift3 $ subscribe (NEArray.singleton channel)) >>= (pure <<< next)
---
--- interpretKVDB _ dbName simpleConn (SetMessageHandler f next) = (lift3 $ liftEff $ setMessageHandler f) >>= (pure <<< next)
---
--- interpretKVDB _ dbName simpleConn (Enqueue listName value next) = (lift3 $ void <$> rpush listName value) >>= (pure <<< next)
---
--- interpretKVDB _ dbName simpleConn (Dequeue listName next) = (lift3 $ lpop listName) >>= (pure <<< next)
---
--- interpretKVDB _ dbName simpleConn (GetQueueIdx listName index next) = (lift3 $ lindex listName index) >>= (pure <<< next)
---
+interpretKVDB _ _ simpleConn (GetCache key next) =
+  (lift3 $ get simpleConn key) >>= (pure <<< next)
+
+interpretKVDB _ _ simpleConn (KeyExistsCache key next) =
+  (lift3 $ exists simpleConn key) >>= (pure <<< next)
+
+interpretKVDB _ _ simpleConn (DelCache key next) =
+  (lift3 $ del simpleConn (NEArray.singleton key)) >>= (pure <<< next)
+
+interpretKVDB _ _ simpleConn (Expire key ttl next) =
+  (lift3 $ expire simpleConn key ttl) >>= (pure <<< next)
+
+interpretKVDB _ _ simpleConn (Incr key next) =
+  (lift3 $ incr simpleConn key) >>= (pure <<< next)
+
+interpretKVDB _ _ simpleConn (SetHash key field value next) =
+  (lift3 $ hset simpleConn key field value) >>= (pure <<< next)
+
+interpretKVDB _ _ simpleConn (GetHashKey key field next) =
+  (lift3 $ hget simpleConn key field) >>= (pure <<< next)
+
+interpretKVDB _ _ simpleConn (PublishToChannel channel message next) =
+  (lift3 $ publish simpleConn channel message) >>= (pure <<< next)
+
+interpretKVDB _ _ simpleConn (Subscribe channel next) =
+  (lift3 $ subscribe simpleConn (NEArray.singleton channel)) >>= (pure <<< next)
+
+interpretKVDB _ _ simpleConn (Enqueue listName value next) =
+  (lift3 $ void <$> rpush simpleConn listName value) >>= (pure <<< next)
+
+interpretKVDB _ _ simpleConn (Dequeue listName next) =
+  (lift3 $ lpop simpleConn listName) >>= (pure <<< next)
+
+interpretKVDB _ _ simpleConn (GetQueueIdx listName index next) =
+  (lift3 $ lindex simpleConn listName index) >>= (pure <<< next)
+
 interpretKVDB kvdbRt@(KVDBRuntime rt) dbName simpleConn (NewMulti next) = do
   nativeMulti <- lift3 $ liftEff $ newMulti simpleConn
   multi       <- lift3 $ liftEff $ registerNewMulti kvdbRt dbName nativeMulti
   pure $ next multi
 
-interpretKVDB kvdbRt _ simpleConn (SetCacheInMulti key val multi next) = do
-  withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< setMulti key val Nothing NoOptions
+-- Is this a bug? "setMulti"
+interpretKVDB kvdbRt _ _ (SetCacheInMulti key val mbTtl multi next) = do
+  withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< setMulti key val mbTtl NoOptions
   pure $ next multi
 
 -- Is this a bug? This method does nothing.
-interpretKVDB kvdbRt _ simpleConn (GetCacheInMulti key multi next) =
+interpretKVDB kvdbRt _ _ (GetCacheInMulti key multi next) =
   -- (R.lift <<< S.lift <<< E.lift <<< pure <<< next $ multi)
   throwException' "GetCacheInMulti not implemented."
 
 -- Is this a bug? "getMulti"
-interpretKVDB kvdbRt _ simpleConn (DelCacheInMulti key multi next) = do
+interpretKVDB kvdbRt _ _ (DelCacheInMulti key multi next) = do
   withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< getMulti key
   pure $ next multi
 
--- Is this a bug? "setMulti"
-interpretKVDB kvdbRt _ simpleConn (SetCacheWithExpiryInMulti key val ttl multi next) = do
-  withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< setMulti key val (Just ttl) NoOptions
-  pure $ next multi
-
-interpretKVDB kvdbRt _ simpleConn (ExpireInMulti key ttl multi next) = do
+interpretKVDB kvdbRt _ _ (ExpireInMulti key ttl multi next) = do
   withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< expireMulti key ttl
   pure $ next multi
 
-interpretKVDB kvdbRt _ simpleConn (IncrInMulti key multi next) = do
+interpretKVDB kvdbRt _ _ (IncrInMulti key multi next) = do
   withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< incrMulti key
   pure $ next multi
 
-interpretKVDB kvdbRt _ simpleConn (SetHashInMulti key field value multi next) = do
+interpretKVDB kvdbRt _ _ (SetHashInMulti key field value multi next) = do
   withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< hsetMulti key field value
   pure $ next multi
 
-interpretKVDB kvdbRt _ simpleConn (GetHashInMulti key value multi next) = do
+interpretKVDB kvdbRt _ _ (GetHashInMulti key value multi next) = do
   withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< hgetMulti key value
   pure $ next multi
 
-interpretKVDB kvdbRt _ simpleConn (PublishToChannelInMulti channel message multi next) = do
+interpretKVDB kvdbRt _ _ (PublishToChannelInMulti channel message multi next) = do
   withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< publishMulti channel message
   pure $ next multi
 
-interpretKVDB kvdbRt _ simpleConn (SubscribeInMulti channel multi next) = do
+interpretKVDB kvdbRt _ _ (SubscribeInMulti channel multi next) = do
   withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< subscribeMulti channel
   pure $ next multi
 
-interpretKVDB kvdbRt _ simpleConn (EnqueueInMulti listName val multi next) = do
+interpretKVDB kvdbRt _ _ (EnqueueInMulti listName val multi next) = do
   withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< rpushMulti listName val
   pure $ next multi
 
-interpretKVDB kvdbRt _ simpleConn (DequeueInMulti listName multi next) = do
+interpretKVDB kvdbRt _ _ (DequeueInMulti listName multi next) = do
   withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< lpopMulti listName
   pure $ next multi
 
-interpretKVDB kvdbRt _ simpleConn (GetQueueIdxInMulti listName index multi next) = do
+interpretKVDB kvdbRt _ _ (GetQueueIdxInMulti listName index multi next) = do
   withNativeMulti kvdbRt multi $ lift3 <<< liftEff <<< lindexMulti listName index
   pure $ next multi
 
-interpretKVDB kvdbRt _ simpleConn (Exec multi next) = do
+interpretKVDB kvdbRt _ _ (Exec multi next) = do
   mbNativeMulti <- lift3 $ liftEff $ getNativeMulti kvdbRt multi
   case mbNativeMulti of
     Nothing -> throwException' $ "Multi not found: " <> show multi
     Just nativeMulti -> next <$> (liftAff $ execMulti nativeMulti)
+
+-- interpretKVDB _ _ simpleConn (SetMessageHandler f next) =
+--   (lift3 $ liftEff $ setMessageHandler f) >>= (pure <<< next)
 
 interpretKVDB _ _ _ _ = throwException' "KV DB Method is not implemented yet."
 
