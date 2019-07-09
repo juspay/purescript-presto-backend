@@ -27,6 +27,7 @@ import Prelude
 
 import Cache (SetOptions(..), SimpleConn, del, exists, expire, get, incr, publish, set, setMessageHandler, subscribe)
 import Cache.Hash (hget, hset)
+import Cache.Multi as Native
 import Cache.List (lindex, lpop, rpush)
 import Cache.Multi (execMulti, expireMulti, getMulti, hgetMulti, hsetMulti, incrMulti, lindexMulti, lpopMulti, newMulti, publishMulti, rpushMulti, setMulti, subscribeMulti)
 import Control.Monad.Aff (Aff, forkAff)
@@ -45,10 +46,11 @@ import Data.Array as Array
 import Data.Either (Either(..), note, hush, isLeft)
 import Data.Exists (runExists)
 import Data.Maybe (Maybe(..), isJust)
-import Data.StrMap (StrMap, lookup)
+import Data.StrMap as StrMap
 import Data.Tuple (Tuple(..))
 import Data.Foreign.Generic as G
 import Data.Lazy (defer)
+import Data.UUID (GENUUID, genUUID)
 import Presto.Backend.Language.KVDB (KVDB, KVDBMethod(..), KVDBMethodWrapper, KVDBWrapper(..))
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Language.Types.EitherEx
@@ -56,7 +58,7 @@ import Presto.Backend.Language.Types.DB (KVDBConn(..), MockedKVDBConn(..), DBErr
 import Presto.Backend.Language.Types.KVDB (Multi(..))
 import Presto.Backend.KVDB.Mock.Types (KVDBActionDict)
 import Presto.Backend.Runtime.Common (jsonStringify, lift3, throwException', getDBConn', getKVDBConn')
-import Presto.Backend.Runtime.Types (InterpreterMT, InterpreterMT', LogRunner, RunningMode(..), Connection(..), BackendRuntime(..))
+import Presto.Backend.Runtime.Types (InterpreterMT, InterpreterMT', LogRunner, RunningMode(..), Connection(..), BackendRuntime(..), KVDBRuntime(..))
 import Presto.Backend.Runtime.Types as X
 import Presto.Backend.Playback.Types (RRItemDict)
 import Presto.Backend.Playback.Machine.Classless (withRunModeClassless)
@@ -66,9 +68,21 @@ import Type.Proxy (Proxy(..))
 getMockedKVDBValue :: forall st rt eff a. BackendRuntime -> KVDBActionDict -> InterpreterMT' rt st eff a
 getMockedKVDBValue brt mockedKvDbActDict = throwException' "Mocking is not yet implemented for KV DB."
 
+registerNewMulti
+  :: forall eff
+   . KVDBRuntime
+  -> Native.Multi
+  -> Eff (ref :: REF, uuid :: GENUUID | eff) Multi
+registerNewMulti (KVDBRuntime rt) nativeMulti = do
+  uuid <- genUUID
+  let uuidStr = show uuid
+  catalogue <- readRef rt.multiesRef
+  writeRef rt.multiesRef $ StrMap.insert uuidStr nativeMulti catalogue
+  pure $ Multi uuidStr
+
 interpretKVDB
   :: forall st rt s eff a
-   . BackendRuntime
+   . KVDBRuntime
   -> SimpleConn
   -> KVDBMethodWrapper s a
   -> InterpreterMT' rt st eff a
@@ -104,7 +118,11 @@ interpretKVDB
 --
 -- interpretKVDB _ simpleConn (GetQueueIdx listName index next) = (R.lift $ S.lift $ E.lift $ lindex listName index) >>= (pure <<< next)
 --
--- interpretKVDB _ simpleConn (GetMulti next) = (R.lift $ S.lift $ E.lift $ liftEff $ newMulti kvDBConn) >>= (pure <<< next)
+interpretKVDB kvdbRt@(KVDBRuntime rt) simpleConn (NewMulti next) = do
+  nativeMulti <- lift3 $ liftEff $ newMulti simpleConn
+  multi <- lift3 $ liftEff $ registerNewMulti kvdbRt nativeMulti
+  pure $ next multi
+
 --
 -- interpretKVDB _ simpleConn (SetCacheInMulti key val multi next) = (R.lift <<< S.lift <<< E.lift <<< liftEff <<< setMulti key val Nothing NoOptions $ multi ) >>= (pure <<< next)
 --
@@ -143,7 +161,8 @@ runKVDB'
   -> SimpleConn
   -> KVDB a
   -> InterpreterMT' rt st eff a
-runKVDB' brt simpleConn = foldFree (\(KVDBWrapper x) -> runExists (interpretKVDB brt simpleConn) x)
+runKVDB' (BackendRuntime rt) simpleConn =
+  foldFree (\(KVDBWrapper x) -> runExists (interpretKVDB rt.kvdbRuntime simpleConn) x)
 
 runKVDB
   :: forall st rt eff rrItem a

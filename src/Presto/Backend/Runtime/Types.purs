@@ -5,7 +5,9 @@ module Presto.Backend.Runtime.Types
 
 import Prelude
 
+import Cache.Multi (Multi) as Native
 import Control.Monad.Aff (Aff)
+import Control.Monad.Eff.Ref (Ref)
 import Control.Monad.Eff.Exception (Error)
 import Control.Monad.Except.Trans (ExceptT) as E
 import Control.Monad.Reader.Trans (ReaderT) as R
@@ -30,11 +32,17 @@ data RunningMode
   | RecordingMode RecorderRuntime
   | ReplayingMode PlayerRuntime
 
+type MultiCatalogue = StrMap Native.Multi
+
+newtype KVDBRuntime = KVDBRuntime
+  { multiesRef   :: Ref MultiCatalogue
+  }
 
 newtype BackendRuntime = BackendRuntime
   { apiRunner   :: APIRunner
   , connections :: StrMap Connection
   , logRunner   :: LogRunner
   , affRunner   :: AffRunner
+  , kvdbRuntime :: KVDBRuntime
   , mode        :: RunningMode
   }
