@@ -28,8 +28,8 @@ data LogEntry = LogEntry
   }
 
 data CallAPIEntry = CallAPIEntry
-  { jsonRequest :: String
-  , jsonResult  :: EitherEx ErrorResponse String
+  { jsonRequest :: Foreign
+  , jsonResult  :: EitherEx ErrorResponse Foreign
   }
 
 data RunSysCmdEntry = RunSysCmdEntry
@@ -38,15 +38,15 @@ data RunSysCmdEntry = RunSysCmdEntry
   }
 
 data DoAffEntry = DoAffEntry
-  { jsonResult :: String
+  { jsonResult :: Foreign
   }
 
 data RunDBEntry = RunDBEntry
   { dbName     :: String
   , dbMethod   :: String
-  , jsonResult :: EitherEx DBError Foreign --String
-  , options :: Array Foreign --String
-  , model :: Foreign --String
+  , jsonResult :: EitherEx DBError Foreign
+  , options :: Array Foreign
+  , model :: Foreign
   }
 
 data GetDBConnEntry = GetDBConnEntry
@@ -65,18 +65,18 @@ mkDoAffEntry
    . Encode b
   => Decode b
   => b -> DoAffEntry
-mkDoAffEntry result = DoAffEntry { jsonResult: encodeJSON result }
+mkDoAffEntry result = DoAffEntry { jsonResult: encode result }
 
 mkCallAPIEntry
   :: forall b
    . Encode b
   => Decode b
-  => Lazy String
+  => Lazy Foreign
   -> EitherEx ErrorResponse  b
   -> CallAPIEntry
 mkCallAPIEntry jReq aRes = CallAPIEntry
   { jsonRequest : force jReq
-  , jsonResult  : encodeJSON <$> aRes
+  , jsonResult  : encode <$> aRes
   }
 
 mkRunDBEntry
@@ -86,14 +86,14 @@ mkRunDBEntry
   => String
   -> String
   -> Array Foreign
-  -> Foreign --String
+  -> Foreign
   -> EitherEx DBError b
   -> RunDBEntry
 mkRunDBEntry dbName dbMethod options model aRes = RunDBEntry
   { dbName
   , dbMethod
   , jsonResult : encode <$> aRes
-  , options : options -- encodeJSON options
+  , options : options
   , model : model
   }
 
@@ -118,7 +118,8 @@ instance mockedResultLogEntry :: MockedResult LogEntry Unit where
 
 
 derive instance genericCallAPIEntry :: Generic CallAPIEntry _
-derive instance eqCallAPIEntry :: Eq CallAPIEntry
+instance eqCallAPIEntry :: Eq CallAPIEntry where
+  eq e1 e2 = (encodeJSON e1) == (encodeJSON e2)
 
 
 instance decodeCallAPIEntry :: Decode CallAPIEntry where decode = defaultDecode
@@ -138,7 +139,7 @@ instance mockedResultCallAPIEntry
       eResult <- case ce.jsonResult of
         LeftEx  errResp -> Just $ LeftEx errResp
         RightEx strResp -> do
-            (resultEx :: b) <- hush $ E.runExcept $ decodeJSON strResp
+            (resultEx :: b) <- hush $ E.runExcept $ decode strResp
             Just $ RightEx resultEx
       pure  eResult
 
@@ -159,7 +160,8 @@ instance mockedResultRunSysCmdEntry :: MockedResult RunSysCmdEntry String where
 
 
 derive instance genericDoAffEntry :: Generic DoAffEntry _
-derive instance eqDoAffEntry :: Eq DoAffEntry
+instance eqDoAffEntry :: Eq DoAffEntry where
+  eq e1 e2 = (encodeJSON e1) == (encodeJSON e2)
 
 instance decodeDoAffEntry :: Decode DoAffEntry where decode = defaultDecode
 instance encodeDoAffEntry :: Encode DoAffEntry where encode = defaultEncode
@@ -171,14 +173,13 @@ instance rrItemDoAffEntry :: RRItem DoAffEntry where
   isMocked _ = true
 
 instance mockedResultDoAffEntry :: Decode b => MockedResult DoAffEntry b where
-  parseRRItem (DoAffEntry r) = hush $ E.runExcept $ decodeJSON r.jsonResult
+  parseRRItem (DoAffEntry r) = hush $ E.runExcept $ decode r.jsonResult
 
 
 
 derive instance genericRunDBEntry :: Generic RunDBEntry _
--- derive instance eqRunDBEntry :: Eq RunDBEntry
 instance eqRunDBEntry :: Eq RunDBEntry where
-  eq (RunDBEntry e1) (RunDBEntry e2) = jsonStringify e1 == jsonStringify e2
+  eq e1 e2 = (encodeJSON e1) == (encodeJSON e2)
 instance decodeRunDBEntry :: Decode RunDBEntry where decode = defaultDecode
 instance encodeRunDBEntry :: Encode RunDBEntry where encode = defaultEncode
 instance rrItemRunDBEntry :: RRItem RunDBEntry where
