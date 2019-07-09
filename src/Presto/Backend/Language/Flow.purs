@@ -31,6 +31,7 @@ import Control.Monad.Free (Free, liftF)
 import Data.Either (Either(..), note, hush, isLeft)
 import Data.Exists (Exists, mkExists)
 import Data.Maybe (Maybe(..), fromMaybe, maybe)
+import Data.Functor (($>))
 import Data.Foreign (Foreign, toForeign)
 import Data.Foreign.Class (class Encode, class Decode, encode, decode)
 import Data.Foreign.Generic (encodeJSON)
@@ -43,6 +44,8 @@ import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (ErrorResponse, APIResult)
 import Presto.Backend.APIInteract (apiInteract)
 import Presto.Backend.Language.Types.EitherEx (EitherEx(..), fromCustomEitherEx, toCustomEitherEx)
+import Presto.Backend.Language.Types.UnitEx (UnitEx(..))
+import Presto.Backend.Language.Types.FunctorEx ((<<$>>))
 import Presto.Backend.Playback.Types as Playback
 import Presto.Backend.Playback.Entries as Playback
 import Presto.Backend.Types.API (class RestEndpoint, Headers, makeRequest)
@@ -256,63 +259,88 @@ getKVDBConn dbName = wrap $ GetKVDBConn dbName
   (Playback.mkEntryDict $ Playback.mkGetKVDBConnEntry dbName)
   id
 
--- setCache :: forall st rt. String -> String ->  String -> BackendFlow st rt (Either Error Unit)
--- setCache dbName key value = do
---   eRes <- wrap $ RunKVDBEither dbName
---       (toCustomEitherEx <$> KVDB.setCache key value )
---       KVDBMock.mkKVDBActionDict
---       (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "setCache" "")
---       id
---   pure $ fromCustomEitherEx eRes
+setCache :: forall st rt. String -> String ->  String -> BackendFlow st rt (Either Error Unit)
+setCache dbName key value = do
+  eRes <- wrap $ RunKVDBEither dbName
+      (const UnitEx <<$>> toCustomEitherEx <$> KVDB.setCache key value)
+      KVDBMock.mkKVDBActionDict
+      (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "setCache" "")
+      id
+  pure (fromCustomEitherEx eRes $> unit)
 
--- getCache :: forall st rt. String -> String -> BackendFlow st rt (Either Error (Maybe String))
--- getCache dbName key = do
---   cacheConn <- getCacheConn dbName
---   wrap $ GetCache cacheConn key id
---
--- keyExistsCache :: forall st rt. String -> String -> BackendFlow st rt (Either Error Boolean)
--- keyExistsCache dbName key = do
---   cacheConn <- getCacheConn dbName
---   wrap $ KeyExistsCache cacheConn key id
+getCache :: forall st rt. String -> String -> BackendFlow st rt (Either Error (Maybe String))
+getCache dbName key = do
+  eRes <- wrap $ RunKVDBEither dbName
+      (toCustomEitherEx <$> KVDB.getCache key)
+      KVDBMock.mkKVDBActionDict
+      (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "getCache" "")
+      id
+  pure $ fromCustomEitherEx eRes
 
--- delCache :: forall st rt. String -> String -> BackendFlow st rt (Either Error Int)
--- delCache dbName key = do
---   cacheConn <- getCacheConn dbName
---   wrap $ DelCache cacheConn key id
+keyExistsCache :: forall st rt. String -> String -> BackendFlow st rt (Either Error Boolean)
+keyExistsCache dbName key = do
+  eRes <- wrap $ RunKVDBEither dbName
+      (toCustomEitherEx <$> KVDB.keyExistsCache key)
+      KVDBMock.mkKVDBActionDict
+      (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "keyExistsCache" "")
+      id
+  pure $ fromCustomEitherEx eRes
+
+delCache :: forall st rt. String -> String -> BackendFlow st rt (Either Error Int)
+delCache dbName key = do
+  eRes <- wrap $ RunKVDBEither dbName
+      (toCustomEitherEx <$> KVDB.delCache key)
+      KVDBMock.mkKVDBActionDict
+      (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "delCache" "")
+      id
+  pure $ fromCustomEitherEx eRes
 
 -- setCacheWithExpiry :: forall st rt. String -> String -> String -> Milliseconds -> BackendFlow st rt (Either Error Unit)
 -- setCacheWithExpiry dbName key value ttl = do
 --   cacheConn <- getCacheConn dbName
 --   wrap $ SetCacheWithExpiry cacheConn key value ttl id
 
--- expire :: forall st rt. String -> String -> Seconds -> BackendFlow st rt (Either Error Boolean)
--- expire dbName key ttl = do
---   cacheConn <- getCacheConn dbName
---   wrap $ Expire cacheConn key ttl id
+expire :: forall st rt. String -> String -> Seconds -> BackendFlow st rt (Either Error Boolean)
+expire dbName key ttl = do
+  eRes <- wrap $ RunKVDBEither dbName
+      (toCustomEitherEx <$> KVDB.expire key ttl)
+      KVDBMock.mkKVDBActionDict
+      (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "expire" "")
+      id
+  pure $ fromCustomEitherEx eRes
 
--- incr :: forall st rt. String -> String -> BackendFlow st rt (Either Error Int)
--- incr dbName key = do
---   cacheConn <- getCacheConn dbName
---   wrap $ Incr cacheConn key id
+incr :: forall st rt. String -> String -> BackendFlow st rt (Either Error Int)
+incr dbName key = do
+  eRes <- wrap $ RunKVDBEither dbName
+      (toCustomEitherEx <$> KVDB.incr key)
+      KVDBMock.mkKVDBActionDict
+      (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "incr" "")
+      id
+  pure $ fromCustomEitherEx eRes
 
--- setHash :: forall st rt. String -> String -> String -> String -> BackendFlow st rt (Either Error Boolean)
--- setHash dbName key field value = do
---   cacheConn <- getCacheConn dbName
---   wrap $ SetHash cacheConn key field value id
+setHash :: forall st rt. String -> String -> String -> String -> BackendFlow st rt (Either Error Boolean)
+setHash dbName key field value = do
+  eRes <- wrap $ RunKVDBEither dbName
+      (toCustomEitherEx <$> KVDB.setHash key field value)
+      KVDBMock.mkKVDBActionDict
+      (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "setHash" "")
+      id
+  pure $ fromCustomEitherEx eRes
 
 -- getHashKey :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error (Maybe String))
 -- getHashKey dbName key field = do
 --   cacheConn <- getCacheConn dbName
 --   wrap $ GetHashKey cacheConn key field id
 
--- publishToChannel :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error Int)
--- publishToChannel dbName channel message = do
---   cacheConn <- getCacheConn dbName
---   wrap $ PublishToChannel cacheConn channel message id
---
--- subscribeToMulti :: forall st rt. String -> Multi -> BackendFlow st rt Multi
--- subscribeToMulti channel multi = wrap $ SubscribeInMulti channel multi id
---
+publishToChannel :: forall st rt. String -> String -> String -> BackendFlow st rt (Either Error Int)
+publishToChannel dbName channel message = do
+  eRes <- wrap $ RunKVDBEither dbName
+      (toCustomEitherEx <$> KVDB.publishToChannel channel message)
+      KVDBMock.mkKVDBActionDict
+      (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "publishToChannel" "")
+      id
+  pure $ fromCustomEitherEx eRes
+
 -- subscribe :: forall st rt. String -> String -> BackendFlow st rt (Either Error Unit)
 -- subscribe dbName channel = do
 --   cacheConn <- getCacheConn dbName
@@ -454,6 +482,15 @@ getQueueIdxInMulti listName index multi = let
     (KVDB.getQueueIdxInMulti listName index multi)
     KVDBMock.mkKVDBActionDict
     (Playback.mkEntryDict $ Playback.mkRunKVDBSimpleEntry dbName "getQueueIdxInMulti" "")
+    id
+
+subscribeToMulti :: forall st rt. String -> Multi -> BackendFlow st rt Multi
+subscribeToMulti channel multi = let
+  dbName = KVDB.getKVDBName multi
+  in wrap $ RunKVDBSimple dbName
+    (KVDB.subscribeToMulti channel multi)
+    KVDBMock.mkKVDBActionDict
+    (Playback.mkEntryDict $ Playback.mkRunKVDBSimpleEntry dbName "subscribeToMulti" "")
     id
 
 execMulti :: forall st rt. Multi -> BackendFlow st rt (Either Error (Array Foreign))
