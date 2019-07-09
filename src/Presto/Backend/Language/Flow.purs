@@ -182,7 +182,7 @@ findOne dbName options = do
   eResEx <- wrap $ RunDB dbName
     (\conn     -> toDBMaybeResult <$> DB.findOne conn options)
     (\connMock -> SqlDBMock.mkDbActionDict $ SqlDBMock.mkFindOne dbName)
-    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "findOne" [Opt.options options] "")
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "findOne" [Opt.options options] (encode ""))
     id
   pure $ fromDBMaybeResult eResEx
 
@@ -194,7 +194,7 @@ findAll dbName options = do
   eResEx <- wrap $ RunDB dbName
     (\conn -> toCustomEitherEx <$> DB.findAll conn options)
     (\connMock -> SqlDBMock.mkDbActionDict $ SqlDBMock.mkFindAll dbName)
-    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "findAll" [Opt.options options] "")
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "findAll" [Opt.options options] (encode ""))
     id
   pure $ fromCustomEitherEx eResEx
 
@@ -208,7 +208,7 @@ query dbName rawq = do
   eResEx <- wrap $ RunDB dbName
     (\conn -> toCustomEitherEx <$> DB.query conn rawq)
     (\connMock -> SqlDBMock.mkDbActionDict $ SqlDBMock.mkQuery dbName)
-    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "query" [toForeign rawq] "")
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "query" [toForeign rawq] (encode ""))
     id
   pure $ fromCustomEitherEx eResEx
 
@@ -217,7 +217,7 @@ create dbName model = do
   eResEx <- wrap $ RunDB dbName
     (\conn -> toDBMaybeResult <$> DB.create conn model)
     (\connMock -> SqlDBMock.mkDbActionDict $ SqlDBMock.mkCreate dbName)
-    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "create" [] (encodeJSON model))
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "create" [] (encode model))
     id
   pure $ fromDBMaybeResult eResEx
 
@@ -226,7 +226,7 @@ createWithOpts dbName model options = do
   eResEx <- wrap $ RunDB dbName
     (\conn -> toDBMaybeResult <$> DB.createWithOpts conn model options)
     (\connMock -> SqlDBMock.mkDbActionDict $ SqlDBMock.mkCreateWithOpts dbName)
-    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "createWithOpts" [Opt.options options] (encodeJSON model))
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "createWithOpts" [Opt.options options] (encode model))
     id
   pure $ fromDBMaybeResult eResEx
 
@@ -235,7 +235,7 @@ update dbName updateValues whereClause = do
   eResEx <- wrap $ RunDB dbName
     (\conn -> toCustomEitherEx <$> DB.update conn updateValues whereClause)
     (\connMock -> SqlDBMock.mkDbActionDict $ SqlDBMock.mkUpdate dbName)
-    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "update" [(Opt.options updateValues),(Opt.options whereClause)] "")
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "update" [(Opt.options updateValues),(Opt.options whereClause)] (encode ""))
     id
   pure $ fromCustomEitherEx eResEx
 
@@ -244,7 +244,7 @@ update' dbName updateValues whereClause = do
   eResEx <- wrap $ RunDB dbName
     (\conn -> toCustomEitherEx <$> DB.update' conn updateValues whereClause)
     (\connMock -> SqlDBMock.mkDbActionDict $ SqlDBMock.mkUpdate dbName)
-    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "update'" [(Opt.options updateValues),(Opt.options whereClause)] "")
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "update'" [(Opt.options updateValues),(Opt.options whereClause)] (encode ""))
     id
   pure $ fromCustomEitherEx eResEx
 
@@ -253,7 +253,7 @@ delete dbName options = do
   eResEx <- wrap $ RunDB dbName
     (\conn -> toCustomEitherEx <$> DB.delete conn options)
     (\connMock -> SqlDBMock.mkDbActionDict $ SqlDBMock.mkDelete dbName)
-    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "delete" [Opt.options options] "")
+    (Playback.mkEntryDict $ Playback.mkRunDBEntry dbName "delete" [Opt.options options] (encode ""))
     id
   pure $ fromCustomEitherEx eResEx
 
@@ -274,7 +274,7 @@ callAPI
   => Headers -> a -> BackendFlow st rt (APIResult b)
 callAPI headers a = wrap $ CallAPI
   (apiInteract a headers)
-  (Playback.mkEntryDict (Playback.mkCallAPIEntry (defer $ \_ -> encodeJSON $ makeRequest a headers) ))
+  (Playback.mkEntryDict (Playback.mkCallAPIEntry (defer $ \_ -> encode $ makeRequest a headers) ))
   id
 
 setCacheInMulti :: forall st rt. String -> String -> Multi -> BackendFlow st rt Multi
