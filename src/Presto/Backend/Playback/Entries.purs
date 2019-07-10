@@ -18,7 +18,8 @@ import Presto.Backend.Runtime.Common (jsonStringify)
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (APIResult(..), ErrorPayload, ErrorResponse, Response)
 import Presto.Backend.Language.Types.EitherEx (EitherEx(..))
-import Presto.Backend.Language.Types.DB
+import Presto.Backend.Language.Types.UnitEx (UnitEx(..))
+import Presto.Backend.Language.Types.DB (SqlConn(..), DBError(..), KVDBConn(..), MockedSqlConn(..), MockedKVDBConn(..))
 import Presto.Backend.Language.Types.KVDB (Multi)
 import Presto.Backend.Playback.Types
 
@@ -77,8 +78,8 @@ data RunKVDBSimpleEntry = RunKVDBSimpleEntry
 mkRunSysCmdEntry :: String -> String -> RunSysCmdEntry
 mkRunSysCmdEntry cmd result = RunSysCmdEntry { cmd, result }
 
-mkLogEntry :: String -> String -> Unit -> LogEntry
-mkLogEntry t m _ = LogEntry {tag: t, message: m}
+mkLogEntry :: String -> String -> UnitEx -> LogEntry
+mkLogEntry tag message _ = LogEntry {tag, message}
 
 mkDoAffEntry
   :: forall b
@@ -169,13 +170,13 @@ instance rrItemLogEntry :: RRItem LogEntry where
   getTag   _ = "LogEntry"
   isMocked _ = true
 
-instance mockedResultLogEntry :: MockedResult LogEntry Unit where
-  parseRRItem _ = Just unit
+instance mockedResultLogEntry :: MockedResult LogEntry UnitEx where
+  parseRRItem _ = Just UnitEx
 
 
 derive instance genericCallAPIEntry :: Generic CallAPIEntry _
 instance eqCallAPIEntry :: Eq CallAPIEntry where
-  eq e1 e2 = (encodeJSON e1) == (encodeJSON e2)
+  eq e1 e2 = encodeJSON e1 == encodeJSON e2
 
 instance decodeCallAPIEntry :: Decode CallAPIEntry where decode = defaultDecode
 instance encodeCallAPIEntry :: Encode CallAPIEntry where encode = defaultEncode

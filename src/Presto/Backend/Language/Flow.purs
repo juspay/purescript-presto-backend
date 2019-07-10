@@ -58,6 +58,7 @@ import Presto.Backend.Playback.Types as Playback
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (ErrorResponse, APIResult)
 import Presto.Backend.Types.API (class RestEndpoint, Headers, makeRequest)
+import Presto.Backend.Runtime.Common (jsonStringify)
 import Presto.Core.Types.Language.Interaction (Interaction)
 import Sequelize.Class (class Model, class EncodeModel, class DecodeModel, encodeModel, decodeModel)
 import Sequelize.Types (Conn, Instance, SEQUELIZE, ModelOf)
@@ -78,7 +79,10 @@ data BackendFlowCommands next st rt s
         (Playback.RRItemDict Playback.DoAffEntry s)
         (s -> next)
 
-    | Log String s (Unit -> next)
+    | Log String String
+        (Playback.RRItemDict Playback.LogEntry UnitEx)
+        (UnitEx -> next)
+
     | Fork (BackendFlow st rt s) (Unit -> next)
 
     | RunSysCmd String
@@ -157,8 +161,15 @@ doAffRR
   -> BackendFlow st rt a
 doAffRR aff = wrap $ DoAffRR aff (Playback.mkEntryDict Playback.mkDoAffEntry) id
 
+-- TODO: this is not a correct solution, jsonStringify is a strange function
+-- that feels hacky.
 log :: forall st rt a. String -> a -> BackendFlow st rt Unit
-log tag message = wrap $ Log tag message id
+log tag message = do
+  let msg = jsonStringify message
+  void $ wrap $ Log tag msg
+    (Playback.mkEntryDict $ Playback.mkLogEntry tag msg)
+    id
+  pure unit
 
 forkFlow :: forall st rt a. BackendFlow st rt a -> BackendFlow st rt Unit
 forkFlow flow = wrap $ Fork flow id

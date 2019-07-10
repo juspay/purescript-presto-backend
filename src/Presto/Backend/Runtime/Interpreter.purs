@@ -26,42 +26,27 @@ module Presto.Backend.Runtime.Interpreter
 
 import Prelude
 
-import Control.Monad.Aff (Aff, forkAff)
-import Control.Monad.Eff.Ref (REF, Ref, newRef, readRef, writeRef, modifyRef)
-import Control.Monad.Eff (Eff)
-import Control.Monad.Eff.Class (liftEff)
-import Control.Monad.Eff.Exception (Error, error)
-import Control.Monad.Except (runExcept) as E
-import Control.Monad.Except.Trans (ExceptT(..), lift, throwError, runExceptT) as E
+import Control.Monad.Aff (forkAff)
+import Control.Monad.Eff.Exception (Error)
+import Control.Monad.Except.Trans (lift, runExceptT) as E
 import Control.Monad.Free (foldFree)
-import Control.Monad.Reader.Trans (ReaderT, ask, lift, runReaderT) as R
-import Control.Monad.State.Trans (StateT, get, lift, modify, put, runStateT) as S
-import Control.Monad.Trans.Class (class MonadTrans, lift)
-import Data.Array.NonEmpty (singleton) as NEArray
-import Data.Array as Array
-import Data.Either (Either(..), note, hush, isLeft)
+import Control.Monad.Reader.Trans (ask, lift, runReaderT) as R
+import Control.Monad.State.Trans (get, lift, modify, put, runStateT) as S
 import Data.Exists (runExists)
-import Data.Maybe (Maybe(..), isJust)
-import Data.StrMap (StrMap, lookup)
-import Data.Tuple (Tuple(..))
-import Data.Foreign.Generic as G
+import Data.Tuple (Tuple)
 import Data.Lazy (defer)
 import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), BackendFlowCommandsWrapper, BackendFlowWrapper(..))
 import Presto.Backend.SystemCommands (runSysCmd)
-import Presto.Backend.Types (BackendAff)
-import Presto.Backend.Language.Types.EitherEx
-import Presto.Backend.Language.Types.DB (KVDBConn(..), SqlConn(..), MockedSqlConn(..), MockedKVDBConn(..))
-import Presto.Backend.Runtime.Common (jsonStringify, lift3, throwException', getDBConn', getKVDBConn')
-import Presto.Backend.Runtime.Types (InterpreterMT, InterpreterMT', LogRunner, RunningMode(..), Connection(..), BackendRuntime(..))
+import Presto.Backend.Language.Types.EitherEx (fromEitherEx)
+import Presto.Backend.Language.Types.UnitEx (UnitEx(..))
+import Presto.Backend.Language.Types.DB (SqlConn(..))
+import Presto.Backend.Runtime.Common (lift3, throwException', getDBConn', getKVDBConn')
+import Presto.Backend.Runtime.Types (InterpreterMT, InterpreterMT', BackendRuntime(..))
 import Presto.Backend.Runtime.Types as X
-import Presto.Backend.Playback.Machine (withRunMode)
 import Presto.Backend.Playback.Machine.Classless (withRunModeClassless)
-import Presto.Backend.Playback.Entries (mkLogEntry)
 import Presto.Backend.Runtime.API (runAPIInteraction)
 import Presto.Backend.Runtime.KVDBInterpreter (runKVDB)
 import Presto.Backend.DB.Mock.Types (DBActionDict)
-import Presto.Backend.KVDB.Mock.Types (KVDBActionDict)
-import Type.Proxy (Proxy(..))
 
 forkF :: forall eff rt st a. BackendRuntime -> BackendFlow st rt a -> InterpreterMT rt st (Tuple Error st) eff Unit
 forkF runtime flow = do
@@ -94,10 +79,10 @@ interpret brt@(BackendRuntime rt) (DoAffRR aff rrItemDict next) = do
     (defer $ \_ -> lift3 $ rt.affRunner aff)
   pure $ next res
 
-interpret brt@(BackendRuntime rt) (Log tag message next) = do
-  next <$> withRunMode brt
-    (defer $ \_ -> lift3 (rt.logRunner tag message))
-    (mkLogEntry tag (jsonStringify message))
+interpret brt@(BackendRuntime rt) (Log tag message rrItemDict next) = do
+  res <- withRunModeClassless brt rrItemDict
+    (defer $ \_ -> lift3 (rt.logRunner tag message) *> pure UnitEx)
+  pure $ next res
 
 interpret r (Fork flow next) = forkF r flow >>= (pure <<< next)
 
