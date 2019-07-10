@@ -1,49 +1,48 @@
 module Presto.Backend.RunModesSpec where
 
 import Prelude
+import Presto.Backend.Language.Types.EitherEx
+import Presto.Backend.TestData.Common
+import Presto.Backend.TestData.DBModel
 
 import Control.Monad.Aff (Aff)
 import Control.Monad.Aff.Class (liftAff)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Class (liftEff)
+import Control.Monad.Eff.Exception (error, message)
 import Control.Monad.Eff.Ref (REF, Ref, newRef, readRef, writeRef, modifyRef)
+import Control.Monad.Error.Class (throwError)
 import Control.Monad.Except.Trans (runExceptT)
 import Control.Monad.Reader.Trans (runReaderT)
 import Control.Monad.State.Trans (runStateT)
-import Control.Monad.Error.Class (throwError)
-import Control.Monad.Eff.Exception (error)
-import Data.Options (Options(..), (:=))
 import Data.Array (length, index)
-import Data.Tuple (Tuple(..))
-import Data.Tuple.Nested ((/\))
-import Data.Maybe (Maybe(..), isJust)
 import Data.Either (Either(..), isLeft, isRight)
 import Data.Foreign (toForeign)
+import Data.Foreign.Class (class Encode, class Decode, encode, decode)
 import Data.Foreign.Generic (defaultOptions, genericDecode, genericDecodeJSON, genericEncode, genericEncodeJSON, encodeJSON, decodeJSON)
 import Data.Foreign.Generic.Class (class GenericDecode, class GenericEncode)
-import Data.Foreign.Class (class Encode, class Decode, encode, decode)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq as GEq
-import Data.Generic.Rep.Show as GShow
 import Data.Generic.Rep.Ord as GOrd
+import Data.Generic.Rep.Show as GShow
 import Data.Map as Map
+import Data.Maybe (Maybe(..), isJust)
+import Data.Options (Options(..), (:=))
 import Data.StrMap as StrMap
+import Data.Tuple (Tuple(..))
+import Data.Tuple.Nested ((/\))
 import Debug.Trace (spy)
-import Test.Spec (Spec, describe, it)
-import Test.Spec.Assertions (shouldEqual, fail)
-
-import Sequelize.Class (class Model)
-import Sequelize.Types (Conn, Instance, SEQUELIZE)
-import Presto.Backend.Flow (BackendFlow, log, callAPI, runSysCmd, doAffRR, findOne, getDBConn)
-import Presto.Backend.Types.API (class RestEndpoint, APIResult, Request(..), Headers(..), Response(..), ErrorPayload(..), Method(..), defaultDecodeResponse)
-import Presto.Backend.Language.Types.EitherEx
+import Presto.Backend.Flow (BackendFlow, callAPI, doAffRR, findOne, getDBConn, log, runSysCmd, throwException)
 import Presto.Backend.Language.Types.DB (SqlConn(..), MockedSqlConn(..), KVDBConn(..), MockedKVDBConn(..))
 import Presto.Backend.Playback.Types (RecordingEntry(..), PlaybackError(..), PlaybackErrorType(..))
-import Presto.Backend.Runtime.Types (Connection(..), BackendRuntime(..), RunningMode(..), KVDBRuntime(..))
 import Presto.Backend.Runtime.Interpreter (runBackend)
+import Presto.Backend.Runtime.Types (Connection(..), BackendRuntime(..), RunningMode(..), KVDBRuntime(..))
+import Presto.Backend.Types.API (class RestEndpoint, APIResult, Request(..), Headers(..), Response(..), ErrorPayload(..), Method(..), defaultDecodeResponse)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
-import Presto.Backend.TestData.DBModel
-import Presto.Backend.TestData.Common
+import Sequelize.Class (class Model)
+import Sequelize.Types (Conn, Instance, SEQUELIZE)
+import Test.Spec (Spec, describe, it)
+import Test.Spec.Assertions (shouldEqual, fail)
 
 data SomeRequest = SomeRequest
   { code   :: Int
@@ -212,7 +211,7 @@ runTests = do
           index recording.entries 1 `shouldEqual` (Just $ RecordingEntry "{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}")
           index recording.entries 2 `shouldEqual` (Just (RecordingEntry "{\"jsonResult\":{\"contents\":{\"string\":\"Hello there!\",\"code\":1},\"tag\":\"RightEx\"},\"jsonRequest\":{\"url\":\"1\",\"payload\":\"{\\\"number\\\":1,\\\"code\\\":1}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"))
 
-          index recording.entries 3 `shouldEqual` (Just (RecordingEntry "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":{\"url\":\"2\",\"payload\":\"{\\\"number\\\":2,\\\"code\\\":2}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}")) 
+          index recording.entries 3 `shouldEqual` (Just (RecordingEntry "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":{\"url\":\"2\",\"payload\":\"{\\\"number\\\":2,\\\"code\\\":2}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"))
 
     it "Record / replay test: log and callAPI success" $ do
       Tuple brt recordingRef <- liftEff createRecordingBackendRuntime
@@ -327,6 +326,36 @@ runTests = do
       case eResult2 of
         Right (Tuple n unit) -> n `shouldEqual` "ABC\n"
         Left err -> fail $ show err
+      curStep `shouldEqual` 1
+
+    it "Record / replay test: throwException success" $ do
+      Tuple brt recordingRef <- liftEff createRecordingBackendRuntime
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt $ throwException "This is error!") unit) unit)
+      case eResult of
+        Left (Tuple err _) -> message err `shouldEqual` "This is error!"
+        _ -> fail "Unexpected success."
+
+      stepRef     <- liftEff $ newRef 0
+      errorRef    <- liftEff $ newRef Nothing
+      recording   <- liftEff $ readRef recordingRef
+      kvdbRuntime <- liftEff createKVDBRuntime
+      let replayingBackendRuntime = BackendRuntime
+            { apiRunner   : failingApiRunner
+            , connections : StrMap.empty
+            , logRunner   : failingLogRunner
+            , affRunner   : failingAffRunner
+            , kvdbRuntime
+            , mode        : ReplayingMode
+              { recording
+              , stepRef
+              , errorRef
+              }
+            }
+      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime $ throwException "This is error!") unit) unit)
+      curStep  <- liftEff $ readRef stepRef
+      case eResult2 of
+        Left (Tuple err _) -> message err `shouldEqual` "This is error!"
+        _ -> fail "Unexpected success."
       curStep `shouldEqual` 1
 
     it "Record / replay test: doAff success" $ do

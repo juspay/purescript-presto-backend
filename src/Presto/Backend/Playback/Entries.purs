@@ -34,6 +34,10 @@ data CallAPIEntry = CallAPIEntry
   , jsonResult  :: EitherEx ErrorResponse Foreign
   }
 
+data ThrowExceptionEntry = ThrowExceptionEntry
+  { errorMessage :: String
+  }
+
 data RunSysCmdEntry = RunSysCmdEntry
   { cmd :: String
   , result :: String
@@ -79,7 +83,10 @@ mkRunSysCmdEntry :: String -> String -> RunSysCmdEntry
 mkRunSysCmdEntry cmd result = RunSysCmdEntry { cmd, result }
 
 mkLogEntry :: String -> String -> UnitEx -> LogEntry
-mkLogEntry tag message _ = LogEntry {tag, message}
+mkLogEntry tag message _ = LogEntry { tag, message }
+
+mkThrowExceptionEntry :: String -> UnitEx -> ThrowExceptionEntry
+mkThrowExceptionEntry errorMessage _ = ThrowExceptionEntry { errorMessage }
 
 mkDoAffEntry
   :: forall b
@@ -158,6 +165,7 @@ mkGetKVDBConnEntry :: String -> KVDBConn -> GetKVDBConnEntry
 mkGetKVDBConnEntry dbName (Redis _)               = GetKVDBConnEntry { dbName, mockedConn : MockedKVDBConn dbName }
 mkGetKVDBConnEntry dbName (MockedKVDB mockedConn) = GetKVDBConnEntry { dbName, mockedConn }
 
+
 derive instance genericLogEntry :: Generic LogEntry _
 derive instance eqLogEntry :: Eq LogEntry
 
@@ -171,6 +179,22 @@ instance rrItemLogEntry :: RRItem LogEntry where
   isMocked _ = true
 
 instance mockedResultLogEntry :: MockedResult LogEntry UnitEx where
+  parseRRItem _ = Just UnitEx
+
+
+derive instance genericThrowExceptionEntry :: Generic ThrowExceptionEntry _
+derive instance eqThrowExceptionEntry :: Eq ThrowExceptionEntry
+
+instance decodeThrowExceptionEntry :: Decode ThrowExceptionEntry where decode = defaultDecode
+instance encodeThrowExceptionEntry :: Encode ThrowExceptionEntry where encode = defaultEncode
+
+instance rrItemThrowExceptionEntry :: RRItem ThrowExceptionEntry where
+  toRecordingEntry = RecordingEntry <<< encodeJSON
+  fromRecordingEntry (RecordingEntry re) = hush $ E.runExcept $ decodeJSON re
+  getTag   _ = "ThrowExceptionEntry"
+  isMocked _ = true
+
+instance mockedResultThrowExceptionEntry :: MockedResult ThrowExceptionEntry UnitEx where
   parseRRItem _ = Just UnitEx
 
 

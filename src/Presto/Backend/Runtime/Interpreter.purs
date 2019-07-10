@@ -44,6 +44,8 @@ import Presto.Backend.Runtime.Common (lift3, throwException', getDBConn', getKVD
 import Presto.Backend.Runtime.Types (InterpreterMT, InterpreterMT', BackendRuntime(..))
 import Presto.Backend.Runtime.Types as X
 import Presto.Backend.Playback.Machine.Classless (withRunModeClassless)
+import Presto.Backend.Playback.Entries (mkThrowExceptionEntry)
+import Presto.Backend.Playback.Types (mkEntryDict)
 import Presto.Backend.Runtime.API (runAPIInteraction)
 import Presto.Backend.Runtime.KVDBInterpreter (runKVDB)
 import Presto.Backend.DB.Mock.Types (DBActionDict)
@@ -91,7 +93,11 @@ interpret brt (RunSysCmd cmd rrItemDict next) = do
     (defer $ \_ -> lift3 $ runSysCmd cmd)
   pure $ next res
 
-interpret _ (ThrowException errorMessage) = throwException' errorMessage
+interpret brt (ThrowException errorMessage) = do
+  void $ withRunModeClassless brt
+    (mkEntryDict $ mkThrowExceptionEntry errorMessage)
+    (defer $ \_ -> pure UnitEx)
+  throwException' errorMessage
 
 interpret brt@(BackendRuntime rt) (GetDBConn dbName rrItemDict next) = do
   res <- withRunModeClassless brt rrItemDict
