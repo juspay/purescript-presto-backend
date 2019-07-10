@@ -23,7 +23,7 @@ module Test.Main where
 
 import Prelude
 
-import Cache (CACHE, SimpleConn, CacheConnOpts, newConn, host, port, socketKeepAlive, db)
+import Cache (CACHE, SimpleConn, SimpleConnOpts, newConn, host, port, socketKeepAlive, db)
 import Control.Monad.Aff (Aff, launchAff_)
 import Control.Monad.Aff.Class (liftAff)
 import Control.Monad.Aff.Console (CONSOLE)
@@ -33,13 +33,14 @@ import Control.Monad.Eff.Exception (throwException)
 import Control.Monad.Except.Trans (runExceptT)
 import Control.Monad.Reader.Trans (runReaderT)
 import Control.Monad.State.Trans (runStateT)
+import Control.Monad.Trans.Class (lift)
 import Data.Either (Either(..))
 import Data.Options ((:=), Options)
 import Data.StrMap (StrMap, singleton)
-import Presto.Backend.Flow (BackendFlow, log)
+import Debug.Trace (spy)
+import Presto.Backend.Flow (BackendFlow, log, ask)
 import Presto.Backend.Interpreter (BackendRuntime(..), Connection(..), runBackend)
 import Presto.Core.Types.API (Request(..))
-import Debug.Trace (spy)
 
 type Config = {
     test :: Boolean
@@ -54,7 +55,7 @@ fooState = FooState { test : true}
 apiRunner :: ∀ e. Request → Aff e String
 apiRunner r = pure "add working api runner!"
 
-redisOptions :: Options CacheConnOpts
+redisOptions :: Options SimpleConnOpts
 redisOptions = host := "127.0.0.1"
          <> port := 6379
          <> db := 0
@@ -64,12 +65,16 @@ connections :: Connection -> StrMap Connection
 connections conn = singleton "DB" conn
 
 logRunner :: forall e a. String -> a -> Aff _ Unit
-logRunner tag value = pure (spy tag) *> pure (spy value) *> pure unit
+logRunner tag value = liftEff $ addToPerf tag value
 
 foo :: BackendFlow FooState Config Unit
-foo = log "foo" "ran" *> pure unit
+foo = ask *> ask *> pure unit
 
-tryRedisConn :: forall e. Options CacheConnOpts -> Aff _ SimpleConn
+foreign import printPerf :: forall a e. Eff e Unit
+foreign import addToPerf :: forall a e. String -> a -> Eff e Unit
+
+
+tryRedisConn :: forall e. Options SimpleConnOpts -> Aff _ SimpleConn
 tryRedisConn opts = do
     eCacheConn <- newConn opts
     case eCacheConn of
@@ -77,11 +82,12 @@ tryRedisConn opts = do
          Left err -> liftEff $ throwException err
 
 main :: forall t1. Eff _ Unit
-main = launchAff_ start *> pure unit
+main = launchAff_ start  *> pure unit
 
 start :: forall t1. Aff _ Unit
 start = do
     conn <- tryRedisConn redisOptions
     let backendRuntime = BackendRuntime apiRunner (connections (Redis conn)) logRunner
     response  <- liftAff $ runExceptT ( runStateT ( runReaderT ( runBackend backendRuntime (foo)) configs) fooState)
+    _ <- liftEff printPerf
     pure unit

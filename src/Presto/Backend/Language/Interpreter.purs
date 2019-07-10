@@ -43,6 +43,7 @@ import Data.Tuple (Tuple(..))
 import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), BackendFlowCommandsWrapper, BackendFlowWrapper(..))
 import Presto.Backend.SystemCommands (runSysCmd)
 import Presto.Backend.Types (BackendAff)
+import Presto.Backend.Util (currentTime)
 import Presto.Core.Flow (runAPIInteraction)
 import Presto.Core.Language.Runtime.API (APIRunner)
 import Sequelize.Types (Conn)
@@ -185,5 +186,18 @@ interpret _ (RunSysCmd cmd next) = R.lift $ S.lift $ E.lift $ runSysCmd cmd >>= 
 
 interpret _ _ = R.lift S.get >>= (E.throwError <<< Tuple (error "Not implemented yet!") )
 
+logger :: forall st rt s eff a. LogRunner -> String -> a -> InterpreterMT rt st (Tuple Error st) eff Unit
+logger logRunner tag message = (R.lift ( S.lift ( E.lift (logRunner ("perf :: " <> tag ) message )))) *> pure unit
+
+-- get the session id and the start time and end time. Have to log it and aggregate these values?
+interpretWithTimer :: forall st rt s eff a.  BackendRuntime -> BackendFlowCommandsWrapper st rt s a -> InterpreterMT rt st (Tuple Error st) eff a
+interpretWithTimer (BackendRuntime a b logRunner) c = do
+  start <- (R.lift ( S.lift ( E.lift (liftEff currentTime))))
+  value <- interpret (BackendRuntime a b logRunner) c 
+  end <- (R.lift ( S.lift ( E.lift (liftEff currentTime))))
+  _ <- (logger logRunner ("out " <> (show c) ) (end-start))
+  pure value
+
+
 runBackend :: forall st rt eff a. BackendRuntime -> BackendFlow st rt a -> InterpreterMT rt st (Tuple Error st) eff a
-runBackend backendRuntime = foldFree (\(BackendFlowWrapper x) -> runExists (interpret backendRuntime) x)
+runBackend backendRuntime = foldFree (\(BackendFlowWrapper x) -> runExists (interpretWithTimer backendRuntime) x)
