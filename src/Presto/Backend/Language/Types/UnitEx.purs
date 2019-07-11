@@ -19,38 +19,27 @@
  along with this program. If not, see <https://www.gnu.org/licenses/agpl.html>.
 -}
 
-module Presto.Backend.Language.Types.MaybeEx
-  ( MaybeEx (..)
-  , fromMaybeEx
-  , toMaybeEx
-  , maybeEx
+module Presto.Backend.Language.Types.UnitEx
+  ( UnitEx (..)
+  , toUnitEx
+  , fromUnitEx
   ) where
 
 import Prelude
 
-import Data.Maybe (Maybe(..), maybe)
 import Data.Foreign.Class (class Decode, class Encode)
 import Data.Generic.Rep (class Generic)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
 
-data MaybeEx a
-  = NothingEx
-  | JustEx a
+data UnitEx = UnitEx
 
-maybeEx :: forall a b. b -> (a -> b) -> MaybeEx a -> b
-maybeEx b f NothingEx  = b
-maybeEx b f (JustEx a) = f a
+toUnitEx :: Unit -> UnitEx
+toUnitEx _ = UnitEx
 
-fromMaybeEx :: forall a. MaybeEx a -> Maybe a
-fromMaybeEx = maybeEx Nothing Just
+fromUnitEx :: UnitEx -> Unit
+fromUnitEx _ = unit
 
-toMaybeEx :: forall a. Maybe a -> MaybeEx a
-toMaybeEx = maybe NothingEx JustEx
-
-
-derive instance genericMaybeEx :: Generic (MaybeEx a) _
-derive instance functorMaybe :: Functor MaybeEx
-instance decodeMaybeEx :: (Decode a) => Decode (MaybeEx a) where decode = defaultDecode
-instance encodeMaybeEx :: (Encode a) => Encode (MaybeEx a) where encode = defaultEncode
-instance eqMaybeEx     :: (Eq a) => Eq (MaybeEx a) where
-  eq m1 m2 = fromMaybeEx m1 == fromMaybeEx m2
+derive instance genericUnitEx :: Generic UnitEx _
+instance decodeUnitEx :: Decode UnitEx where decode = defaultDecode
+instance encodeUnitEx :: Encode UnitEx where encode = defaultEncode
+instance eqUnitEx     :: Eq UnitEx where eq _ _ = true

@@ -19,38 +19,14 @@
  along with this program. If not, see <https://www.gnu.org/licenses/agpl.html>.
 -}
 
-module Presto.Backend.Language.Types.MaybeEx
-  ( MaybeEx (..)
-  , fromMaybeEx
-  , toMaybeEx
-  , maybeEx
+module Presto.Backend.Language.Types.FunctorEx
+  ( doubleMap
+  , (<<$>>)
   ) where
 
 import Prelude
 
-import Data.Maybe (Maybe(..), maybe)
-import Data.Foreign.Class (class Decode, class Encode)
-import Data.Generic.Rep (class Generic)
-import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
+doubleMap :: forall f g a b. Functor f => Functor g => (a -> b) -> f (g a) -> f (g b)
+doubleMap = map <<< map
 
-data MaybeEx a
-  = NothingEx
-  | JustEx a
-
-maybeEx :: forall a b. b -> (a -> b) -> MaybeEx a -> b
-maybeEx b f NothingEx  = b
-maybeEx b f (JustEx a) = f a
-
-fromMaybeEx :: forall a. MaybeEx a -> Maybe a
-fromMaybeEx = maybeEx Nothing Just
-
-toMaybeEx :: forall a. Maybe a -> MaybeEx a
-toMaybeEx = maybe NothingEx JustEx
-
-
-derive instance genericMaybeEx :: Generic (MaybeEx a) _
-derive instance functorMaybe :: Functor MaybeEx
-instance decodeMaybeEx :: (Decode a) => Decode (MaybeEx a) where decode = defaultDecode
-instance encodeMaybeEx :: (Encode a) => Encode (MaybeEx a) where encode = defaultEncode
-instance eqMaybeEx     :: (Eq a) => Eq (MaybeEx a) where
-  eq m1 m2 = fromMaybeEx m1 == fromMaybeEx m2
+infixl 4 doubleMap as <<$>>

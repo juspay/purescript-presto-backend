@@ -25,5 +25,6 @@ module Presto.Backend.Language.Types
 
 import Presto.Backend.Types.API               as X
 import Presto.Backend.Language.Types.DB       as X
+import Presto.Backend.Language.Types.KVDB     as X
 import Presto.Backend.Language.Types.EitherEx as X
 import Presto.Backend.Language.Types.MaybeEx  as X

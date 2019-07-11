@@ -19,38 +19,31 @@
  along with this program. If not, see <https://www.gnu.org/licenses/agpl.html>.
 -}
 
-module Presto.Backend.Language.Types.MaybeEx
-  ( MaybeEx (..)
-  , fromMaybeEx
-  , toMaybeEx
-  , maybeEx
-  ) where
+module Presto.Backend.Language.Types.KVDB where
 
 import Prelude
 
-import Data.Maybe (Maybe(..), maybe)
 import Data.Foreign.Class (class Decode, class Encode)
 import Data.Generic.Rep (class Generic)
+import Data.Generic.Rep.Eq as GEq
+import Data.Generic.Rep.Show as GShow
+import Data.Generic.Rep.Ord as GOrd
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
 
-data MaybeEx a
-  = NothingEx
-  | JustEx a
+-- Custom types that represents the native Multi in our system.
+type KVDBName = String
+type MultiGUID = String
+data Multi = Multi KVDBName MultiGUID
 
-maybeEx :: forall a b. b -> (a -> b) -> MaybeEx a -> b
-maybeEx b f NothingEx  = b
-maybeEx b f (JustEx a) = f a
+getKVDBName :: Multi -> KVDBName
+getKVDBName (Multi name _) = name
 
-fromMaybeEx :: forall a. MaybeEx a -> Maybe a
-fromMaybeEx = maybeEx Nothing Just
+getMultiGUID :: Multi -> MultiGUID
+getMultiGUID (Multi _ guid) = guid
 
-toMaybeEx :: forall a. Maybe a -> MaybeEx a
-toMaybeEx = maybe NothingEx JustEx
-
-
-derive instance genericMaybeEx :: Generic (MaybeEx a) _
-derive instance functorMaybe :: Functor MaybeEx
-instance decodeMaybeEx :: (Decode a) => Decode (MaybeEx a) where decode = defaultDecode
-instance encodeMaybeEx :: (Encode a) => Encode (MaybeEx a) where encode = defaultEncode
-instance eqMaybeEx     :: (Eq a) => Eq (MaybeEx a) where
-  eq m1 m2 = fromMaybeEx m1 == fromMaybeEx m2
+derive instance genericMulti :: Generic Multi _
+instance decodeMulti         :: Decode  Multi where decode  = defaultDecode
+instance encodeMulti         :: Encode  Multi where encode  = defaultEncode
+instance eqMulti             :: Eq      Multi where eq      = GEq.genericEq
+instance showMulti           :: Show    Multi where show    = GShow.genericShow
+instance ordMulti            :: Ord     Multi where compare = GOrd.genericCompare
