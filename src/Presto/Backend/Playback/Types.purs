@@ -53,7 +53,7 @@ type PlayerRuntime =
   { recording :: Recording
   , disableVerify :: Array DisableEntries
   , disableMocking :: Array DisableEntries
-  , skip :: Array DisableEntries
+  --, skip :: Array DisableEntries                 --remove this if not used and implemented 
   , stepRef   :: Ref Int
   , errorRef  :: Ref (Maybe PlaybackError)
   }

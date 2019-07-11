@@ -89,7 +89,7 @@ getCurrentEntryReplayMode playerRt = do
   cur <- readRef playerRt.stepRef
   pure $ do
     (RecordingEntry mode item) <- Array.index playerRt.recording.entries cur
-    pure $ mode 
+    pure $ mode
 
 popNextRRItem
   :: forall eff rrItem native
