@@ -100,6 +100,7 @@ getCurrentEntryReplayMode
   -> Aff (avar :: AVAR | eff) (Maybe EntryReplayingMode)
 getCurrentEntryReplayMode playerRt = do
   cur <- takeVar playerRt.stepVar
+  putVar cur playerRt.stepVar
   pure $ do
     (RecordingEntry mode item) <- Array.index playerRt.recording.entries cur
     pure $ mode
@@ -184,7 +185,7 @@ replayWithGlobalConfig playerRt rrItemDict lAct eNextRRItemRes  = do
 checkForReplayConfig :: PlayerRuntime -> String -> GlobalReplayingMode
 checkForReplayConfig  playerRt tag | Array.elem tag playerRt.disableMocking  = GlobalNoMocking
                                    | Array.elem tag playerRt.disableVerify   = GlobalNoVerify
-                                   | otherwise                         = GlobalNormal
+                                   | otherwise                               = GlobalNormal
 
 replay
   :: forall eff rt st rrItem native. PlayerRuntime
@@ -202,7 +203,6 @@ replay playerRt rrItemDict lAct = do
     NoVerify -> case eNextRRItemRes of
                     Left err -> replayError playerRt err
                     Right (Tuple nextRRItem nextRes) ->  replayWithMock rrItemDict lAct proxy nextRes
-    -- Skip -> replayError playerRt $ PlaybackError {errorType : UnexpectedRecordingEnd , errorMessage : "not sure what to do with skip"}
 
 
 record
