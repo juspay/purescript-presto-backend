@@ -35,7 +35,7 @@ import Debug.Trace (spy)
 import Presto.Backend.APIHandler (callAPI')
 import Presto.Backend.Flow (BackendFlow, log, callAPI, runSysCmd, doAffRR, findOne, getDBConn)
 import Presto.Backend.Language.Types.DB (SqlConn(..), MockedSqlConn(..), SequelizeConn(..))
-import Presto.Backend.Playback.Entries (CallAPIEntry(..), LogEntry(..), RunDBEntry(..))
+import Presto.Backend.Playback.Entries (CallAPIEntry(..), DoAffEntry(..), LogEntry(..), RunDBEntry(..), RunSysCmdEntry(..))
 import Presto.Backend.Playback.Types (EntryReplayingMode(..), PlaybackError(..), PlaybackErrorType(..), RecordingEntry(..))
 import Presto.Backend.Runtime.Interpreter (runBackend)
 import Presto.Backend.Runtime.Types (Connection(..), BackendRuntime(..), RunningMode(..))
@@ -148,8 +148,29 @@ logAndCallAPIScript' = do
 runSysCmdScript :: BackendFlow Unit Unit String
 runSysCmdScript = runSysCmd "echo 'ABC'"
 
+runSysCmdScript' :: BackendFlow Unit Unit String
+runSysCmdScript' = runSysCmd "echo 'DEF'"
+
 doAffScript :: BackendFlow Unit Unit String
 doAffScript = doAffRR (pure "This is result.")
+
+doAffScript' :: BackendFlow Unit Unit String
+doAffScript' = doAffRR (pure "This is result 2.")
+
+callAllScript :: BackendFlow Unit Unit (Tuple (APIResult SomeResponse) (APIResult SomeResponse))
+callAllScript = do
+  logScript
+  _ <- runSysCmdScript
+  _ <- doAffScript
+  callAPIScript
+
+callAllScript' :: BackendFlow Unit Unit (Tuple (APIResult SomeResponse) (APIResult SomeResponse))
+callAllScript' = do
+  logScript'
+  _ <- runSysCmdScript'
+  _ <- doAffScript'
+  callAPIScript'
+
 
 testDB :: String
 testDB = "TestDB"
@@ -379,7 +400,7 @@ runTests = do
         _ -> fail "Unknown result"
 
   describe "Record/Replay Test in Global Config Mode" do
-    it "Record Global Config test : disableEntries Success" $ do
+    it "Record Global Config test : disableEntries Log Success" $ do
       recordingRef <- liftEff $ newRef { entries : [] }
       let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef , disableEntries : ["LogEntry"]}
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording logAndCallAPIScript) unit) unit)
@@ -399,12 +420,23 @@ runTests = do
       let rt = BackendRuntime $ rt' { connections = conns }
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend rt dbScript0) unit) unit)
       case eResult of
-        Right (Tuple (MockedSql (MockedSqlConn dbName)) unit) -> do 
+        Right (Tuple (MockedSql (MockedSqlConn dbName)) unit) -> do
           dbName `shouldEqual` testDB
-          recording <- liftEff $ readRef recordingRef 
+          recording <- liftEff $ readRef recordingRef
           length recording.entries `shouldEqual` 0
         Left err -> fail $ show err
         _ -> fail "Unknown result"
+    it "Record Global Config test : disableEntries CallApi Success" $ do
+      recordingRef <- liftEff $ newRef { entries : [] }
+      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef , disableEntries : ["CallAPIEntry"]}
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording logAndCallAPIScript) unit) unit)
+      case eResult of
+        Left err -> fail $ show err
+        Right _  -> do
+          recording <- liftEff $ readRef recordingRef
+          length recording.entries `shouldEqual` 2
+          index recording.entries 0 `shouldEqual` (Just $ RecordingEntry Normal "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}" )
+          index recording.entries 1 `shouldEqual` (Just $ RecordingEntry  Normal "{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}")
 
     it "Replay Global Config test : log and callAPI success with disableVerify" $ do
       recordingRef <- liftEff $ newRef { entries : [] }
@@ -460,6 +492,127 @@ runTests = do
       curStep  <- liftEff $ readRef stepRef
       isRight eResult2 `shouldEqual` true
       curStep `shouldEqual` 4
+
+    it "Replay Global config test: runSysCmd with disableVerify success" $ do
+      recordingRef <- liftEff $ newRef { entries : [] }
+      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef , disableEntries : [""]}
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording runSysCmdScript) unit) unit)
+      case eResult of
+        Right (Tuple n unit) -> n `shouldEqual` "ABC\n"
+        _ -> fail $ show eResult
+
+      stepRef   <- liftEff $ newRef 0
+      errorRef  <- liftEff $ newRef Nothing
+      recording <- liftEff $ readRef recordingRef
+      let replayingBackendRuntime = BackendRuntime
+            { apiRunner   : failingApiRunner
+            , connections : StrMap.empty
+            , logRunner   : failingLogRunner
+            , affRunner   : failingAffRunner
+            , mode        : ReplayingMode
+              { recording
+              , stepRef
+              , errorRef
+              , disableVerify : ["RunSysCmdEntry"]
+              , disableMocking : []
+              }
+            }
+      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime runSysCmdScript') unit) unit)
+      curStep  <- liftEff $ readRef stepRef
+      case eResult2 of
+        Right (Tuple n unit) -> n `shouldEqual` "ABC\n"
+        Left err -> fail $ show err
+      curStep `shouldEqual` 1
+    it "Replay Global config test: runSysCmd with disableMock success" $ do
+      recordingRef <- liftEff $ newRef { entries : [] }
+      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef , disableEntries : [""]}
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording runSysCmdScript) unit) unit)
+      case eResult of
+        Right (Tuple n unit) -> n `shouldEqual` "ABC\n"
+        _ -> fail $ show eResult
+
+      stepRef   <- liftEff $ newRef 0
+      errorRef  <- liftEff $ newRef Nothing
+      recording <- liftEff $ readRef recordingRef
+      let replayingBackendRuntime = BackendRuntime
+            { apiRunner   : failingApiRunner
+            , connections : StrMap.empty
+            , logRunner   : failingLogRunner
+            , affRunner   : failingAffRunner
+            , mode        : ReplayingMode
+              { recording
+              , stepRef
+              , errorRef
+              , disableVerify : []
+              , disableMocking : ["RunSysCmdEntry"]
+              }
+            }
+      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime runSysCmdScript') unit) unit)
+      curStep  <- liftEff $ readRef stepRef
+      case eResult2 of
+        Right (Tuple n unit) -> n `shouldEqual` "DEF\n"
+        Left err -> fail $ show err
+      curStep `shouldEqual` 1
+    it "Replay Global Config test: doAff with disableVerify success" $ do
+      recordingRef <- liftEff $ newRef { entries : [] }
+      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef ,  disableEntries : [""]}
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording doAffScript) unit) unit)
+      case eResult of
+        Right (Tuple n unit) -> n `shouldEqual` "This is result."
+        _ -> fail $ show eResult
+
+      stepRef   <- liftEff $ newRef 0
+      errorRef  <- liftEff $ newRef Nothing
+      recording <- liftEff $ readRef recordingRef
+      let replayingBackendRuntime = BackendRuntime
+            { apiRunner   : failingApiRunner
+            , connections : StrMap.empty
+            , logRunner   : failingLogRunner
+            , affRunner   : failingAffRunner
+            , mode        : ReplayingMode
+              { recording
+              , stepRef
+              , errorRef
+              , disableVerify : ["DoAffEntry"]
+              , disableMocking : []
+              }
+            }
+      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime doAffScript) unit) unit)
+      curStep  <- liftEff $ readRef stepRef
+      case eResult2 of
+        Right (Tuple n unit) -> n `shouldEqual` "This is result."
+        Left err -> fail $ show err
+      curStep `shouldEqual` 1
+    it "Replay Global Config test: doAff with disableMocking success" $ do
+      recordingRef <- liftEff $ newRef { entries : [] }
+      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef ,  disableEntries : [""]}
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording doAffScript) unit) unit)
+      case eResult of
+        Right (Tuple n unit) -> n `shouldEqual` "This is result."
+        _ -> fail $ show eResult
+
+      stepRef   <- liftEff $ newRef 0
+      errorRef  <- liftEff $ newRef Nothing
+      recording <- liftEff $ readRef recordingRef
+      let replayingBackendRuntime = BackendRuntime
+            { apiRunner   : failingApiRunner
+            , connections : StrMap.empty
+            , logRunner   : failingLogRunner
+            , affRunner   : affRunner
+            , mode        : ReplayingMode
+              { recording
+              , stepRef
+              , errorRef
+              , disableVerify : []
+              , disableMocking : ["DoAffEntry"]
+              }
+            }
+      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime doAffScript') unit) unit)
+      curStep  <- liftEff $ readRef stepRef
+      case eResult2 of
+        Right (Tuple n unit) -> n `shouldEqual` "This is result 2."
+        Left err -> fail $ show err
+      curStep `shouldEqual` 1
   describe "Record/Replay Test in Entry Config Mode" do
     it "Replay the entries in Normal entry Mode" $ do
       recordingRef <- liftEff $ newRef { entries :[ RecordingEntry Normal "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}"
