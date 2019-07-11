@@ -21,8 +21,9 @@ import Debug.Trace (spy)
 import Prelude (class Eq, class Show, Unit, bind, discard, pure, show, unit, ($), (*>), (<>), (==))
 import Presto.Backend.Flow (BackendFlow, callAPI, doAffRR, getDBConn, log, runSysCmd, throwException)
 import Presto.Backend.Language.Types.DB (MockedSqlConn(MockedSqlConn), SqlConn(MockedSql))
-import Presto.Backend.Playback.Types (EntryReplayingMode(..), PlaybackError(..), PlaybackErrorType(..), RecordingEntry(..))
-import Presto.Backend.Runtime.Interpreter (runBackend)
+import Presto.Backend.Playback.Entries (CallAPIEntry(..), DoAffEntry(..), LogEntry(..), RunSysCmdEntry(..))
+import Presto.Backend.Playback.Types (EntryReplayingMode(..), GlobalReplayingMode(..), PlaybackError(..), PlaybackErrorType(..), RecordingEntry(..))
+import Presto.Backend.Runtime.Interpreter (RunningMode(..), runBackend)
 import Presto.Backend.Runtime.Types (Connection(..), BackendRuntime(..), RunningMode(..), KVDBRuntime(..))
 import Presto.Backend.Types.API (class RestEndpoint, APIResult, Request(..), Headers(..), Response(..), ErrorPayload(..), Method(..), defaultDecodeResponse)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
@@ -139,25 +140,10 @@ runSysCmdScript' :: BackendFlow Unit Unit String
 runSysCmdScript' = runSysCmd "echo 'DEF'"
 
 doAffScript :: BackendFlow Unit Unit String
-doAffScript = doAffRR (pure "This is result.")
+doAffScript = doAffRR  (pure  "This is result.")
 
 doAffScript' :: BackendFlow Unit Unit String
 doAffScript' = doAffRR (pure "This is result 2.")
-
-callAllScript :: BackendFlow Unit Unit (Tuple (APIResult SomeResponse) (APIResult SomeResponse))
-callAllScript = do
-  logScript
-  _ <- runSysCmdScript
-  _ <- doAffScript
-  callAPIScript
-
-callAllScript' :: BackendFlow Unit Unit (Tuple (APIResult SomeResponse) (APIResult SomeResponse))
-callAllScript' = do
-  logScript'
-  _ <- runSysCmdScript'
-  _ <- doAffScript'
-  callAPIScript'
-
 
 testDB :: String
 testDB = "TestDB"
@@ -200,8 +186,20 @@ createRegularBackendRuntime = do
 createRecordingBackendRuntime = do
   kvdbRuntime  <- createKVDBRuntime
   recordingVar <- makeVar { entries : [] }
-  let brt = mkBackendRuntime kvdbRuntime $ RecordingMode { recordingVar, disableEntries : []}
+  let brt = mkBackendRuntime kvdbRuntime $ RecordingMode { recordingVar , disableEntries : [] }
   pure $ Tuple brt recordingVar
+
+createRecordingBackendRuntimeWithMode entries  = do
+    kvdbRuntime <- createKVDBRuntime
+    recordingVar <- makeVar {entries : []}
+    let brt = mkBackendRuntime kvdbRuntime $ RecordingMode {recordingVar , disableEntries : entries}
+    pure $ Tuple brt recordingVar
+createRecordingBackendRuntimeWithEntryMode entryMode = do
+  kvdbRuntime  <- createKVDBRuntime
+  recordingVar <- makeVar { entries : entryMode }
+  let brt = mkBackendRuntime kvdbRuntime $ RecordingMode { recordingVar , disableEntries : [] }
+  pure $ Tuple brt recordingVar
+
 
 runTests :: Spec _ Unit
 runTests = do
@@ -221,6 +219,7 @@ runTests = do
         Right (Tuple (Tuple eRes1 eRes2) _) -> do
           isRight eRes1 `shouldEqual` true    -- TODO: check particular results
           isRight eRes2 `shouldEqual` false   -- TODO: check particular results
+
   describe "Recording/replaying mode tests" do
     it "Record test" $ do
       Tuple brt recordingVar <- createRecordingBackendRuntime
@@ -231,10 +230,10 @@ runTests = do
           recording <- readVar recordingVar
           length recording.entries `shouldEqual` 4
           index recording.entries 0 `shouldEqual` (Just $ RecordingEntry Normal "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}")
-          index recording.entries 1 `shouldEqual` (Just $ RecordingEntry Normal "{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}")
+          index recording.entries 1 `shouldEqual` (Just $ RecordingEntry Normal"{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}")
           index recording.entries 2 `shouldEqual` (Just (RecordingEntry Normal "{\"jsonResult\":{\"contents\":{\"string\":\"Hello there!\",\"code\":1},\"tag\":\"RightEx\"},\"jsonRequest\":{\"url\":\"1\",\"payload\":\"{\\\"number\\\":1,\\\"code\\\":1}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"))
 
-          index recording.entries 3 `shouldEqual` (Just (RecordingEntry Normal "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":{\"url\":\"2\",\"payload\":\"{\\\"number\\\":2,\\\"code\\\":2}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"))
+          index recording.entries 3 `shouldEqual` (Just (RecordingEntry Normal  "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":{\"url\":\"2\",\"payload\":\"{\\\"number\\\":2,\\\"code\\\":2}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"))
 
     it "Record / replay test: log and callAPI success" $ do
       Tuple brt recordingVar <- createRecordingBackendRuntime
@@ -253,10 +252,10 @@ runTests = do
             , kvdbRuntime
             , mode        : ReplayingMode
               { recording
-              , stepVar
-              , errorVar
               , disableVerify : []
               , disableMocking : []
+              , stepVar
+              , errorVar
               }
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
@@ -281,10 +280,10 @@ runTests = do
             , kvdbRuntime
             , mode        : ReplayingMode
               { recording
-              , stepVar
-              , errorVar
               , disableVerify : []
               , disableMocking : []
+              , stepVar
+              , errorVar
               }
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
@@ -314,10 +313,10 @@ runTests = do
             , kvdbRuntime
             , mode        : ReplayingMode
               { recording
-              , stepVar
-              , errorVar
               , disableVerify : []
               , disableMocking : []
+              , stepVar
+              , errorVar
               }
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
@@ -346,10 +345,10 @@ runTests = do
             , kvdbRuntime
             , mode        : ReplayingMode
               { recording
-              , stepVar
-              , errorVar
               , disableVerify : []
               , disableMocking : []
+              , stepVar
+              , errorVar
               }
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime runSysCmdScript) unit) unit)
@@ -378,10 +377,10 @@ runTests = do
             , kvdbRuntime
             , mode        : ReplayingMode
               { recording
-              , stepVar
-              , errorVar
               , disableVerify : []
               , disableMocking : []
+              , stepVar
+              , errorVar
               }
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime $ throwException "This is error!") unit) unit)
@@ -410,10 +409,10 @@ runTests = do
             , kvdbRuntime
             , mode        : ReplayingMode
               { recording
-              , stepVar
-              , errorVar
               , disableVerify : []
               , disableMocking : []
+              , stepVar
+              , errorVar
               }
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime doAffScript) unit) unit)
@@ -432,312 +431,272 @@ runTests = do
         Right (Tuple (MockedSql (MockedSqlConn dbName)) unit) -> dbName `shouldEqual` testDB
         Left err -> fail $ show err
         _ -> fail "Unknown result"
-
- {- describe "Record/Replay Test in Global Config Mode" do
-    it "Record Global Config test : disableEntries Success" $ do
-      recordingVar <- makeVar { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef , disableEntries : ["LogEntry"]}
-      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording logAndCallAPIScript) unit) unit)
+  describe "Recording  test with Global Config Mode" do
+    it "Record Test : LogEntry success" $ do
+      Tuple brt recordingVar <- createRecordingBackendRuntimeWithMode ["LogEntry"]
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt logAndCallAPIScript) unit) unit)
       case eResult of
         Left err -> fail $ show err
         Right _  -> do
-          recording <- liftEff $ readRef recordingRef
+          recording <- readVar recordingVar
           length recording.entries `shouldEqual` 2
-          index recording.entries 0 `shouldEqual` (Just $ RecordingEntry Normal  "{\"jsonResult\":{\"contents\":\"{\\\"string\\\":\\\"Hello there!\\\",\\\"code\\\":1}\",\"tag\":\"RightEx\"},\"jsonRequest\":\"{\\\"url\\\":\\\"1\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":1,\\\\\\\"code\\\\\\\":1}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\"}"
-            )
-          index recording.entries 1 `shouldEqual` (Just $ RecordingEntry Normal "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":\"{\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\"}"
-             )
-    it "Record Global Config test : disableEntries GetDBConn Success" $ do
-      recordingVar <- makeVar { entries : [] }
-      let conns = StrMap.singleton testDB $ SqlConn $ MockedSql $ MockedSqlConn testDB
-      let (BackendRuntime rt') = backendRuntime $ RecordingMode {recordingRef , disableEntries : ["GetDBConnEntry"]}
-      let rt = BackendRuntime $ rt' { connections = conns }
-      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend rt dbScript0) unit) unit)
-      case eResult of
-        Right (Tuple (MockedSql (MockedSqlConn dbName)) unit) -> do
-          dbName `shouldEqual` testDB
-          recording <- liftEff $ readRef recordingRef
-          length recording.entries `shouldEqual` 0
-        Left err -> fail $ show err
-        _ -> fail "Unknown result"
-    it "Record Global Config test : disableEntries CallApi Success" $ do
-      recordingRef <- liftEff $ newRef { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef , disableEntries : ["CallAPIEntry"]}
-      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording logAndCallAPIScript) unit) unit)
+          index recording.entries 0 `shouldEqual` (Just (RecordingEntry Normal "{\"jsonResult\":{\"contents\":{\"string\":\"Hello there!\",\"code\":1},\"tag\":\"RightEx\"},\"jsonRequest\":{\"url\":\"1\",\"payload\":\"{\\\"number\\\":1,\\\"code\\\":1}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"))
+
+          index recording.entries 1 `shouldEqual` (Just (RecordingEntry Normal  "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":{\"url\":\"2\",\"payload\":\"{\\\"number\\\":2,\\\"code\\\":2}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"))
+
+    it "Record Test : CallAPIEntry success" $ do
+      Tuple brt recordingVar <- createRecordingBackendRuntimeWithMode ["CallAPIEntry"]
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt logAndCallAPIScript) unit) unit)
       case eResult of
         Left err -> fail $ show err
         Right _  -> do
-          recording <- liftEff $ readRef recordingRef
+          recording <- readVar recordingVar
           length recording.entries `shouldEqual` 2
-          index recording.entries 0 `shouldEqual` (Just $ RecordingEntry Normal "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}" )
-          index recording.entries 1 `shouldEqual` (Just $ RecordingEntry  Normal "{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}")
+          index recording.entries 0 `shouldEqual` (Just $ RecordingEntry Normal "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}")
+          index recording.entries 1 `shouldEqual` (Just $ RecordingEntry Normal"{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}")
+    it "Record Test: runSysCmd success" $ do
+      Tuple brt recordingVar <- createRecordingBackendRuntimeWithMode ["RunSysCmdEntry"]
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt runSysCmdScript) unit) unit)
+      case eResult of
+        Right (Tuple n unit) -> n `shouldEqual` "ABC\n"
+        _ -> 0 `shouldEqual` 0
 
-    it "Replay Global Config test : log and callAPI success with disableVerify" $ do
-      recordingVar <- makeVar { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef , disableEntries : [""]}
-      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording logAndCallAPIScript) unit) unit)
+    it "Record test: doAff success" $ do
+      Tuple brt recordingVar <- createRecordingBackendRuntimeWithMode ["DoAffEntry"]
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt doAffScript) unit) unit)
+      case eResult of
+        Right (Tuple n unit) -> n `shouldEqual` "This is result."
+        _ -> 0 `shouldEqual` 0
+  describe "Replaying test with disable Verify Global Config Mode" do
+    it "Replay test : LogEntry" $ do
+      Tuple brt recordingVar <- createRecordingBackendRuntime
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt logScript) unit) unit)
       isRight eResult `shouldEqual` true
 
-      stepRef   <- liftEff $ newRef 0
-      errorRef  <- liftEff $ newRef Nothing
-      recording <- liftEff $ readRef recordingRef
+      stepVar     <- makeVar 0
+      errorVar    <- makeVar Nothing
+      recording   <- readVar recordingVar
+      kvdbRuntime <- createKVDBRuntime
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
             , logRunner   : failingLogRunner
             , affRunner   : failingAffRunner
+            , kvdbRuntime
             , mode        : ReplayingMode
               { recording
-              , stepRef
-              , errorRef
-              , disableVerify : ["LogEntry","CallAPIEntry"]
-              , disableMocking : [""]
+              , disableVerify : ["LogEntry"]
+              , disableMocking : []
+              , stepVar
+              , errorVar
               }
             }
-      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript') unit) unit)
-      --find way to show that the responses stored in eResult1 is same as of eResult2
-      curStep  <- liftEff $ readRef stepRef
+      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logScript') unit) unit)
+      curStep  <- readVar stepVar
       isRight eResult2 `shouldEqual` true
-      curStep `shouldEqual` 4
-    it "Replay Global Config test : log and callAPI success with disableMocking" $ do
-      recordingVar <- makeVar { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef , disableEntries : [""]}
-      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording logAndCallAPIScript) unit) unit)
+      curStep `shouldEqual` 2
+    it "Replay test : CallAPIEntry" $ do
+      Tuple brt recordingVar <- createRecordingBackendRuntime
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt callAPIScript) unit) unit)
       isRight eResult `shouldEqual` true
 
-      stepRef   <- liftEff $ newRef 0
-      errorRef  <- liftEff $ newRef Nothing
-      recording <- liftEff $ readRef recordingRef
+      stepVar     <- makeVar 0
+      errorVar    <- makeVar Nothing
+      recording   <- readVar recordingVar
+      kvdbRuntime <- createKVDBRuntime
+      let replayingBackendRuntime = BackendRuntime
+            { apiRunner   : failingApiRunner
+            , connections : StrMap.empty
+            , logRunner   : failingLogRunner
+            , affRunner   : failingAffRunner
+            , kvdbRuntime
+            , mode        : ReplayingMode
+              { recording
+              , disableVerify : ["CallAPIEntry"]
+              , disableMocking : []
+              , stepVar
+              , errorVar
+              }
+            }
+      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime callAPIScript') unit) unit)
+      curStep  <- readVar stepVar
+      isRight eResult2 `shouldEqual` true
+      curStep `shouldEqual` 2
+  describe "Replaying Test with disableMocking Global Config mode" $ do
+    it "Replay Test : LogEntry and CallAPIEntry" $ do
+      Tuple brt recordingVar <- createRecordingBackendRuntime
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt logAndCallAPIScript) unit) unit)
+      isRight eResult `shouldEqual` true
+
+      stepVar     <- makeVar 0
+      errorVar    <- makeVar Nothing
+      recording   <- readVar recordingVar
+      kvdbRuntime <- createKVDBRuntime
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : apiRunner
             , connections : StrMap.empty
             , logRunner   : logRunner
-            , affRunner   : affRunner
+            , affRunner   : failingAffRunner
+            , kvdbRuntime
             , mode        : ReplayingMode
               { recording
-              , stepRef
-              , errorRef
-              , disableVerify : [""]
+              , disableVerify : []
               , disableMocking : ["LogEntry","CallAPIEntry"]
+              , stepVar
+              , errorVar
               }
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript') unit) unit)
-      --find way to show that the responses stored in eResult1 is same as of eResult2
-      curStep  <- liftEff $ readRef stepRef
-      isRight eResult2 `shouldEqual` true
+      curStep  <- readVar stepVar
       curStep `shouldEqual` 4
-
-    it "Replay Global config test: runSysCmd with disableVerify success" $ do
-      recordingRef <- liftEff $ newRef { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef , disableEntries : [""]}
-      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording runSysCmdScript) unit) unit)
+    it "Replay Test : DoAffEntry" $ do
+      Tuple brt recordingVar <- createRecordingBackendRuntime
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt doAffScript) unit) unit)
       case eResult of
-        Right (Tuple n unit) -> n `shouldEqual` "ABC\n"
+        Right (Tuple n unit) -> n `shouldEqual` "This is result."
         _ -> fail $ show eResult
 
-      stepRef   <- liftEff $ newRef 0
-      errorRef  <- liftEff $ newRef Nothing
-      recording <- liftEff $ readRef recordingRef
+      stepVar     <- makeVar 0
+      errorVar    <- makeVar Nothing
+      recording   <- readVar recordingVar
+      kvdbRuntime <- createKVDBRuntime
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
             , logRunner   : failingLogRunner
-            , affRunner   : failingAffRunner
+            , affRunner   : affRunner
+            , kvdbRuntime
             , mode        : ReplayingMode
               { recording
-              , stepRef
-              , errorRef
-              , disableVerify : ["RunSysCmdEntry"]
-              , disableMocking : []
+              , disableVerify : []
+              , disableMocking : ["DoAffEntry"]
+              , stepVar
+              , errorVar
               }
             }
-      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime runSysCmdScript') unit) unit)
-      curStep  <- liftEff $ readRef stepRef
+      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime doAffScript') unit) unit)
       case eResult2 of
-        Right (Tuple n unit) -> n `shouldEqual` "ABC\n"
-        Left err -> fail $ show err
+        Right (Tuple n unit) -> n `shouldEqual` "This is result 2."
+        _ -> fail $ show eResult
+
+      curStep  <- readVar stepVar
       curStep `shouldEqual` 1
-    it "Replay Global config test: runSysCmd with disableMock success" $ do
-      recordingRef <- liftEff $ newRef { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef , disableEntries : [""]}
-      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording runSysCmdScript) unit) unit)
+    it "Replay test: runSysCmd success" $ do
+      Tuple brt recordingVar <- createRecordingBackendRuntime
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt runSysCmdScript) unit) unit)
       case eResult of
         Right (Tuple n unit) -> n `shouldEqual` "ABC\n"
         _ -> fail $ show eResult
 
-      stepRef   <- liftEff $ newRef 0
-      errorRef  <- liftEff $ newRef Nothing
-      recording <- liftEff $ readRef recordingRef
+      stepVar     <- makeVar 0
+      errorVar    <- makeVar Nothing
+      recording   <- readVar recordingVar
+      kvdbRuntime <- createKVDBRuntime
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
             , logRunner   : failingLogRunner
             , affRunner   : failingAffRunner
+            , kvdbRuntime
             , mode        : ReplayingMode
               { recording
-              , stepRef
-              , errorRef
               , disableVerify : []
               , disableMocking : ["RunSysCmdEntry"]
+              , stepVar
+              , errorVar
               }
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime runSysCmdScript') unit) unit)
-      curStep  <- liftEff $ readRef stepRef
+      curStep  <- readVar stepVar
       case eResult2 of
         Right (Tuple n unit) -> n `shouldEqual` "DEF\n"
         Left err -> fail $ show err
       curStep `shouldEqual` 1
-    it "Replay Global Config test: doAff with disableVerify success" $ do
-      recordingRef <- liftEff $ newRef { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef ,  disableEntries : [""]}
-      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording doAffScript) unit) unit)
-      case eResult of
-        Right (Tuple n unit) -> n `shouldEqual` "This is result."
-        _ -> fail $ show eResult
-
-      stepRef   <- liftEff $ newRef 0
-      errorRef  <- liftEff $ newRef Nothing
-      recording <- liftEff $ readRef recordingRef
-      let replayingBackendRuntime = BackendRuntime
-            { apiRunner   : failingApiRunner
-            , connections : StrMap.empty
-            , logRunner   : failingLogRunner
-            , affRunner   : failingAffRunner
-            , mode        : ReplayingMode
-              { recording
-              , stepRef
-              , errorRef
-              , disableVerify : ["DoAffEntry"]
-              , disableMocking : []
+  describe "Replaying Test in Entry config Mode" do
+      it "Replay Test in Normal Entry Mode : Log and CallAPI" $ do
+        let entryMode = [
+                         RecordingEntry Normal "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}"
+                        ,RecordingEntry Normal "{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}"
+                        ,RecordingEntry Normal "{\"jsonResult\":{\"contents\":{\"string\":\"Hello there!\",\"code\":1},\"tag\":\"RightEx\"},\"jsonRequest\":{\"url\":\"1\",\"payload\":\"{\\\"number\\\":1,\\\"code\\\":1}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"
+                        ,RecordingEntry Normal "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request:                  {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":{\"url\":\"2\",\"payload\":\"{\\\"number\\\":2,\\\"code\\\":2}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"
+                        ]
+        Tuple brt recordingVar <- createRecordingBackendRuntimeWithEntryMode entryMode
+        stepVar     <- makeVar 0
+        errorVar    <- makeVar Nothing
+        recording   <- readVar recordingVar
+        kvdbRuntime <- createKVDBRuntime
+        let replayingBackendRuntime = BackendRuntime
+              { apiRunner   : failingApiRunner
+              , connections : StrMap.empty
+              , logRunner   : failingLogRunner
+              , affRunner   : failingAffRunner
+              , kvdbRuntime
+              , mode        : ReplayingMode
+                { recording
+                , disableVerify : []
+                , disableMocking : []
+                , stepVar
+                , errorVar
+                }
               }
-            }
-      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime doAffScript) unit) unit)
-      curStep  <- liftEff $ readRef stepRef
-      case eResult2 of
-        Right (Tuple n unit) -> n `shouldEqual` "This is result."
-        Left err -> fail $ show err
-      curStep `shouldEqual` 1
-    it "Replay Global Config test: doAff with disableMocking success" $ do
-      recordingRef <- liftEff $ newRef { entries : [] }
-      let backendRuntimeRecording = backendRuntime $ RecordingMode { recordingRef ,  disableEntries : [""]}
-      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend backendRuntimeRecording doAffScript) unit) unit)
-      case eResult of
-        Right (Tuple n unit) -> n `shouldEqual` "This is result."
-        _ -> fail $ show eResult
-
-      stepRef   <- liftEff $ newRef 0
-      errorRef  <- liftEff $ newRef Nothing
-      recording <- liftEff $ readRef recordingRef
-      let replayingBackendRuntime = BackendRuntime
-            { apiRunner   : failingApiRunner
-            , connections : StrMap.empty
-            , logRunner   : failingLogRunner
-            , affRunner   : affRunner
-            , mode        : ReplayingMode
-              { recording
-              , stepRef
-              , errorRef
-              , disableVerify : []
-              , disableMocking : ["DoAffEntry"]
+        eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
+        curStep  <- readVar stepVar
+        curStep `shouldEqual` 4
+      it "Replay Test in NoVerify Entry Mode : Log and CallAPI" $ do
+        let entryMode = [
+                         RecordingEntry NoVerify "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}"
+                        ,RecordingEntry NoVerify "{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}"
+                        ,RecordingEntry NoVerify "{\"jsonResult\":{\"contents\":{\"string\":\"Hello there!\",\"code\":1},\"tag\":\"RightEx\"},\"jsonRequest\":{\"url\":\"1\",\"payload\":\"{\\\"number\\\":1,\\\"code\\\":1}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"
+                        ,RecordingEntry NoVerify "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request:                  {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":{\"url\":\"2\",\"payload\":\"{\\\"number\\\":2,\\\"code\\\":2}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"
+                        ]
+        Tuple brt recordingVar <- createRecordingBackendRuntimeWithEntryMode entryMode
+        stepVar     <- makeVar 0
+        errorVar    <- makeVar Nothing
+        recording   <- readVar recordingVar
+        kvdbRuntime <- createKVDBRuntime
+        let replayingBackendRuntime = BackendRuntime
+              { apiRunner   : failingApiRunner
+              , connections : StrMap.empty
+              , logRunner   : failingLogRunner
+              , affRunner   : failingAffRunner
+              , kvdbRuntime
+              , mode        : ReplayingMode
+                { recording
+                , disableVerify : []
+                , disableMocking : ["LogEntry"]                 -- This will have no efect since the priority of Entry Configs are higher than Global Config
+                , stepVar
+                , errorVar
+                }
               }
-            }
-      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime doAffScript') unit) unit)
-      curStep  <- liftEff $ readRef stepRef
-      case eResult2 of
-        Right (Tuple n unit) -> n `shouldEqual` "This is result 2."
-        Left err -> fail $ show err
-      curStep `shouldEqual` 1
-  describe "Record/Replay Test in Entry Config Mode" do
-    it "Replay the entries in Normal entry Mode" $ do
-      recordingRef <- liftEff $ newRef { entries :[ RecordingEntry Normal "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}"
-                                                  , RecordingEntry  Normal "{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}"
-                                                  , RecordingEntry Normal  "{\"jsonResult\":{\"contents\":\"{\\\"string\\\":\\\"Hello there!\\\",\\\"code\\\":1}\",\"tag\":\"RightEx\"},\"jsonRequest\":\"{\\\"url\\\":\\\"1\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":1,\\\\\\\"code\\\\\\\":1}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\"}"
-                                                  , RecordingEntry Normal "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":\"{\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\"}"
-                                                  ]}
-      stepRef   <- liftEff $ newRef 0
-      errorRef  <- liftEff $ newRef Nothing
-      recording <- liftEff $ readRef recordingRef
-      let replayingBackendRuntime = BackendRuntime
-            { apiRunner   : apiRunner
-            , connections : StrMap.empty
-            , logRunner   : logRunner
-            , affRunner   : affRunner
-            , mode        : ReplayingMode
-              { recording
-              , stepRef
-              , errorRef
-              , disableVerify : [""]
-              , disableMocking : [""]
+        eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript') unit) unit)
+        curStep  <- readVar stepVar
+        curStep `shouldEqual` 4
+      it "Replay Test in NoVerify Entry Mode : Log and CallAPI" $ do
+        let entryMode = [
+                         RecordingEntry NoMock "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}"
+                        ,RecordingEntry NoMock "{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}"
+                        ,RecordingEntry NoMock "{\"jsonResult\":{\"contents\":{\"string\":\"Hello there!\",\"code\":1},\"tag\":\"RightEx\"},\"jsonRequest\":{\"url\":\"1\",\"payload\":\"{\\\"number\\\":1,\\\"code\\\":1}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"
+                        ,RecordingEntry NoMock "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request:                  {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":{\"url\":\"2\",\"payload\":\"{\\\"number\\\":2,\\\"code\\\":2}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"
+                        ]
+        Tuple brt recordingVar <- createRecordingBackendRuntimeWithEntryMode entryMode
+        stepVar     <- makeVar 0
+        errorVar    <- makeVar Nothing
+        recording   <- readVar recordingVar
+        kvdbRuntime <- createKVDBRuntime
+        let replayingBackendRuntime = BackendRuntime
+              { apiRunner   : apiRunner
+              , connections : StrMap.empty
+              , logRunner   : logRunner
+              , affRunner   : failingAffRunner
+              , kvdbRuntime
+              , mode        : ReplayingMode
+                { recording
+                , disableVerify : []
+                , disableMocking : []            
+                , stepVar
+                , errorVar
+                }
               }
-            }
-      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
-      --find way to show that the responses stored in eResult1 is same as of eResult2
-      curStep  <- liftEff $ readRef stepRef
-      isRight eResult2 `shouldEqual` true
-      curStep `shouldEqual` 4
-    it "Replay the entries in NoVerify entry Mode" $ do
-      recordingRef <- liftEff $ newRef { entries :[ RecordingEntry NoVerify "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}"
-                                                  , RecordingEntry NoVerify "{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}"
-                                                  , RecordingEntry NoVerify  "{\"jsonResult\":{\"contents\":\"{\\\"string\\\":\\\"Hello there!\\\",\\\"code\\\":1}\",\"tag\":\"RightEx\"},\"jsonRequest\":\"{\\\"url\\\":\\\"1\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":1,\\\\\\\"code\\\\\\\":1}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\"}"
-                                                  , RecordingEntry NoVerify "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":\"{\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\"}"
-                                                  ]}
-      stepRef   <- liftEff $ newRef 0
-      errorRef  <- liftEff $ newRef Nothing
-      recording <- liftEff $ readRef recordingRef
-      let replayingBackendRuntime = BackendRuntime
-            { apiRunner   : apiRunner
-            , connections : StrMap.empty
-            , logRunner   : logRunner
-            , affRunner   : affRunner
-            , mode        : ReplayingMode
-              { recording
-              , stepRef
-              , errorRef
-              , disableVerify : [""]
-              , disableMocking : [""]
-              }
-            }
-      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript') unit) unit)
-      curStep  <- liftEff $ readRef stepRef
-      isRight eResult2 `shouldEqual` true
-      curStep `shouldEqual` 4
-    it "Replay the entries in NoMock entry Mode" $ do
-      recordingRef <- liftEff $ newRef { entries :[ RecordingEntry NoMock "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}"
-                                                  , RecordingEntry NoMock "{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}"
-                                                  , RecordingEntry NoMock  "{\"jsonResult\":{\"contents\":\"{\\\"string\\\":\\\"Hello there!\\\",\\\"code\\\":1}\",\"tag\":\"RightEx\"},\"jsonRequest\":\"{\\\"url\\\":\\\"1\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":1,\\\\\\\"code\\\\\\\":1}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\"}"
-                                                  , RecordingEntry NoMock "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":\"{\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\"}"
-                                                  ]}
-      stepRef   <- liftEff $ newRef 0
-      errorRef  <- liftEff $ newRef Nothing
-      recording <- liftEff $ readRef recordingRef
-      let replayingBackendRuntime = BackendRuntime
-            { apiRunner   : apiRunner
-            , connections : StrMap.empty
-            , logRunner   : logRunner
-            , affRunner   : affRunner
-            , mode        : ReplayingMode
-              { recording
-              , stepRef
-              , errorRef
-              , disableVerify : [""]
-              , disableMocking : [""]
-              }
-            }
-      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript') unit) unit)
-      curStep  <- liftEff $ readRef stepRef
-      isRight eResult2 `shouldEqual` true
-      curStep `shouldEqual` 4
-
-
-    --
-    -- it "Record / replay test: db success test1" $ do
-    --   recordingVar <- makeVar { entries : [] }
-    --   let conns = StrMap.singleton testDB $ SqlConn $ MockedSql $ MockedSqlConn testDB
-    --   let (BackendRuntime rt') = backendRuntime $ RecordingMode { recordingRef }
-    --   let rt = BackendRuntime $ rt' { connections = conns }
-    --   eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend rt dbScript1) unit) unit)
-    --   case eResult of
-    --     Right (Tuple (MockedSql (MockedSqlConn dbName)) unit) -> dbName `shouldEqual` testDB
-    --     Left err -> fail $ show err
-    --     _ -> fail "Unknown result"
--}
+        eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript') unit) unit)
+        curStep  <- readVar stepVar
+        curStep `shouldEqual` 4
