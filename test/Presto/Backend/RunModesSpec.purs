@@ -44,7 +44,7 @@ import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
 import Sequelize.Class (class Model, modelCols)
 import Sequelize.Types (Conn, Instance, SEQUELIZE)
 import Test.Spec (Spec, describe, it)
-import Test.Spec.Assertions (shouldEqual, fail)
+import Test.Spec.Assertions (fail, shouldEqual)
 
 data SomeRequest = SomeRequest
   { code   :: Int
@@ -370,7 +370,7 @@ runTests = do
     it "Record / replay test: getDBConn success" $ do
       recordingRef <- liftEff $ newRef { entries : [] }
       let conns = StrMap.singleton testDB $ SqlConn $ MockedSql $ MockedSqlConn testDB
-      let (BackendRuntime rt') = backendRuntime $ RecordingMode {recordingRef , disableEntries : ["RunDBEntry"]}
+      let (BackendRuntime rt') = backendRuntime $ RecordingMode {recordingRef , disableEntries : []}
       let rt = BackendRuntime $ rt' { connections = conns }
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend rt dbScript0) unit) unit)
       case eResult of
@@ -392,6 +392,19 @@ runTests = do
             )
           index recording.entries 1 `shouldEqual` (Just $ RecordingEntry Normal "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":\"{\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\"}"
              )
+    it "Record Global Config test : disableEntries GetDBConn Success" $ do
+      recordingRef <- liftEff $ newRef { entries : [] }
+      let conns = StrMap.singleton testDB $ SqlConn $ MockedSql $ MockedSqlConn testDB
+      let (BackendRuntime rt') = backendRuntime $ RecordingMode {recordingRef , disableEntries : ["GetDBConnEntry"]}
+      let rt = BackendRuntime $ rt' { connections = conns }
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend rt dbScript0) unit) unit)
+      case eResult of
+        Right (Tuple (MockedSql (MockedSqlConn dbName)) unit) -> do 
+          dbName `shouldEqual` testDB
+          recording <- liftEff $ readRef recordingRef 
+          length recording.entries `shouldEqual` 0
+        Left err -> fail $ show err
+        _ -> fail "Unknown result"
 
     it "Replay Global Config test : log and callAPI success with disableVerify" $ do
       recordingRef <- liftEff $ newRef { entries : [] }
