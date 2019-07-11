@@ -73,9 +73,7 @@ failingApiRunner :: forall e. Request -> Aff e String
 failingApiRunner _ = throwError $ error "API Runner should not be called."
 
 -- TODO: lazy?
-failingAffRunner :: forall a. Aff _
- a -> Aff _
- a
+failingAffRunner :: forall a. Aff _ a -> Aff _ a
 failingAffRunner _ = throwError $ error "Aff Runner should not be called."
 
 apiRunner :: forall e. Request -> Aff e String
@@ -93,9 +91,7 @@ apiRunner r
     }
 
 -- TODO: lazy?
-affRunner :: forall a. Aff _
- a -> Aff _
- a
+affRunner :: forall a. Aff _ a -> Aff _ a
 affRunner aff = aff
 
 emptyHeaders :: Headers
@@ -232,7 +228,6 @@ runTests = do
           index recording.entries 0 `shouldEqual` (Just $ RecordingEntry Normal "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}")
           index recording.entries 1 `shouldEqual` (Just $ RecordingEntry Normal"{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}")
           index recording.entries 2 `shouldEqual` (Just (RecordingEntry Normal "{\"jsonResult\":{\"contents\":{\"string\":\"Hello there!\",\"code\":1},\"tag\":\"RightEx\"},\"jsonRequest\":{\"url\":\"1\",\"payload\":\"{\\\"number\\\":1,\\\"code\\\":1}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"))
-
           index recording.entries 3 `shouldEqual` (Just (RecordingEntry Normal  "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":{\"url\":\"2\",\"payload\":\"{\\\"number\\\":2,\\\"code\\\":2}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"))
 
     it "Record / replay test: log and callAPI success" $ do
@@ -431,6 +426,7 @@ runTests = do
         Right (Tuple (MockedSql (MockedSqlConn dbName)) unit) -> dbName `shouldEqual` testDB
         Left err -> fail $ show err
         _ -> fail "Unknown result"
+
   describe "Recording  test with Global Config Mode" do
     it "Record Test : LogEntry success" $ do
       Tuple brt recordingVar <- createRecordingBackendRuntimeWithMode ["LogEntry"]
@@ -441,7 +437,6 @@ runTests = do
           recording <- readVar recordingVar
           length recording.entries `shouldEqual` 2
           index recording.entries 0 `shouldEqual` (Just (RecordingEntry Normal "{\"jsonResult\":{\"contents\":{\"string\":\"Hello there!\",\"code\":1},\"tag\":\"RightEx\"},\"jsonRequest\":{\"url\":\"1\",\"payload\":\"{\\\"number\\\":1,\\\"code\\\":1}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"))
-
           index recording.entries 1 `shouldEqual` (Just (RecordingEntry Normal  "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":{\"url\":\"2\",\"payload\":\"{\\\"number\\\":2,\\\"code\\\":2}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"))
 
     it "Record Test : CallAPIEntry success" $ do
@@ -454,19 +449,21 @@ runTests = do
           length recording.entries `shouldEqual` 2
           index recording.entries 0 `shouldEqual` (Just $ RecordingEntry Normal "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}")
           index recording.entries 1 `shouldEqual` (Just $ RecordingEntry Normal"{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}")
+
     it "Record Test: runSysCmd success" $ do
       Tuple brt recordingVar <- createRecordingBackendRuntimeWithMode ["RunSysCmdEntry"]
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt runSysCmdScript) unit) unit)
       case eResult of
         Right (Tuple n unit) -> n `shouldEqual` "ABC\n"
-        _ -> 0 `shouldEqual` 0
+        _ -> fail "Test failed."
 
     it "Record test: doAff success" $ do
       Tuple brt recordingVar <- createRecordingBackendRuntimeWithMode ["DoAffEntry"]
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt doAffScript) unit) unit)
       case eResult of
         Right (Tuple n unit) -> n `shouldEqual` "This is result."
-        _ -> 0 `shouldEqual` 0
+        _ -> fail "Test failed."
+
   describe "Replaying test with disable Verify Global Config Mode" do
     it "Replay test : LogEntry" $ do
       Tuple brt recordingVar <- createRecordingBackendRuntime
@@ -549,6 +546,7 @@ runTests = do
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript') unit) unit)
       curStep  <- readVar stepVar
       curStep `shouldEqual` 4
+
     it "Replay Test : DoAffEntry" $ do
       Tuple brt recordingVar <- createRecordingBackendRuntime
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt doAffScript) unit) unit)
@@ -612,6 +610,7 @@ runTests = do
         Right (Tuple n unit) -> n `shouldEqual` "DEF\n"
         Left err -> fail $ show err
       curStep `shouldEqual` 1
+
   describe "Replaying Test in Entry config Mode" do
       it "Replay Test in Normal Entry Mode : Log and CallAPI" $ do
         let entryMode = [
@@ -642,12 +641,12 @@ runTests = do
         eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
         curStep  <- readVar stepVar
         curStep `shouldEqual` 4
+
       it "Replay Test in NoVerify Entry Mode : Log and CallAPI" $ do
-        let entryMode = [
-                         RecordingEntry NoVerify "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}"
-                        ,RecordingEntry NoVerify "{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}"
-                        ,RecordingEntry NoVerify "{\"jsonResult\":{\"contents\":{\"string\":\"Hello there!\",\"code\":1},\"tag\":\"RightEx\"},\"jsonRequest\":{\"url\":\"1\",\"payload\":\"{\\\"number\\\":1,\\\"code\\\":1}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"
-                        ,RecordingEntry NoVerify "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request:                  {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":{\"url\":\"2\",\"payload\":\"{\\\"number\\\":2,\\\"code\\\":2}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"
+        let entryMode = [ RecordingEntry NoVerify "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}"
+                        , RecordingEntry NoVerify "{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}"
+                        , RecordingEntry NoVerify "{\"jsonResult\":{\"contents\":{\"string\":\"Hello there!\",\"code\":1},\"tag\":\"RightEx\"},\"jsonRequest\":{\"url\":\"1\",\"payload\":\"{\\\"number\\\":1,\\\"code\\\":1}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"
+                        , RecordingEntry NoVerify "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request:                  {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":{\"url\":\"2\",\"payload\":\"{\\\"number\\\":2,\\\"code\\\":2}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"
                         ]
         Tuple brt recordingVar <- createRecordingBackendRuntimeWithEntryMode entryMode
         stepVar     <- makeVar 0
@@ -663,7 +662,7 @@ runTests = do
               , mode        : ReplayingMode
                 { recording
                 , disableVerify : []
-                , disableMocking : ["LogEntry"]                 -- This will have no efect since the priority of Entry Configs are higher than Global Config
+                , disableMocking : ["LogEntry"]  -- This will have no efect since the priority of Entry Configs are higher than Global Config
                 , stepVar
                 , errorVar
                 }
@@ -671,6 +670,7 @@ runTests = do
         eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript') unit) unit)
         curStep  <- readVar stepVar
         curStep `shouldEqual` 4
+
       it "Replay Test in NoVerify Entry Mode : Log and CallAPI" $ do
         let entryMode = [
                          RecordingEntry NoMock "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}"
@@ -692,7 +692,7 @@ runTests = do
               , mode        : ReplayingMode
                 { recording
                 , disableVerify : []
-                , disableMocking : []            
+                , disableMocking : []
                 , stepVar
                 , errorVar
                 }
