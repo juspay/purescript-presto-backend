@@ -49,4 +49,5 @@ withRunMode brt lAct rrItemF = withRunModeClassless brt rrDict lAct
         , mkEntry            : rrItemF
         , compare            : (==)
         , encodeJSON         : encodeJSON
+
         }
