@@ -1,11 +1,30 @@
+{-
+ Copyright (c) 2012-2017 "JUSPAY Technologies"
+ JUSPAY Technologies Pvt. Ltd. [https://www.juspay.in]
+ This file is part of JUSPAY Platform.
+ JUSPAY Platform is free software: you can redistribute it and/or modify
+ it for only educational purposes under the terms of the GNU Affero General
+ Public License (GNU AGPL) as published by the Free Software Foundation,
+ either version 3 of the License, or (at your option) any later version.
+ For Enterprise/Commerical licenses, contact <info@juspay.in>.
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  The end user will
+ be liable for all damages without limitation, which is caused by the
+ ABUSE of the LICENSED SOFTWARE and shall INDEMNIFY JUSPAY for such
+ damages, claims, cost, including reasonable attorney fee claimed on Juspay.
+ The end user has NO right to claim any indemnification based on its use
+ of Licensed Software. See the GNU Affero General Public License for more details.
+ You should have received a copy of the GNU Affero General Public License
+ along with this program. If not, see <https://www.gnu.org/licenses/agpl.html>.
+-}
+
 module Presto.Backend.Playback.Types where
 
 import Prelude
 
-import Control.Monad.Eff.Ref (Ref)
-import Data.Array as Array
+import Control.Monad.Aff.AVar (AVar)
 import Data.Maybe (Maybe)
-import Data.Tuple (Tuple(..))
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Eq as GEq
 import Data.Generic.Rep.Show as GShow
@@ -13,12 +32,9 @@ import Data.Generic.Rep.Ord as GOrd
 import Data.Generic.Rep.Enum as GEnum
 import Data.Generic.Rep.Bounded as GBounded
 import Data.Newtype (class Newtype)
-import Data.Eq (class Eq, eq)
-import Data.Enum (class Enum, succ, pred)
-import Data.Bounded (class Bounded, top, bottom)
-import Data.Foreign.Generic (defaultOptions, genericDecode, genericDecodeJSON, genericEncode, genericEncodeJSON, encodeJSON)
-import Data.Foreign.Generic.Class (class GenericDecode, class GenericEncode)
-import Data.Foreign.Class (class Encode, class Decode, encode, decode)
+import Data.Enum (class Enum)
+import Data.Foreign.Generic (encodeJSON)
+import Data.Foreign.Class (class Decode, class Encode)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
 import Type.Proxy (Proxy)
 
@@ -29,17 +45,14 @@ type Recording =
   { entries :: Array RecordingEntry
   }
 
--- N.B. Async and parallel computations are not properly supported.
--- For now, Ref is used, but it's not thread safe.
--- So having a sequential flow is preferred.
 type RecorderRuntime =
-  { recordingRef :: Ref Recording
+  { recordingVar :: AVar Recording
   }
 
 type PlayerRuntime =
   { recording :: Recording
-  , stepRef   :: Ref Int
-  , errorRef  :: Ref (Maybe PlaybackError)
+  , stepVar   :: AVar Int
+  , errorVar  :: AVar (Maybe PlaybackError)
   }
 
 data PlaybackErrorType

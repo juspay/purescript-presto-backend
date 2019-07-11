@@ -25,43 +25,37 @@ import Prelude
 
 import Control.Monad.Aff (Aff)
 import Control.Monad.Eff (Eff)
-import Control.Monad.Eff.Exception (Error, error, message)
-import Control.Monad.Except (runExcept) as E
+import Control.Monad.Eff.Exception (Error)
 import Control.Monad.Free (Free, liftF)
-import Data.Either (Either(..), note, hush, isLeft)
+import Data.Either (Either)
 import Data.Exists (Exists, mkExists)
 import Data.Foreign (Foreign, toForeign)
-import Data.Foreign.Class (class Encode, class Decode, encode, decode)
-import Data.Foreign.Generic (encodeJSON)
-import Data.Functor (($>))
+import Data.Foreign.Class (class Decode, class Encode, encode)
 import Data.Lazy (defer)
-import Data.Maybe (Maybe(..), fromMaybe, maybe)
+import Data.Maybe (Maybe(Just, Nothing))
 import Data.Newtype (class Newtype)
 import Data.Options (Options)
 import Data.Options (options) as Opt
 import Data.Time.Duration (Milliseconds, Seconds)
 import Presto.Backend.APIInteract (apiInteract)
-import Presto.Backend.DB.Mock.Actions as SqlDBMock
-import Presto.Backend.DB.Mock.Types as SqlDBMock
-import Presto.Backend.DBImpl (findOne, findAll, create, createWithOpts, query, update, update', delete, getModelByName) as DB
+import Presto.Backend.DB.Mock.Actions (mkCreate, mkCreateWithOpts, mkDelete, mkFindAll, mkFindOne, mkQuery, mkUpdate) as SqlDBMock
+import Presto.Backend.DB.Mock.Types (DBActionDict, mkDbActionDict) as SqlDBMock
+import Presto.Backend.DBImpl (create, createWithOpts, delete, findAll, findOne, query, update, update') as DB
 import Presto.Backend.KVDB.Mock.Types as KVDBMock
-import Presto.Backend.Language.KVDB as KVDB
-import Presto.Backend.Language.Types (toMaybeEx, fromMaybeEx)
-import Presto.Backend.Language.Types.DB (SqlConn, MockedSqlConn, KVDBConn, MockedKVDBConn, DBError(..), toDBMaybeResult, fromDBMaybeResult)
-import Presto.Backend.Language.Types.EitherEx (EitherEx(..), fromCustomEitherEx, toCustomEitherEx, fromCustomEitherExF, toCustomEitherExF)
-import Presto.Backend.Language.Types.FunctorEx ((<<$>>))
+import Presto.Backend.Language.KVDB (KVDB, delCache, delCacheInMulti, dequeue, dequeueInMulti, enqueue, enqueueInMulti, execMulti, expire, expireInMulti, getCache, getCacheInMulti, getHashKey, getHashKeyInMulti, getQueueIdx, getQueueIdxInMulti, incr, incrInMulti, keyExistsCache, newMulti, publishToChannel, publishToChannelInMulti, setCache, setCacheInMulti, setHash, setHashInMulti, setMessageHandler, subscribe, subscribeToMulti) as KVDB
+import Presto.Backend.Language.Types.DB (DBError, KVDBConn, MockedKVDBConn, MockedSqlConn, SqlConn, fromDBMaybeResult, toDBMaybeResult)
+import Presto.Backend.Language.Types.EitherEx (EitherEx, fromCustomEitherEx, fromCustomEitherExF, toCustomEitherEx, toCustomEitherExF)
 import Presto.Backend.Language.Types.KVDB (Multi)
-import Presto.Backend.Language.Types.KVDB as KVDB
-import Presto.Backend.Language.Types.UnitEx (UnitEx(..), toUnitEx, fromUnitEx)
-import Presto.Backend.Playback.Entries as Playback
-import Presto.Backend.Playback.Types as Playback
+import Presto.Backend.Language.Types.KVDB (getKVDBName) as KVDB
+import Presto.Backend.Language.Types.UnitEx (UnitEx, fromUnitEx, toUnitEx)
+import Presto.Backend.Playback.Entries (CallAPIEntry, DoAffEntry, ForkFlowEntry, GetDBConnEntry, GetKVDBConnEntry, LogEntry, RunDBEntry, RunKVDBEitherEntry, RunKVDBSimpleEntry, RunSysCmdEntry, mkCallAPIEntry, mkDoAffEntry, mkForkFlowEntry, mkGetDBConnEntry, mkGetKVDBConnEntry, mkLogEntry, mkRunDBEntry, mkRunKVDBEitherEntry, mkRunKVDBSimpleEntry, mkRunSysCmdEntry) as Playback
+import Presto.Backend.Playback.Types (RRItemDict, mkEntryDict) as Playback
 import Presto.Backend.Types (BackendAff)
-import Presto.Backend.Types.API (ErrorResponse, APIResult)
-import Presto.Backend.Types.API (class RestEndpoint, Headers, makeRequest)
+import Presto.Backend.Types.API (class RestEndpoint, Headers, ErrorResponse, APIResult, makeRequest)
 import Presto.Backend.Runtime.Common (jsonStringify)
 import Presto.Core.Types.Language.Interaction (Interaction)
-import Sequelize.Class (class Model, class EncodeModel, class DecodeModel, encodeModel, decodeModel)
-import Sequelize.Types (Conn, Instance, SEQUELIZE, ModelOf)
+import Sequelize.Class (class Model)
+import Sequelize.Types (Conn, SEQUELIZE)
 
 data BackendFlowCommands next st rt s
     = Ask (rt -> next)
@@ -83,7 +77,9 @@ data BackendFlowCommands next st rt s
         (Playback.RRItemDict Playback.LogEntry UnitEx)
         (UnitEx -> next)
 
-    | Fork (BackendFlow st rt s) (Unit -> next)
+    | Fork (BackendFlow st rt s)
+        (Playback.RRItemDict Playback.ForkFlowEntry UnitEx)
+        (UnitEx -> next)
 
     | RunSysCmd String
         (Playback.RRItemDict Playback.RunSysCmdEntry String)
@@ -169,13 +165,21 @@ log tag message = do
   void $ wrap $ Log tag msg
     (Playback.mkEntryDict $ Playback.mkLogEntry tag msg)
     id
-  pure unit
+
+forkFlow' :: forall st rt a. String -> BackendFlow st rt a -> BackendFlow st rt Unit
+forkFlow' description flow =
+  void $ wrap $ Fork flow
+    (Playback.mkEntryDict $ Playback.mkForkFlowEntry description)
+    id
 
 forkFlow :: forall st rt a. BackendFlow st rt a -> BackendFlow st rt Unit
-forkFlow flow = wrap $ Fork flow id
+forkFlow = forkFlow' ""
 
 runSysCmd :: forall st rt. String -> BackendFlow st rt String
-runSysCmd cmd = wrap $ RunSysCmd cmd (Playback.mkEntryDict $ Playback.mkRunSysCmdEntry cmd) id
+runSysCmd cmd =
+  wrap $ RunSysCmd cmd
+    (Playback.mkEntryDict $ Playback.mkRunSysCmdEntry cmd)
+    id
 
 throwException :: forall st rt a. String -> BackendFlow st rt a
 throwException errorMessage = wrap $ ThrowException errorMessage
@@ -548,7 +552,14 @@ execMulti multi = do
       id
   pure $ fromCustomEitherEx eRes
 
--- setMessageHandler :: forall st rt. String -> (forall eff. (String -> String -> Eff eff Unit)) -> BackendFlow st rt Unit
--- setMessageHandler dbName f = do
---   cacheConn <- getCacheConn dbName
---   wrap $ SetMessageHandler cacheConn f id
+setMessageHandler
+  :: forall st rt
+   . String
+  -> (forall eff. (String -> String -> Eff eff Unit))
+  -> BackendFlow st rt Unit
+setMessageHandler dbName f = do
+  void $ wrap $ RunKVDBSimple dbName
+      (toUnitEx <$> KVDB.setMessageHandler f)
+      KVDBMock.mkKVDBActionDict
+      (Playback.mkEntryDict $ Playback.mkRunKVDBSimpleEntry dbName "setMessageHandler" "")
+      id

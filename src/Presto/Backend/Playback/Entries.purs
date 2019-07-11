@@ -1,26 +1,41 @@
+{-
+ Copyright (c) 2012-2017 "JUSPAY Technologies"
+ JUSPAY Technologies Pvt. Ltd. [https://www.juspay.in]
+ This file is part of JUSPAY Platform.
+ JUSPAY Platform is free software: you can redistribute it and/or modify
+ it for only educational purposes under the terms of the GNU Affero General
+ Public License (GNU AGPL) as published by the Free Software Foundation,
+ either version 3 of the License, or (at your option) any later version.
+ For Enterprise/Commerical licenses, contact <info@juspay.in>.
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  The end user will
+ be liable for all damages without limitation, which is caused by the
+ ABUSE of the LICENSED SOFTWARE and shall INDEMNIFY JUSPAY for such
+ damages, claims, cost, including reasonable attorney fee claimed on Juspay.
+ The end user has NO right to claim any indemnification based on its use
+ of Licensed Software. See the GNU Affero General Public License for more details.
+ You should have received a copy of the GNU Affero General Public License
+ along with this program. If not, see <https://www.gnu.org/licenses/agpl.html>.
+-}
+
 module Presto.Backend.Playback.Entries where
 
-import Prelude
+import Prelude (class Eq, bind, pure, ($), (<$>), (<<<), (==))
 
 import Control.Monad.Except (runExcept) as E
-import Data.Either (Either(..), note, hush, isLeft)
+import Data.Either (hush)
 import Data.Foreign (Foreign)
-import Data.Foreign.Generic (defaultOptions, genericDecode, genericDecodeJSON, genericEncode, genericEncodeJSON, encodeJSON, decodeJSON)
-import Data.Foreign.Generic.Class (class GenericDecode, class GenericEncode)
+import Data.Foreign.Generic (decodeJSON, encodeJSON)
 import Data.Foreign.Class (class Encode, class Decode, encode, decode)
 import Data.Generic.Rep (class Generic)
-import Data.Maybe (Maybe(..), isJust)
-import Data.Newtype (class Newtype)
-import Data.Tuple (Tuple(..))
-import Data.Lazy (Lazy, force, defer)
+import Data.Maybe (Maybe(Just))
+import Data.Lazy (Lazy, force)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
-import Presto.Backend.Runtime.Common (jsonStringify)
-import Presto.Backend.Types (BackendAff)
-import Presto.Backend.Types.API (APIResult(..), ErrorPayload, ErrorResponse, Response)
+import Presto.Backend.Types.API (ErrorPayload, ErrorResponse, Response)
 import Presto.Backend.Language.Types.EitherEx (EitherEx(..))
 import Presto.Backend.Language.Types.UnitEx (UnitEx(..))
-import Presto.Backend.Language.Types.DB (SqlConn(..), DBError(..), KVDBConn(..), MockedSqlConn(..), MockedKVDBConn(..))
-import Presto.Backend.Language.Types.KVDB (Multi)
+import Presto.Backend.Language.Types.DB (DBError, KVDBConn(MockedKVDB, Redis), MockedKVDBConn(MockedKVDBConn), MockedSqlConn(MockedSqlConn), SqlConn(MockedSql, Sequelize))
 import Presto.Backend.Playback.Types
 
 
@@ -32,6 +47,10 @@ data LogEntry = LogEntry
 data CallAPIEntry = CallAPIEntry
   { jsonRequest :: Foreign
   , jsonResult  :: EitherEx ErrorResponse Foreign
+  }
+
+data ForkFlowEntry = ForkFlowEntry
+  { description :: String
   }
 
 data ThrowExceptionEntry = ThrowExceptionEntry
@@ -100,12 +119,15 @@ mkCallAPIEntry
    . Encode b
   => Decode b
   => Lazy Foreign
-  -> EitherEx ErrorResponse  b
+  -> EitherEx ErrorResponse b
   -> CallAPIEntry
 mkCallAPIEntry jReq aRes = CallAPIEntry
   { jsonRequest : force jReq
   , jsonResult  : encode <$> aRes
   }
+
+mkForkFlowEntry :: String -> UnitEx -> ForkFlowEntry
+mkForkFlowEntry description _ = ForkFlowEntry { description }
 
 mkRunDBEntry
   :: forall b
@@ -179,6 +201,22 @@ instance rrItemLogEntry :: RRItem LogEntry where
   isMocked _ = true
 
 instance mockedResultLogEntry :: MockedResult LogEntry UnitEx where
+  parseRRItem _ = Just UnitEx
+
+
+derive instance genericForkFlowEntry :: Generic ForkFlowEntry _
+derive instance eqForkFlowEntry :: Eq ForkFlowEntry
+
+instance decodeForkFlowEntry :: Decode ForkFlowEntry where decode = defaultDecode
+instance encodeForkFlowEntry :: Encode ForkFlowEntry where encode = defaultEncode
+
+instance rrItemForkFlowEntry :: RRItem ForkFlowEntry where
+  toRecordingEntry = RecordingEntry <<< encodeJSON
+  fromRecordingEntry (RecordingEntry re) = hush $ E.runExcept $ decodeJSON re
+  getTag   _ = "ForkFlowEntry"
+  isMocked _ = true
+
+instance mockedResultForkFlowEntry :: MockedResult ForkFlowEntry UnitEx where
   parseRRItem _ = Just UnitEx
 
 

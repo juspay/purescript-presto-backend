@@ -24,23 +24,14 @@ module Presto.Backend.Language.KVDB where
 import Prelude
 
 import Control.Monad.Eff (Eff)
-import Control.Monad.Aff (Aff)
-import Control.Monad.Eff.Exception (Error, error, message)
-import Control.Monad.Except (runExcept) as E
+import Control.Monad.Eff.Exception (Error)
 import Control.Monad.Free (Free, liftF)
-import Data.Either (Either(..), note, hush, isLeft)
+import Data.Either (Either)
 import Data.Exists (Exists, mkExists)
-import Data.Maybe (Maybe(..), fromMaybe, maybe)
-import Data.Foreign (Foreign, toForeign)
-import Data.Foreign.Class (class Encode, class Decode, encode, decode)
-import Data.Foreign.Generic (encodeJSON)
-import Data.Lazy (defer)
-import Data.Options (Options)
-import Data.Options (options) as Opt
+import Data.Maybe (Maybe)
+import Data.Foreign (Foreign)
 import Data.Time.Duration (Milliseconds, Seconds)
-import Presto.Backend.Language.Types.DB (KVDBConn, DBError(..), toDBMaybeResult, fromDBMaybeResult)
 import Presto.Backend.Language.Types.KVDB (Multi)
-import Presto.Core.Types.Language.Interaction (Interaction)
 
 data KVDBMethod next s
     = SetCache String String (Maybe Milliseconds) (Either Error Unit -> next)

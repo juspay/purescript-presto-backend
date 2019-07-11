@@ -1,30 +1,42 @@
+{-
+ Copyright (c) 2012-2017 "JUSPAY Technologies"
+ JUSPAY Technologies Pvt. Ltd. [https://www.juspay.in]
+ This file is part of JUSPAY Platform.
+ JUSPAY Platform is free software: you can redistribute it and/or modify
+ it for only educational purposes under the terms of the GNU Affero General
+ Public License (GNU AGPL) as published by the Free Software Foundation,
+ either version 3 of the License, or (at your option) any later version.
+ For Enterprise/Commerical licenses, contact <info@juspay.in>.
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  The end user will
+ be liable for all damages without limitation, which is caused by the
+ ABUSE of the LICENSED SOFTWARE and shall INDEMNIFY JUSPAY for such
+ damages, claims, cost, including reasonable attorney fee claimed on Juspay.
+ The end user has NO right to claim any indemnification based on its use
+ of Licensed Software. See the GNU Affero General Public License for more details.
+ You should have received a copy of the GNU Affero General Public License
+ along with this program. If not, see <https://www.gnu.org/licenses/agpl.html>.
+-}
+
 module Presto.Backend.Playback.Machine.Classless where
 
-import Prelude
+import Prelude (Unit, bind, discard, pure, show, unit, void, when, ($), (+), (<>))
 
 import Control.Monad.Aff (Aff)
-import Control.Monad.Eff.Ref (REF, Ref, newRef, readRef, writeRef, modifyRef)
-import Control.Monad.Eff (Eff)
-import Control.Monad.Eff.Class (liftEff)
-import Control.Monad.Eff.Exception (Error, error)
-import Control.Monad.Except (runExcept) as E
-import Control.Monad.Except.Trans (ExceptT(..), lift, throwError, runExceptT) as E
-import Control.Monad.Reader.Trans (ReaderT, ask, lift, runReaderT) as R
-import Control.Monad.State.Trans (StateT, get, lift, modify, put, runStateT) as S
-import Control.Monad.Trans.Class (class MonadTrans, lift)
-import Data.Foreign.Generic (encodeJSON)
+import Control.Monad.Aff.AVar (AVAR, putVar, takeVar)
+import Control.Monad.Eff.Exception (error)
+import Control.Monad.Except.Trans (throwError) as E
+import Control.Monad.Reader.Trans (lift) as R
+import Control.Monad.State.Trans (get) as S
 import Data.Array as Array
-import Data.Either (Either(..), note, hush, isLeft)
-import Data.Maybe (Maybe(..), isJust)
+import Data.Either (Either(Right, Left), note)
+import Data.Maybe (Maybe(..), isJust, isNothing)
 import Data.Tuple (Tuple(..))
-import Data.Foreign.Generic as G
 import Data.Lazy (Lazy, force)
-import Presto.Backend.Types (BackendAff)
-import Presto.Backend.Runtime.Common (jsonStringify, lift3)
-import Presto.Backend.Runtime.Types
-import Presto.Backend.Playback.Types
-import Presto.Backend.Playback.Entries
-import Presto.Backend.APIInteract (apiInteract)
+import Presto.Backend.Runtime.Common (lift3)
+import Presto.Backend.Runtime.Types (BackendRuntime(..), InterpreterMT', RunningMode(..))
+import Presto.Backend.Playback.Types (PlaybackError(..), PlaybackErrorType(..), PlayerRuntime, RRItemDict, RecorderRuntime, RecordingEntry, compare', encodeJSON', fromRecordingEntry', getTag', isMocked', mkEntry', parseRRItem', toRecordingEntry')
 import Type.Proxy (Proxy(..))
 
 unexpectedRecordingEnd :: String -> PlaybackError
@@ -57,26 +69,29 @@ replayError
   -> PlaybackError
   -> InterpreterMT' rt st eff native
 replayError playerRt err = do
-  lift3 $ liftEff $ writeRef playerRt.errorRef $ Just err
-  R.lift S.get >>= (E.throwError <<< Tuple (error $ show err))
+  void $ lift3 $ takeVar playerRt.errorVar
+  lift3 $ putVar (Just err) playerRt.errorVar
+  st <- R.lift S.get
+  E.throwError $ Tuple (error $ show err) st
 
 pushRecordingEntry
   :: forall eff
    . RecorderRuntime
   -> RecordingEntry
-  -> Eff (ref :: REF | eff) Unit
+  -> Aff (avar :: AVAR | eff) Unit
 pushRecordingEntry recorderRt entry = do
-  recording <- readRef recorderRt.recordingRef
-  writeRef recorderRt.recordingRef { entries : Array.snoc recording.entries entry }
+  recording <- takeVar recorderRt.recordingVar
+  putVar { entries : Array.snoc recording.entries entry } recorderRt.recordingVar
 
 popNextRecordingEntry
   :: forall eff
    . PlayerRuntime
-  -> Eff (ref :: REF | eff) (Maybe RecordingEntry)
+  -> Aff (avar :: AVAR | eff) (Maybe RecordingEntry)
 popNextRecordingEntry playerRt = do
-  cur <- readRef playerRt.stepRef
+  cur <- takeVar playerRt.stepVar
   let mbItem = Array.index playerRt.recording.entries cur
-  when (isJust mbItem) $ writeRef playerRt.stepRef $ cur + 1
+  when (isJust mbItem)    $ putVar (cur + 1) playerRt.stepVar
+  when (isNothing mbItem) $ putVar cur playerRt.stepVar
   pure mbItem
 
 popNextRRItem
@@ -84,7 +99,7 @@ popNextRRItem
    . PlayerRuntime
   -> RRItemDict rrItem native
   -> Proxy rrItem
-  -> Eff (ref :: REF | eff) (Either PlaybackError rrItem)
+  -> Aff (avar :: AVAR | eff) (Either PlaybackError rrItem)
 popNextRRItem playerRt rrItemDict proxy = do
   mbRecordingEntry <- popNextRecordingEntry playerRt
   let expected = getTag' rrItemDict proxy
@@ -98,7 +113,7 @@ popNextRRItemAndResult
    . PlayerRuntime
   -> RRItemDict rrItem native
   -> Proxy rrItem
-  -> Eff (ref :: REF | eff) (Either PlaybackError (Tuple rrItem native))
+  -> Aff (avar :: AVAR | eff) (Either PlaybackError (Tuple rrItem native))
 popNextRRItemAndResult playerRt rrItemDict proxy = do
   let expected = getTag' rrItemDict proxy
   eNextRRItem <- popNextRRItem playerRt rrItemDict proxy
@@ -141,7 +156,7 @@ replay
   -> InterpreterMT' rt st eff native
 replay playerRt rrItemDict lAct = do
   let proxy = Proxy :: Proxy rrItem
-  eNextRRItemRes <- lift3 $ liftEff $ popNextRRItemAndResult playerRt rrItemDict proxy
+  eNextRRItemRes <- lift3 $ popNextRRItemAndResult playerRt rrItemDict proxy
   case eNextRRItemRes of
     Left err -> replayError playerRt err
     Right (Tuple nextRRItem nextRes) -> do
@@ -158,7 +173,6 @@ record
 record recorderRt rrItemDict lAct = do
   native <- force lAct
   lift3
-    $ liftEff
     $ pushRecordingEntry recorderRt
     $ toRecordingEntry' rrItemDict
     $ mkEntry' rrItemDict native

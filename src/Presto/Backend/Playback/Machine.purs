@@ -1,30 +1,32 @@
+{-
+ Copyright (c) 2012-2017 "JUSPAY Technologies"
+ JUSPAY Technologies Pvt. Ltd. [https://www.juspay.in]
+ This file is part of JUSPAY Platform.
+ JUSPAY Platform is free software: you can redistribute it and/or modify
+ it for only educational purposes under the terms of the GNU Affero General
+ Public License (GNU AGPL) as published by the Free Software Foundation,
+ either version 3 of the License, or (at your option) any later version.
+ For Enterprise/Commerical licenses, contact <info@juspay.in>.
+ This program is distributed in the hope that it will be useful,
+ but WITHOUT ANY WARRANTY; without even the implied warranty of
+ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  The end user will
+ be liable for all damages without limitation, which is caused by the
+ ABUSE of the LICENSED SOFTWARE and shall INDEMNIFY JUSPAY for such
+ damages, claims, cost, including reasonable attorney fee claimed on Juspay.
+ The end user has NO right to claim any indemnification based on its use
+ of Licensed Software. See the GNU Affero General Public License for more details.
+ You should have received a copy of the GNU Affero General Public License
+ along with this program. If not, see <https://www.gnu.org/licenses/agpl.html>.
+-}
+
 module Presto.Backend.Playback.Machine where
 
 import Prelude
 
-import Control.Monad.Aff (Aff)
-import Control.Monad.Eff.Ref (REF, Ref, newRef, readRef, writeRef, modifyRef)
-import Control.Monad.Eff (Eff)
-import Control.Monad.Eff.Class (liftEff)
-import Control.Monad.Eff.Exception (Error, error)
-import Control.Monad.Except (runExcept) as E
-import Control.Monad.Except.Trans (ExceptT(..), lift, throwError, runExceptT) as E
-import Control.Monad.Reader.Trans (ReaderT, ask, lift, runReaderT) as R
-import Control.Monad.State.Trans (StateT, get, lift, modify, put, runStateT) as S
-import Control.Monad.Trans.Class (class MonadTrans, lift)
 import Data.Foreign.Generic (encodeJSON)
-import Data.Array as Array
-import Data.Either (Either(..), note, hush, isLeft)
-import Data.Maybe (Maybe(..), isJust)
-import Data.Tuple (Tuple(..))
-import Data.Foreign.Generic as G
-import Data.Lazy (Lazy, force)
-import Presto.Backend.Types (BackendAff)
-import Presto.Backend.Runtime.Common (jsonStringify, lift3)
-import Presto.Backend.Runtime.Types
-import Presto.Backend.Playback.Types
-import Presto.Backend.Playback.Entries
-import Type.Proxy (Proxy(..))
+import Data.Lazy (Lazy)
+import Presto.Backend.Runtime.Types (BackendRuntime, InterpreterMT')
+import Presto.Backend.Playback.Types (class MockedResult, class RRItem, RRItemDict(..), fromRecordingEntry, getTag, isMocked, parseRRItem, toRecordingEntry)
 import Presto.Backend.Playback.Machine.Classless (withRunModeClassless)
 
 withRunMode

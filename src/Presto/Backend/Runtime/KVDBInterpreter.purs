@@ -30,40 +30,25 @@ import Cache.Hash (hget, hset)
 import Cache.Multi as Native
 import Cache.List (lindex, lpop, rpush)
 import Cache.Multi (execMulti, expireMulti, getMulti, hgetMulti, hsetMulti, incrMulti, lindexMulti, lpopMulti, newMulti, publishMulti, rpushMulti, setMulti, subscribeMulti)
-import Control.Monad.Aff (Aff, forkAff)
+import Control.Monad.Aff (Aff)
 import Control.Monad.Aff.Class (liftAff)
-import Control.Monad.Eff.Ref (REF, Ref, newRef, readRef, writeRef, modifyRef)
-import Control.Monad.Eff (Eff)
+import Control.Monad.Aff.AVar (AVAR, putVar, takeVar, readVar)
 import Control.Monad.Eff.Class (liftEff)
-import Control.Monad.Eff.Exception (Error, error)
-import Control.Monad.Except (runExcept) as E
-import Control.Monad.Except.Trans (ExceptT(..), lift, throwError, runExceptT) as E
 import Control.Monad.Free (foldFree)
-import Control.Monad.Reader.Trans (ReaderT, ask, lift, runReaderT) as R
-import Control.Monad.State.Trans (StateT, get, lift, modify, put, runStateT) as S
-import Control.Monad.Trans.Class (class MonadTrans, lift)
 import Data.Array.NonEmpty (singleton) as NEArray
-import Data.Array as Array
-import Data.Either (Either(..), note, hush, isLeft)
 import Data.Exists (runExists)
-import Data.Maybe (Maybe(..), isJust)
+import Data.Maybe (Maybe(Just, Nothing))
 import Data.StrMap as StrMap
-import Data.Tuple (Tuple(..))
-import Data.Foreign.Generic as G
 import Data.Lazy (defer)
 import Data.UUID (GENUUID, genUUID)
 import Presto.Backend.Language.KVDB (KVDB, KVDBMethod(..), KVDBMethodWrapper, KVDBWrapper(..))
-import Presto.Backend.Types (BackendAff)
-import Presto.Backend.Language.Types.EitherEx
-import Presto.Backend.Language.Types.DB (KVDBConn(..), MockedKVDBConn(..), DBError(..))
+import Presto.Backend.Language.Types.DB (KVDBConn(MockedKVDB, Redis), MockedKVDBConn)
 import Presto.Backend.Language.Types.KVDB (Multi(..), getMultiGUID)
 import Presto.Backend.KVDB.Mock.Types (KVDBActionDict)
-import Presto.Backend.Runtime.Common (jsonStringify, lift3, throwException', getDBConn', getKVDBConn')
-import Presto.Backend.Runtime.Types (InterpreterMT, InterpreterMT', LogRunner, RunningMode(..), Connection(..), BackendRuntime(..), KVDBRuntime(..))
-import Presto.Backend.Runtime.Types as X
+import Presto.Backend.Runtime.Common (getKVDBConn', lift3, throwException')
+import Presto.Backend.Runtime.Types (BackendRuntime(BackendRuntime), InterpreterMT', KVDBRuntime(KVDBRuntime))
 import Presto.Backend.Playback.Types (RRItemDict)
 import Presto.Backend.Playback.Machine.Classless (withRunModeClassless)
-import Type.Proxy (Proxy(..))
 
 
 getMockedKVDBValue :: forall st rt eff a. BackendRuntime -> KVDBActionDict -> InterpreterMT' rt st eff a
@@ -73,10 +58,10 @@ getNativeMulti
   :: forall eff
    . KVDBRuntime
   -> Multi
-  -> Eff (ref :: REF | eff) (Maybe Native.Multi)
+  -> Aff (avar :: AVAR | eff) (Maybe Native.Multi)
 getNativeMulti (KVDBRuntime rt) multi = do
   let guid = getMultiGUID multi
-  catalogue <- readRef rt.multiesRef
+  catalogue <- readVar rt.multiesVar
   pure $ StrMap.lookup guid catalogue
 
 registerNativeMulti
@@ -84,19 +69,19 @@ registerNativeMulti
    . KVDBRuntime
   -> String
   -> Native.Multi
-  -> Eff (ref :: REF | eff) Unit
+  -> Aff (avar :: AVAR | eff) Unit
 registerNativeMulti (KVDBRuntime rt) uuidStr nativeMulti = do
-  catalogue <- readRef rt.multiesRef
-  writeRef rt.multiesRef $ StrMap.insert uuidStr nativeMulti catalogue
+  catalogue <- takeVar rt.multiesVar
+  putVar (StrMap.insert uuidStr nativeMulti catalogue) rt.multiesVar
 
 registerNewMulti
   :: forall eff
    . KVDBRuntime
   -> String
   -> Native.Multi
-  -> Eff (ref :: REF, uuid :: GENUUID | eff) Multi
+  -> Aff (avar :: AVAR, uuid :: GENUUID | eff) Multi
 registerNewMulti kvdbRt@(KVDBRuntime rt) kvdbName nativeMulti = do
-  uuidStr <- show <$> genUUID
+  uuidStr <- show <$> liftEff genUUID
   registerNativeMulti kvdbRt uuidStr nativeMulti
   pure $ Multi kvdbName uuidStr
 
@@ -104,21 +89,20 @@ unregisterMulti
   :: forall eff
    . KVDBRuntime
   -> Multi
-  -> Eff (ref :: REF | eff) Unit
+  -> Aff (avar :: AVAR | eff) Unit
 unregisterMulti (KVDBRuntime rt) multi = do
   let guid = getMultiGUID multi
-  catalogue <- readRef rt.multiesRef
-  writeRef rt.multiesRef $ StrMap.delete guid catalogue
+  catalogue <- takeVar rt.multiesVar
+  putVar (StrMap.delete guid catalogue) rt.multiesVar
 
 updateNativeMulti
   :: forall eff
    . KVDBRuntime
   -> Multi
   -> Native.Multi
-  -> Eff (ref :: REF | eff) Unit
-updateNativeMulti kvdbRt multi newNativeMulti = do
-  let uuidStr = getMultiGUID multi
-  registerNativeMulti kvdbRt uuidStr newNativeMulti
+  -> Aff (avar :: AVAR, uuid :: GENUUID | eff) Unit
+updateNativeMulti kvdbRt multi newNativeMulti =
+  registerNativeMulti kvdbRt (getMultiGUID multi) newNativeMulti
 
 withNativeMulti
   :: forall rt st eff
@@ -127,12 +111,12 @@ withNativeMulti
   -> (Native.Multi -> InterpreterMT' rt st eff Native.Multi)
   -> InterpreterMT' rt st eff Unit
 withNativeMulti kvdbRt multi act = do
-  mbNativeMulti <- lift3 $ liftEff $ getNativeMulti kvdbRt multi
+  mbNativeMulti <- lift3 $ getNativeMulti kvdbRt multi
   case mbNativeMulti of
     Nothing -> throwException' $ "Multi not found: " <> show multi
     Just nativeMulti -> do
       nativeMulti' <- act nativeMulti
-      lift3 $ liftEff $ updateNativeMulti kvdbRt multi nativeMulti'
+      lift3 $ updateNativeMulti kvdbRt multi nativeMulti'
 
 interpretKVDB
   :: forall st rt s eff a
@@ -184,7 +168,7 @@ interpretKVDB _ _ simpleConn (GetQueueIdx listName index next) =
 
 interpretKVDB kvdbRt@(KVDBRuntime rt) dbName simpleConn (NewMulti next) = do
   nativeMulti <- lift3 $ liftEff $ newMulti simpleConn
-  multi       <- lift3 $ liftEff $ registerNewMulti kvdbRt dbName nativeMulti
+  multi       <- lift3 $ registerNewMulti kvdbRt dbName nativeMulti
   pure $ next multi
 
 -- Is this a bug? "setMulti"
@@ -239,17 +223,15 @@ interpretKVDB kvdbRt _ _ (GetQueueIdxInMulti listName index multi next) = do
   pure $ next multi
 
 interpretKVDB kvdbRt _ _ (Exec multi next) = do
-  mbNativeMulti <- lift3 $ liftEff $ getNativeMulti kvdbRt multi
+  mbNativeMulti <- lift3 $ getNativeMulti kvdbRt multi
   case mbNativeMulti of
     Nothing          -> throwException' $ "Multi not found: " <> show multi
     Just nativeMulti -> do
-      lift3 $ liftEff $ unregisterMulti kvdbRt multi
+      lift3 $ unregisterMulti kvdbRt multi
       next <$> (liftAff $ execMulti nativeMulti)
 
--- interpretKVDB _ _ simpleConn (SetMessageHandler f next) =
---   (lift3 $ liftEff $ setMessageHandler f) >>= (pure <<< next)
-
-interpretKVDB _ _ _ _ = throwException' "KV DB Method is not implemented yet."
+interpretKVDB _ _ simpleConn (SetMessageHandler f next) =
+  (lift3 $ liftEff $ setMessageHandler simpleConn f) >>= (pure <<< next)
 
 runKVDB'
   :: forall st rt eff a

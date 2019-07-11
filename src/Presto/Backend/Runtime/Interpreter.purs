@@ -28,10 +28,10 @@ import Prelude
 
 import Control.Monad.Aff (forkAff)
 import Control.Monad.Eff.Exception (Error)
-import Control.Monad.Except.Trans (lift, runExceptT) as E
+import Control.Monad.Except.Trans (runExceptT) as E
 import Control.Monad.Free (foldFree)
 import Control.Monad.Reader.Trans (ask, lift, runReaderT) as R
-import Control.Monad.State.Trans (get, lift, modify, put, runStateT) as S
+import Control.Monad.State.Trans (get, modify, put, runStateT) as S
 import Data.Exists (runExists)
 import Data.Tuple (Tuple)
 import Data.Lazy (defer)
@@ -51,11 +51,11 @@ import Presto.Backend.Runtime.KVDBInterpreter (runKVDB)
 import Presto.Backend.DB.Mock.Types (DBActionDict)
 
 forkF :: forall eff rt st a. BackendRuntime -> BackendFlow st rt a -> InterpreterMT rt st (Tuple Error st) eff Unit
-forkF runtime flow = do
+forkF brt flow = do
   st <- R.lift $ S.get
   rt <- R.ask
-  let m = E.runExceptT ( S.runStateT ( R.runReaderT ( runBackend runtime flow ) rt) st)
-  R.lift $ S.lift $ E.lift $ forkAff m *> pure unit
+  let m = E.runExceptT ( S.runStateT ( R.runReaderT ( runBackend brt flow ) rt) st)
+  void $ lift3 $ forkAff m
 
 getMockedDBValue :: forall st rt eff a. BackendRuntime -> DBActionDict -> InterpreterMT' rt st eff a
 getMockedDBValue brt mockedDbActDict = throwException' "Mocking is not yet implemented for DB."
@@ -74,7 +74,7 @@ interpret brt@(BackendRuntime rt) (CallAPI apiAct rrItemDict next) = do
     (defer $ \_ -> lift3 $ runAPIInteraction rt.apiRunner apiAct)
   pure $ next $ fromEitherEx resultEx
 
-interpret _ (DoAff aff nextF) = (R.lift $ S.lift $ E.lift aff) >>= (pure <<< nextF)
+interpret _ (DoAff aff next) = next <$> lift3 aff
 
 interpret brt@(BackendRuntime rt) (DoAffRR aff rrItemDict next) = do
   res <- withRunModeClassless brt rrItemDict
@@ -86,7 +86,10 @@ interpret brt@(BackendRuntime rt) (Log tag message rrItemDict next) = do
     (defer $ \_ -> lift3 (rt.logRunner tag message) *> pure UnitEx)
   pure $ next res
 
-interpret r (Fork flow next) = forkF r flow >>= (pure <<< next)
+interpret brt (Fork flow rrItemDict next) = do
+  res <- withRunModeClassless brt rrItemDict
+    (defer $ \_ -> forkF brt flow *> pure UnitEx)
+  pure $ next res
 
 interpret brt (RunSysCmd cmd rrItemDict next) = do
   res <- withRunModeClassless brt rrItemDict
