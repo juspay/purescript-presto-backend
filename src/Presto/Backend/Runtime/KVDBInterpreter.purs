@@ -253,7 +253,7 @@ interpretKVDB kvdbRt _ _ (Exec multi next) = do
 interpretKVDB _ _ simpleConn (SetMessageHandler f next) =
   (lift3 $ liftEff $ setMessageHandler simpleConn f) >>= (pure <<< next)
 
-interpretKVDB kvdbRt dbName _ (XaddMulti key entryId args multi next) = do
+interpretKVDB kvdbRt dbName _ (AddInMulti key entryId args multi next) = do
   res <- withNativeMultiEx kvdbRt multi $ lift3 <<< liftEff <<< xaddMulti key entryId args
   case res of
     Left err -> pure $ next (Left err)
