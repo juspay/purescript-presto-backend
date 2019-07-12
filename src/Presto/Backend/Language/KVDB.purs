@@ -23,6 +23,7 @@ module Presto.Backend.Language.KVDB where
 
 import Prelude
 
+import Cache.Types (EntryID(..), Item(..))
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (Error)
 import Control.Monad.Free (Free, liftF)
@@ -62,6 +63,7 @@ data KVDBMethod next s
     | DequeueInMulti String Multi (Multi -> next)
     | GetQueueIdxInMulti String Int Multi (Multi -> next)
     | Exec Multi (Either Error (Array Foreign) -> next)
+    | AddInMulti  String EntryID  (Array Item)  Multi (Either Error Multi -> next)
 
     | SetMessageHandler (forall eff. (String -> String -> Eff eff Unit)) (Unit -> next)
 
@@ -70,6 +72,9 @@ type KVDBMethodWrapper s next = KVDBMethod next s
 newtype KVDBWrapper next = KVDBWrapper (Exists (KVDBMethod next))
 
 type KVDB next = Free KVDBWrapper next
+
+addInMulti :: forall st rt. String -> EntryID -> (Array Item) -> Multi -> KVDB (Either Error Multi)
+addInMulti key entryId args multi = wrapKVDBMethod $ AddInMulti key entryId args multi id
 
 wrapKVDBMethod :: forall next s. KVDBMethod next s -> KVDB next
 wrapKVDBMethod = liftF <<< KVDBWrapper <<< mkExists

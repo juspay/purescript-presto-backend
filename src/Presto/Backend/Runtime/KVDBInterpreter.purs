@@ -29,13 +29,15 @@ import Cache (SetOptions(..), SimpleConn, del, exists, expire, get, incr, publis
 import Cache.Hash (hget, hset)
 import Cache.Multi as Native
 import Cache.List (lindex, lpop, rpush)
-import Cache.Multi (execMulti, expireMulti, getMulti, hgetMulti, hsetMulti, incrMulti, lindexMulti, lpopMulti, newMulti, publishMulti, rpushMulti, setMulti, subscribeMulti)
+import Cache.Multi (execMulti, expireMulti, getMulti, hgetMulti, hsetMulti, incrMulti, lindexMulti, lpopMulti, newMulti, publishMulti, rpushMulti, setMulti, subscribeMulti, xaddMulti)
 import Control.Monad.Aff (Aff)
 import Control.Monad.Aff.Class (liftAff)
 import Control.Monad.Aff.AVar (AVAR, putVar, takeVar, readVar)
 import Control.Monad.Eff.Class (liftEff)
+import Control.Monad.Eff.Exception (Error, message)
 import Control.Monad.Free (foldFree)
 import Data.Array.NonEmpty (singleton) as NEArray
+import Data.Either (Either(..))
 import Data.Exists (runExists)
 import Data.Maybe (Maybe(Just, Nothing))
 import Data.StrMap as StrMap
@@ -117,6 +119,24 @@ withNativeMulti kvdbRt multi act = do
     Just nativeMulti -> do
       nativeMulti' <- act nativeMulti
       lift3 $ updateNativeMulti kvdbRt multi nativeMulti'
+
+withNativeMultiEx
+  :: forall rt st eff
+   . KVDBRuntime
+  -> Multi
+  -> (Native.Multi -> InterpreterMT' rt st eff (Either Error Native.Multi))
+  -> InterpreterMT' rt st eff (Either Error Native.Multi)
+withNativeMultiEx kvdbRt multi act = do
+  mbNativeMulti <- lift3 $ getNativeMulti kvdbRt multi
+  case mbNativeMulti of
+    Nothing -> throwException' $ "Multi not found: " <> show multi
+    Just nativeMulti -> do
+      res <- act nativeMulti
+      case res of
+        Left err -> lift3 $ pure (Left err)
+        Right m -> do
+          lift3 $ updateNativeMulti kvdbRt multi m
+          lift3 $ pure res
 
 interpretKVDB
   :: forall st rt s eff a
@@ -232,6 +252,14 @@ interpretKVDB kvdbRt _ _ (Exec multi next) = do
 
 interpretKVDB _ _ simpleConn (SetMessageHandler f next) =
   (lift3 $ liftEff $ setMessageHandler simpleConn f) >>= (pure <<< next)
+
+interpretKVDB kvdbRt dbName _ (AddInMulti key entryId args multi next) = do
+  res <- withNativeMultiEx kvdbRt multi $ lift3 <<< liftEff <<< xaddMulti key entryId args
+  case res of
+    Left err -> pure $ next (Left err)
+    Right m -> do
+      resn  <- (lift3 $ registerNewMulti kvdbRt dbName m)
+      pure $ next (Right resn)
 
 runKVDB'
   :: forall st rt eff a
