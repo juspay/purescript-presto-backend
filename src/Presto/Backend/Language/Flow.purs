@@ -74,7 +74,7 @@ data BackendFlowCommands next st rt s
         (Playback.RRItemDict Playback.DoAffEntry s)
         (s -> next)
 
-    | Log String String
+    | Log String s
         (Playback.RRItemDict Playback.LogEntry UnitEx)
         (UnitEx -> next)
 
@@ -161,10 +161,8 @@ doAffRR aff = wrap $ DoAffRR aff (Playback.mkEntryDict Playback.mkDoAffEntry) id
 -- TODO: this is not a correct solution, jsonStringify is a strange function
 -- that feels hacky.
 log :: forall st rt a. String -> a -> BackendFlow st rt Unit
-log tag message = do
-  let msg = jsonStringify message
-  void $ wrap $ Log tag msg
-    (Playback.mkEntryDict $ Playback.mkLogEntry tag msg)
+log tag message = void $ wrap $ Log tag message
+    (Playback.mkEntryDict $ Playback.mkLogEntry tag $ jsonStringify message)
     id
 
 forkFlow' :: forall st rt a. String -> BackendFlow st rt a -> BackendFlow st rt Unit
