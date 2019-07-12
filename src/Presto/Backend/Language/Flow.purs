@@ -23,6 +23,7 @@ module Presto.Backend.Flow where
 
 import Prelude
 
+import Cache.Types (EntryID(..), Item(..))
 import Control.Monad.Aff (Aff)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (Error)
@@ -42,7 +43,7 @@ import Presto.Backend.DB.Mock.Actions (mkCreate, mkCreateWithOpts, mkDelete, mkF
 import Presto.Backend.DB.Mock.Types (DBActionDict, mkDbActionDict) as SqlDBMock
 import Presto.Backend.DBImpl (create, createWithOpts, delete, findAll, findOne, query, update, update') as DB
 import Presto.Backend.KVDB.Mock.Types as KVDBMock
-import Presto.Backend.Language.KVDB (KVDB, delCache, delCacheInMulti, dequeue, dequeueInMulti, enqueue, enqueueInMulti, execMulti, expire, expireInMulti, getCache, getCacheInMulti, getHashKey, getHashKeyInMulti, getQueueIdx, getQueueIdxInMulti, incr, incrInMulti, keyExistsCache, newMulti, publishToChannel, publishToChannelInMulti, setCache, setCacheInMulti, setHash, setHashInMulti, setMessageHandler, subscribe, subscribeToMulti) as KVDB
+import Presto.Backend.Language.KVDB (KVDB, delCache, delCacheInMulti, dequeue, dequeueInMulti, enqueue, enqueueInMulti, execMulti, expire, expireInMulti, getCache, getCacheInMulti, getHashKey, getHashKeyInMulti, getQueueIdx, getQueueIdxInMulti, incr, incrInMulti, keyExistsCache, newMulti, publishToChannel, publishToChannelInMulti, setCache, setCacheInMulti, setHash, setHashInMulti, setMessageHandler, subscribe, subscribeToMulti, xaddMulti) as KVDB
 import Presto.Backend.Language.Types.DB (DBError, KVDBConn, MockedKVDBConn, MockedSqlConn, SqlConn, fromDBMaybeResult, toDBMaybeResult)
 import Presto.Backend.Language.Types.EitherEx (EitherEx, fromCustomEitherEx, fromCustomEitherExF, toCustomEitherEx, toCustomEitherExF)
 import Presto.Backend.Language.Types.KVDB (Multi)
@@ -549,6 +550,16 @@ execMulti multi = do
       (toCustomEitherEx <$> KVDB.execMulti multi)
       KVDBMock.mkKVDBActionDict
       (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "execMulti" "")
+      id
+  pure $ fromCustomEitherEx eRes
+
+xaddMulti :: forall st rt.String -> EntryID -> (Array Item) -> Multi -> BackendFlow st rt (Either Error Multi)
+xaddMulti key entryId args multi = do
+  let dbName = KVDB.getKVDBName multi
+  eRes <- wrap $ RunKVDBEither dbName
+      (toCustomEitherEx <$> KVDB.xaddMulti key entryId args multi)
+      KVDBMock.mkKVDBActionDict
+      (Playback.mkEntryDict $ Playback.mkRunKVDBEitherEntry dbName "xaddMulti" "")
       id
   pure $ fromCustomEitherEx eRes
 
