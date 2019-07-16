@@ -29,7 +29,6 @@ import Data.Foreign (Foreign)
 import Data.Foreign.Generic (defaultOptions, genericDecode, genericDecodeJSON, genericEncode, genericEncodeJSON, encodeJSON, decodeJSON)
 import Data.Foreign.Generic.Class (class GenericDecode, class GenericEncode)
 import Data.Generic.Rep (class Generic)
-import Data.Lazy (Lazy, force, defer)
 import Data.Maybe (Maybe(..), isJust)
 import Data.Newtype (class Newtype)
 import Data.Tuple (Tuple(..))
@@ -125,11 +124,11 @@ mkCallAPIEntry
   :: forall b
    . Encode b
   => Decode b
-  => Lazy Foreign
+  => (Unit -> Foreign)
   -> EitherEx ErrorResponse b
   -> CallAPIEntry
-mkCallAPIEntry jReq aRes = CallAPIEntry
-  { jsonRequest : force jReq
+mkCallAPIEntry jReqF aRes = CallAPIEntry
+  { jsonRequest : jReqF unit
   , jsonResult  : encode <$> aRes
   }
 
@@ -206,7 +205,7 @@ instance rrItemLogEntry :: RRItem LogEntry where
   fromRecordingEntry (RecordingEntry mode re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "LogEntry"
   isMocked _ = true
-  
+
 
 instance mockedResultLogEntry :: MockedResult LogEntry UnitEx where
   parseRRItem _ = Just UnitEx
@@ -235,7 +234,7 @@ instance decodeThrowExceptionEntry :: Decode ThrowExceptionEntry where decode = 
 instance encodeThrowExceptionEntry :: Encode ThrowExceptionEntry where encode = defaultEncode
 
 instance rrItemThrowExceptionEntry :: RRItem ThrowExceptionEntry where
-  toRecordingEntry rrItem mode = (RecordingEntry mode) <<< encodeJSON $ rrItem 
+  toRecordingEntry rrItem mode = (RecordingEntry mode) <<< encodeJSON $ rrItem
   fromRecordingEntry (RecordingEntry mode re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "ThrowExceptionEntry"
   isMocked _ = true
@@ -252,7 +251,7 @@ instance decodeCallAPIEntry :: Decode CallAPIEntry where decode = defaultDecode
 instance encodeCallAPIEntry :: Encode CallAPIEntry where encode = defaultEncode
 
 instance rrItemCallAPIEntry :: RRItem CallAPIEntry where
-  toRecordingEntry rrItem mode = (RecordingEntry mode) <<< encodeJSON $ rrItem 
+  toRecordingEntry rrItem mode = (RecordingEntry mode) <<< encodeJSON $ rrItem
   fromRecordingEntry (RecordingEntry mode re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "CallAPIEntry"
   isMocked _ = true
@@ -292,7 +291,7 @@ instance decodeDoAffEntry :: Decode DoAffEntry where decode = defaultDecode
 instance encodeDoAffEntry :: Encode DoAffEntry where encode = defaultEncode
 
 instance rrItemDoAffEntry :: RRItem DoAffEntry where
-  toRecordingEntry rrItem mode = (RecordingEntry mode) <<< encodeJSON $ rrItem 
+  toRecordingEntry rrItem mode = (RecordingEntry mode) <<< encodeJSON $ rrItem
   fromRecordingEntry (RecordingEntry mode re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "DoAffEntry"
   isMocked _ = true

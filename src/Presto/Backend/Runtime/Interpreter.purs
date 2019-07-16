@@ -34,7 +34,6 @@ import Control.Monad.Reader.Trans (ask, lift, runReaderT) as R
 import Control.Monad.State.Trans (get, modify, put, runStateT) as S
 import Data.Exists (runExists)
 import Data.Tuple (Tuple)
-import Data.Lazy (defer)
 import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), BackendFlowCommandsWrapper, BackendFlowWrapper(..))
 import Presto.Backend.SystemCommands (runSysCmd)
 import Presto.Backend.Language.Types.EitherEx (fromEitherEx)
@@ -71,54 +70,54 @@ interpret _ (Modify d next) = R.lift (S.modify d) *> S.get >>= (pure <<< next)
 
 interpret brt@(BackendRuntime rt) (CallAPI apiAct rrItemDict next) = do
   resultEx <- withRunModeClassless brt rrItemDict
-    (defer $ \_ -> lift3 $ runAPIInteraction rt.apiRunner apiAct)
+    (lift3 $ runAPIInteraction rt.apiRunner apiAct)
   pure $ next $ fromEitherEx resultEx
 
 interpret _ (DoAff aff next) = next <$> lift3 aff
 
 interpret brt@(BackendRuntime rt) (DoAffRR aff rrItemDict next) = do
   res <- withRunModeClassless brt rrItemDict
-    (defer $ \_ -> lift3 $ rt.affRunner aff)
+    (lift3 $ rt.affRunner aff)
   pure $ next res
 
 interpret brt@(BackendRuntime rt) (Log tag message rrItemDict next) = do
   res <- withRunModeClassless brt rrItemDict
-    (defer $ \_ -> lift3 (rt.logRunner tag message) *> pure UnitEx)
+    (lift3 (rt.logRunner tag message) *> pure UnitEx)
   pure $ next res
 
 interpret brt (Fork flow rrItemDict next) = do
   res <- withRunModeClassless brt rrItemDict
-    (defer $ \_ -> forkF brt flow *> pure UnitEx)
+    (forkF brt flow *> pure UnitEx)
   pure $ next res
 
 interpret brt (RunSysCmd cmd rrItemDict next) = do
   res <- withRunModeClassless brt rrItemDict
-    (defer $ \_ -> lift3 $ runSysCmd cmd)
+    (lift3 $ runSysCmd cmd)
   pure $ next res
 
 interpret brt (ThrowException errorMessage) = do
   void $ withRunModeClassless brt
     (mkEntryDict $ mkThrowExceptionEntry errorMessage)
-    (defer $ \_ -> pure UnitEx)
+    (pure UnitEx)
   throwException' errorMessage
 
 interpret brt@(BackendRuntime rt) (GetDBConn dbName rrItemDict next) = do
   res <- withRunModeClassless brt rrItemDict
-    (defer $ \_ -> getDBConn' brt dbName)
+    (getDBConn' brt dbName)
   pure $ next res
 
 interpret brt@(BackendRuntime rt) (RunDB dbName dbAffF mockedDbActDictF rrItemDict next) = do
   conn' <- getDBConn' brt dbName
   res <- case conn' of
     Sequelize conn -> withRunModeClassless brt rrItemDict
-        (defer $ \_ -> lift3 $ rt.affRunner $ dbAffF conn)
+        (lift3 $ rt.affRunner $ dbAffF conn)
     MockedSql mocked -> withRunModeClassless brt rrItemDict
-        (defer $ \_ -> getMockedDBValue brt $ mockedDbActDictF mocked)
+        (getMockedDBValue brt $ mockedDbActDictF mocked)
   pure $ next res
 
 interpret brt@(BackendRuntime rt) (GetKVDBConn dbName rrItemDict next) = do
   res <- withRunModeClassless brt rrItemDict
-    (defer $ \_ -> getKVDBConn' brt dbName)
+    (getKVDBConn' brt dbName)
   pure $ next res
 
 interpret brt (RunKVDBEither dbName kvDBF mockedKvDbActDictF rrItemDict next) =

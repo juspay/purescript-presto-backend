@@ -41,7 +41,6 @@ import Data.Either (Either(..))
 import Data.Exists (runExists)
 import Data.Maybe (Maybe(Just, Nothing))
 import Data.StrMap as StrMap
-import Data.Lazy (defer)
 import Data.UUID (GENUUID, genUUID)
 import Presto.Backend.Language.KVDB (KVDB, KVDBMethod(..), KVDBMethodWrapper, KVDBWrapper(..))
 import Presto.Backend.Language.Types.DB (KVDBConn(MockedKVDB, Redis), MockedKVDBConn)
@@ -283,6 +282,6 @@ runKVDB brt dbName kvDBAct mockedKvDbActDictF rrItemDict = do
   conn' <- getKVDBConn' brt dbName
   case conn' of
     Redis simpleConn -> withRunModeClassless brt rrItemDict
-        (defer $ \_ -> runKVDB' brt dbName simpleConn kvDBAct)
+        (runKVDB' brt dbName simpleConn kvDBAct)
     MockedKVDB mocked -> withRunModeClassless brt rrItemDict
-        (defer $ \_ -> getMockedKVDBValue brt $ mockedKvDbActDictF mocked)
+        (getMockedKVDBValue brt $ mockedKvDbActDictF mocked)

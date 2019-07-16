@@ -32,7 +32,6 @@ import Data.Either (Either)
 import Data.Exists (Exists, mkExists)
 import Data.Foreign (Foreign, toForeign)
 import Data.Foreign.Class (class Decode, class Encode, encode)
-import Data.Lazy (defer)
 import Data.Maybe (Maybe(Just, Nothing))
 import Data.Newtype (class Newtype)
 import Data.Options (Options)
@@ -144,7 +143,7 @@ callAPI
   => Headers -> a -> BackendFlow st rt (APIResult b)
 callAPI headers a = wrap $ CallAPI
   (apiInteract a headers)
-  (Playback.mkEntryDict (Playback.mkCallAPIEntry (defer $ \_ -> encode $ makeRequest a headers)))
+  (Playback.mkEntryDict (Playback.mkCallAPIEntry (\_ -> encode $ makeRequest a headers)))
   id
 
 doAff :: forall st rt a. (forall eff. BackendAff eff a) -> BackendFlow st rt a

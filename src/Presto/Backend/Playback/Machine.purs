@@ -24,7 +24,6 @@ module Presto.Backend.Playback.Machine where
 import Prelude
 
 import Data.Foreign.Generic (encodeJSON)
-import Data.Lazy (Lazy)
 import Presto.Backend.Runtime.Types (BackendRuntime, InterpreterMT')
 import Presto.Backend.Playback.Types (class MockedResult, class RRItem, RRItemDict(..), fromRecordingEntry, getTag, isMocked, parseRRItem, toRecordingEntry)
 import Presto.Backend.Playback.Machine.Classless (withRunModeClassless)
@@ -34,7 +33,7 @@ withRunMode
    . RRItem rrItem
   => MockedResult rrItem native
   => BackendRuntime
-  -> Lazy (InterpreterMT' rt st eff native)
+  -> InterpreterMT' rt st eff native
   -> (native -> rrItem)
   -> InterpreterMT' rt st eff native
 withRunMode brt lAct rrItemF = withRunModeClassless brt rrDict lAct
@@ -49,5 +48,4 @@ withRunMode brt lAct rrItemF = withRunModeClassless brt rrDict lAct
         , mkEntry            : rrItemF
         , compare            : (==)
         , encodeJSON         : encodeJSON
-
         }

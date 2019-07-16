@@ -33,7 +33,6 @@ import Data.Array as Array
 import Data.Either (Either(Right, Left), note)
 import Data.Maybe (Maybe(..), isJust, isNothing, fromMaybe)
 import Data.Tuple (Tuple(..))
-import Data.Lazy (Lazy, force)
 import Presto.Backend.Runtime.Common (lift3)
 import Presto.Backend.Runtime.Types (BackendRuntime(..), InterpreterMT', RunningMode(..))
 import Presto.Backend.Playback.Types (RecordingEntry(..),PlaybackError(..), PlaybackErrorType(..), PlayerRuntime, RRItemDict, RecorderRuntime, RecordingEntry,EntryReplayingMode(..),GlobalReplayingMode(..), compare', encodeJSON', fromRecordingEntry', getTag', isMocked', mkEntry', parseRRItem', toRecordingEntry')
@@ -137,13 +136,13 @@ popNextRRItemAndResult playerRt rrItemDict proxy = do
 replayWithMock
   :: forall eff rt st rrItem native
    . RRItemDict rrItem native
-  -> Lazy (InterpreterMT' rt st eff native)
+  -> InterpreterMT' rt st eff native
   -> Proxy rrItem
   -> native
   -> InterpreterMT' rt st eff native
 replayWithMock rrItemDict _ proxy nextRes
   | isMocked' rrItemDict proxy = pure nextRes
-replayWithMock rrItemDict lAct proxy nextRes = force lAct
+replayWithMock rrItemDict lAct proxy nextRes = lAct
 
 compareRRItems
   :: forall eff rt st rrItem native
@@ -163,7 +162,7 @@ compareRRItems playerRt rrItemDict nextRRItem rrItem = do
 replayWithGlobalConfig
   :: forall eff rt st rrItem native. PlayerRuntime
   -> RRItemDict rrItem native
-  -> Lazy (InterpreterMT' rt st eff native)
+  -> InterpreterMT' rt st eff native
   -> Either PlaybackError (Tuple rrItem native)
   -> InterpreterMT' rt st eff native
 replayWithGlobalConfig playerRt rrItemDict lAct eNextRRItemRes  = do
@@ -174,7 +173,7 @@ replayWithGlobalConfig playerRt rrItemDict lAct eNextRRItemRes  = do
     GlobalNoVerify  -> case eNextRRItemRes of
                         Left err -> replayError playerRt err
                         Right (Tuple nextRRItem nextRes) -> replayWithMock rrItemDict lAct proxy nextRes
-    GlobalNoMocking -> force lAct
+    GlobalNoMocking -> lAct
     GlobalNormal    -> case eNextRRItemRes of
                         Left err -> replayError playerRt err
                         Right (Tuple nextRRItem nextRes) -> do
@@ -190,7 +189,7 @@ checkForReplayConfig  playerRt tag | Array.elem tag playerRt.disableMocking  = G
 replay
   :: forall eff rt st rrItem native. PlayerRuntime
   -> RRItemDict rrItem native
-  -> Lazy (InterpreterMT' rt st eff native)
+  -> InterpreterMT' rt st eff native
   -> InterpreterMT' rt st eff native
 replay playerRt rrItemDict lAct = do
   let proxy = Proxy :: Proxy rrItem
@@ -199,7 +198,7 @@ replay playerRt rrItemDict lAct = do
   eNextRRItemRes <- lift3 $ popNextRRItemAndResult playerRt rrItemDict proxy
   case entryReplayMode of
     Normal -> replayWithGlobalConfig playerRt rrItemDict lAct eNextRRItemRes
-    NoMock -> force lAct
+    NoMock -> lAct
     NoVerify -> case eNextRRItemRes of
                     Left err -> replayError playerRt err
                     Right (Tuple nextRRItem nextRes) ->  replayWithMock rrItemDict lAct proxy nextRes
@@ -208,10 +207,10 @@ replay playerRt rrItemDict lAct = do
 record
   :: forall eff rt st rrItem native. RecorderRuntime
   -> RRItemDict rrItem native
-  ->  Lazy (InterpreterMT' rt st eff native)
+  -> InterpreterMT' rt st eff native
   -> InterpreterMT' rt st eff native
 record recorderRt rrItemDict lAct = do
-  native <- force lAct
+  native <- lAct
   let tag = getTag' rrItemDict (Proxy :: Proxy rrItem)
   when ( not $ Array.elem tag recorderRt.disableEntries ) $ lift3 $ pushRecordingEntry recorderRt $ toRecordingEntry' rrItemDict (mkEntry' rrItemDict native) Normal
   pure native
@@ -220,9 +219,9 @@ withRunModeClassless
   :: forall eff rt st rrItem native
    . BackendRuntime
   -> RRItemDict rrItem native
-  -> Lazy (InterpreterMT' rt st eff native)
+  -> InterpreterMT' rt st eff native
   -> InterpreterMT' rt st eff native
 withRunModeClassless brt@(BackendRuntime rt) rrItemDict lAct = case rt.mode of
-  RegularMode              -> force lAct
+  RegularMode              -> lAct
   RecordingMode recorderRt -> record recorderRt rrItemDict lAct
   ReplayingMode playerRt   -> replay playerRt   rrItemDict lAct

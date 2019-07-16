@@ -30,13 +30,12 @@
     "purescript-redis": "https://github.com/juspay/purescript-redis.git#a7e76a31eaee72bb17d80b694cb20f620a03984d",
     "purescript-now": "3.0.0",
     "purescript-node-fs": "^4.0.0",
-    "purescript-node-process": "^5.0.0",
-    "purescript-lazy": "^3.0.0"
+    "purescript-node-process": "^5.0.0"
   },
   "devDependencies": {
     "purescript-psci-support": "^3.0.0",
     "purescript-debug": "3.0.0",
-    "purescript-spec": "^3.0.0"
+    "purescript-spec": "^2.0.0"
   },
   "version": "0.0.1",
   "resolutions": {
