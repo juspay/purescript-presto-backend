@@ -76,6 +76,7 @@ data PlaybackErrorType
   | UnknownRRItem
   | MockDecodingFailed
   | ItemMismatch
+  | UnknownPlaybackError
 
 newtype PlaybackError = PlaybackError
   { errorType :: PlaybackErrorType
