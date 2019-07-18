@@ -35,7 +35,7 @@ import Data.Maybe (Maybe(..), isJust, isNothing, fromMaybe)
 import Data.Tuple (Tuple(..))
 import Presto.Backend.Runtime.Common (lift3)
 import Presto.Backend.Runtime.Types (BackendRuntime(..), InterpreterMT', RunningMode(..))
-import Presto.Backend.Playback.Types (RecordingEntry(..),PlaybackError(..), PlaybackErrorType(..), PlayerRuntime, RRItemDict, RecorderRuntime, RecordingEntry,EntryReplayingMode(..),GlobalReplayingMode(..), compare', encodeJSON', fromRecordingEntry', getTag', isMocked', mkEntry', parseRRItem', toRecordingEntry')
+import Presto.Backend.Playback.Types (Recording (..), RecordingEntry(..), PlaybackError(..), PlaybackErrorType(..), PlayerRuntime, RRItemDict, RecorderRuntime, RecordingEntry,EntryReplayingMode(..),GlobalReplayingMode(..), compare', encodeJSON', fromRecordingEntry', getTag', isMocked', mkEntry', parseRRItem', toRecordingEntry')
 import Type.Proxy (Proxy(..))
 
 unexpectedRecordingEnd :: String -> PlaybackError
@@ -79,8 +79,8 @@ pushRecordingEntry
   -> RecordingEntry
   -> Aff (avar :: AVAR | eff) Unit
 pushRecordingEntry recorderRt entry = do
-  recording <- takeVar recorderRt.recordingVar
-  putVar { entries : Array.snoc recording.entries entry } recorderRt.recordingVar
+  entries <- takeVar recorderRt.recordingVar
+  putVar (Array.snoc entries entry) recorderRt.recordingVar
 
 popNextRecordingEntry
   :: forall eff
@@ -88,7 +88,7 @@ popNextRecordingEntry
   -> Aff (avar :: AVAR | eff) (Maybe RecordingEntry)
 popNextRecordingEntry playerRt = do
   cur <- takeVar playerRt.stepVar
-  let mbItem = Array.index playerRt.recording.entries cur
+  let mbItem = Array.index playerRt.recording cur
   when (isJust mbItem)    $ putVar (cur + 1) playerRt.stepVar
   when (isNothing mbItem) $ putVar cur playerRt.stepVar
   pure mbItem
@@ -101,7 +101,7 @@ getCurrentEntryReplayMode playerRt = do
   cur <- takeVar playerRt.stepVar
   putVar cur playerRt.stepVar
   pure $ do
-    (RecordingEntry mode item) <- Array.index playerRt.recording.entries cur
+    (RecordingEntry mode item) <- Array.index playerRt.recording cur
     pure $ mode
 
 popNextRRItem

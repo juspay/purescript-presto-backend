@@ -44,27 +44,26 @@ data RecordingEntry = RecordingEntry EntryReplayingMode String
 data GlobalReplayingMode = GlobalNormal | GlobalNoVerify | GlobalNoMocking
 data EntryReplayingMode = Normal | NoVerify | NoMock -- | Skip
 
-derive instance modeEq :: Eq EntryReplayingMode
+derive instance eqEntryReplayingMode :: Eq EntryReplayingMode
 derive instance genericEntryReplayingMode :: Generic EntryReplayingMode _
-instance entryReplayingModeEncode :: Encode EntryReplayingMode where encode = defaultEncode
-instance entryReplayingModeDecode :: Decode EntryReplayingMode where decode = defaultDecode
+instance encodeEntryReplayingMode :: Encode EntryReplayingMode where encode = defaultEncode
+instance decodeEntryReplayingMode :: Decode EntryReplayingMode where decode = defaultDecode
 instance showEntryReplayingMode :: Show EntryReplayingMode where show = GShow.genericShow
 instance ordEntryReplayingMode :: Ord EntryReplayingMode where compare = GOrd.genericCompare
 
 
 type DisableEntries  = String
 -- TODO: it might be Data.Sequence.Ordered is better
-type Recording =
-  { entries :: Array RecordingEntry
-  }
+
+newtype Recording = Recording (Array RecordingEntry)
 
 type RecorderRuntime =
-  { recordingVar :: AVar Recording
-   ,disableEntries :: Array DisableEntries
+  { recordingVar :: AVar (Array RecordingEntry)
+  , disableEntries :: Array DisableEntries
   }
 
 type PlayerRuntime =
-  { recording :: Recording
+  { recording :: Array RecordingEntry
   , disableVerify :: Array DisableEntries
   , disableMocking :: Array DisableEntries
   , stepVar   :: AVar Int
@@ -95,6 +94,14 @@ class (Eq rrItem, Decode rrItem, Encode rrItem) <= RRItem rrItem where
 -- TODO: error handling
 class (RRItem rrItem) <= MockedResult rrItem native | rrItem -> native where
   parseRRItem :: rrItem -> Maybe native
+
+
+derive instance eqRecording :: Eq Recording
+derive instance genericRecording :: Generic Recording _
+instance encodeRecording :: Encode Recording where encode = defaultEncode
+instance decodeRecording :: Decode Recording where decode = defaultDecode
+instance showRecording :: Show Recording where show = GShow.genericShow
+instance ordRecording :: Ord Recording where compare = GOrd.genericCompare
 
 derive instance genericRecordingEntry :: Generic RecordingEntry _
 instance decodeRecordingEntry         :: Decode  RecordingEntry where decode = defaultDecode
