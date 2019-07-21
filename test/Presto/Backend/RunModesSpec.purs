@@ -285,10 +285,10 @@ runTests = do
       curStep  <- readVar stepVar
       pbError  <- readVar errorVar
       isRight eResult2 `shouldEqual` false
-      pbError `shouldEqual` (Just $ PlaybackError
-        { errorMessage: "Expected: LogEntry"
+      pbError `shouldEqual` (Just (PlaybackError
+        { errorMessage: "\n    Flow step: tag: logging1, message: \"try1\""
         , errorType: UnexpectedRecordingEnd
-        })
+        }))
       curStep `shouldEqual` 10
 
     it "Record / replay test: started from the middle" $ do
@@ -318,7 +318,7 @@ runTests = do
       curStep  <- readVar stepVar
       pbError  <- readVar errorVar
       isRight eResult2 `shouldEqual` false
-      pbError `shouldEqual` (Just $ PlaybackError { errorMessage: "Expected: LogEntry", errorType: UnknownRRItem })
+      pbError `shouldEqual` (Just (PlaybackError { errorMessage: "\n    Flow step: tag: logging1, message: \"try1\"\n    Recording entry: (RecordingEntry 2 Normal \"{\\\"jsonResult\\\":{\\\"contents\\\":{\\\"string\\\":\\\"Hello there!\\\",\\\"code\\\":1},\\\"tag\\\":\\\"RightEx\\\"},\\\"jsonRequest\\\":{\\\"url\\\":\\\"1\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":1,\\\\\\\"code\\\\\\\":1}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}}\")", errorType: UnknownRRItem }))
       curStep `shouldEqual` 3
 
     it "Record / replay test: runSysCmd success" $ do
