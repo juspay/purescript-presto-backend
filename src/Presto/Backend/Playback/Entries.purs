@@ -201,8 +201,8 @@ instance decodeLogEntry :: Decode LogEntry where decode = defaultDecode
 instance encodeLogEntry :: Encode LogEntry where encode = defaultEncode
 
 instance rrItemLogEntry :: RRItem LogEntry where
-  toRecordingEntry rrItem mode = (RecordingEntry mode ) <<< encodeJSON $ rrItem
-  fromRecordingEntry (RecordingEntry mode re) = hush $ E.runExcept $ decodeJSON re
+  toRecordingEntry rrItem idx mode = (RecordingEntry idx mode) <<< encodeJSON $ rrItem
+  fromRecordingEntry (RecordingEntry idx mode re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "LogEntry"
   isMocked _ = true
 
@@ -218,8 +218,8 @@ instance decodeForkFlowEntry :: Decode ForkFlowEntry where decode = defaultDecod
 instance encodeForkFlowEntry :: Encode ForkFlowEntry where encode = defaultEncode
 
 instance rrItemForkFlowEntry :: RRItem ForkFlowEntry where
-  toRecordingEntry rrItem mode = (RecordingEntry mode ) <<< encodeJSON $ rrItem
-  fromRecordingEntry (RecordingEntry mode re) = hush $ E.runExcept $ decodeJSON re
+  toRecordingEntry rrItem idx mode = (RecordingEntry idx mode) <<< encodeJSON $ rrItem
+  fromRecordingEntry (RecordingEntry idx mode re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "ForkFlowEntry"
   isMocked _ = true
 
@@ -234,8 +234,8 @@ instance decodeThrowExceptionEntry :: Decode ThrowExceptionEntry where decode = 
 instance encodeThrowExceptionEntry :: Encode ThrowExceptionEntry where encode = defaultEncode
 
 instance rrItemThrowExceptionEntry :: RRItem ThrowExceptionEntry where
-  toRecordingEntry rrItem mode = (RecordingEntry mode) <<< encodeJSON $ rrItem
-  fromRecordingEntry (RecordingEntry mode re) = hush $ E.runExcept $ decodeJSON re
+  toRecordingEntry rrItem idx mode = (RecordingEntry idx mode) <<< encodeJSON $ rrItem
+  fromRecordingEntry (RecordingEntry idx mode re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "ThrowExceptionEntry"
   isMocked _ = true
 
@@ -251,8 +251,8 @@ instance decodeCallAPIEntry :: Decode CallAPIEntry where decode = defaultDecode
 instance encodeCallAPIEntry :: Encode CallAPIEntry where encode = defaultEncode
 
 instance rrItemCallAPIEntry :: RRItem CallAPIEntry where
-  toRecordingEntry rrItem mode = (RecordingEntry mode) <<< encodeJSON $ rrItem
-  fromRecordingEntry (RecordingEntry mode re) = hush $ E.runExcept $ decodeJSON re
+  toRecordingEntry rrItem idx mode = (RecordingEntry idx mode) <<< encodeJSON $ rrItem
+  fromRecordingEntry (RecordingEntry idx mode re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "CallAPIEntry"
   isMocked _ = true
 
@@ -274,8 +274,8 @@ instance decodeRunSysCmdEntry :: Decode RunSysCmdEntry where decode = defaultDec
 instance encodeRunSysCmdEntry :: Encode RunSysCmdEntry where encode = defaultEncode
 
 instance rrItemRunSysCmdEntry :: RRItem RunSysCmdEntry where
-  toRecordingEntry rrItem mode = (RecordingEntry mode) <<< encodeJSON $ rrItem
-  fromRecordingEntry (RecordingEntry mode re) = hush $ E.runExcept $ decodeJSON re
+  toRecordingEntry rrItem idx mode = (RecordingEntry idx mode) <<< encodeJSON $ rrItem
+  fromRecordingEntry (RecordingEntry idx mode re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "RunSysCmdEntry"
   isMocked _ = true
 
@@ -291,8 +291,8 @@ instance decodeDoAffEntry :: Decode DoAffEntry where decode = defaultDecode
 instance encodeDoAffEntry :: Encode DoAffEntry where encode = defaultEncode
 
 instance rrItemDoAffEntry :: RRItem DoAffEntry where
-  toRecordingEntry rrItem mode = (RecordingEntry mode) <<< encodeJSON $ rrItem
-  fromRecordingEntry (RecordingEntry mode re) = hush $ E.runExcept $ decodeJSON re
+  toRecordingEntry rrItem idx mode = (RecordingEntry idx mode) <<< encodeJSON $ rrItem
+  fromRecordingEntry (RecordingEntry idx mode re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "DoAffEntry"
   isMocked _ = true
 
@@ -307,8 +307,8 @@ instance eqRunDBEntry :: Eq RunDBEntry where
 instance decodeRunDBEntry :: Decode RunDBEntry where decode = defaultDecode
 instance encodeRunDBEntry :: Encode RunDBEntry where encode = defaultEncode
 instance rrItemRunDBEntry :: RRItem RunDBEntry where
-  toRecordingEntry rrItem mode = (RecordingEntry mode) <<< encodeJSON $ rrItem
-  fromRecordingEntry (RecordingEntry mode re) = hush $ E.runExcept $ decodeJSON re
+  toRecordingEntry rrItem idx mode = (RecordingEntry idx mode) <<< encodeJSON $ rrItem
+  fromRecordingEntry (RecordingEntry idx mode re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "RunDBEntry"
   isMocked _ = true
 
@@ -328,8 +328,8 @@ derive instance eqGetDBConnEntry :: Eq GetDBConnEntry
 instance decodeGetDBConnEntry :: Decode GetDBConnEntry where decode = defaultDecode
 instance encodeGetDBConnEntry :: Encode GetDBConnEntry where encode = defaultEncode
 instance rrItemGetDBConnEntry :: RRItem GetDBConnEntry where
-  toRecordingEntry rrItem mode = (RecordingEntry mode ) <<< encodeJSON $ rrItem
-  fromRecordingEntry (RecordingEntry mode re) = hush $ E.runExcept $ decodeJSON re
+  toRecordingEntry rrItem idx mode = (RecordingEntry idx mode) <<< encodeJSON $ rrItem
+  fromRecordingEntry (RecordingEntry idx mode re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "GetDBConnEntry"
   isMocked _ = true
 
@@ -342,8 +342,8 @@ derive instance eqGetKVDBConnEntry :: Eq GetKVDBConnEntry
 instance decodeGetKVDBConnEntry :: Decode GetKVDBConnEntry where decode = defaultDecode
 instance encodeGetKVDBConnEntry :: Encode GetKVDBConnEntry where encode = defaultEncode
 instance rrItemGetKVDBConnEntry :: RRItem GetKVDBConnEntry where
-  toRecordingEntry rrItem mode = (RecordingEntry mode ) <<< encodeJSON $ rrItem
-  fromRecordingEntry (RecordingEntry mode re) = hush $ E.runExcept $ decodeJSON re
+  toRecordingEntry rrItem idx mode = (RecordingEntry idx mode) <<< encodeJSON $ rrItem
+  fromRecordingEntry (RecordingEntry idx mode re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "GetKVDBConnEntry"
   isMocked _ = true
 
@@ -358,8 +358,8 @@ instance eqRunKVDBEitherEntry :: Eq RunKVDBEitherEntry where
 instance decodeRunKVDBEitherEntry :: Decode RunKVDBEitherEntry where decode = defaultDecode
 instance encodeRunKVDBEitherEntry :: Encode RunKVDBEitherEntry where encode = defaultEncode
 instance rrItemRunKVDBEitherEntry :: RRItem RunKVDBEitherEntry where
-  toRecordingEntry rrItem mode = (RecordingEntry mode ) <<< encodeJSON $ rrItem
-  fromRecordingEntry (RecordingEntry mode re) = hush $ E.runExcept $ decodeJSON re
+  toRecordingEntry rrItem idx mode = (RecordingEntry idx mode) <<< encodeJSON $ rrItem
+  fromRecordingEntry (RecordingEntry idx mode re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "RunKVDBEitherEntry"
   isMocked _ = true
 
@@ -380,8 +380,8 @@ instance eqRunKVDBSimpleEntry :: Eq RunKVDBSimpleEntry where
 instance decodeRunKVDBSimpleEntry         :: Decode RunKVDBSimpleEntry where decode = defaultDecode
 instance encodeRunKVDBSimpleEntry         :: Encode RunKVDBSimpleEntry where encode = defaultEncode
 instance rrItemRunKVDBSimpleEntry         :: RRItem RunKVDBSimpleEntry where
-  toRecordingEntry rrItem mode = (RecordingEntry mode ) <<< encodeJSON $ rrItem
-  fromRecordingEntry (RecordingEntry mode re) = hush $ E.runExcept $ decodeJSON re
+  toRecordingEntry rrItem idx mode = (RecordingEntry idx mode) <<< encodeJSON $ rrItem
+  fromRecordingEntry (RecordingEntry idx mode re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "RunKVDBSimpleEntry"
   isMocked _ = true
 

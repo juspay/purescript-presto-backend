@@ -31,16 +31,14 @@ import Data.Generic.Rep.Enum as GEnum
 import Data.Generic.Rep.Eq as GEq
 import Data.Generic.Rep.Ord as GOrd
 import Data.Generic.Rep.Show as GShow
-import Data.Maybe (Maybe)
 import Data.Newtype (class Newtype)
 import Data.Enum (class Enum)
 import Data.Foreign.Generic (encodeJSON)
 import Data.Foreign.Class (class Decode, class Encode)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
-import Sequelize.Models.Types (DataType(..))
 import Type.Proxy (Proxy)
 
-data RecordingEntry = RecordingEntry EntryReplayingMode String
+data RecordingEntry = RecordingEntry Int EntryReplayingMode String
 data GlobalReplayingMode = GlobalNormal | GlobalNoVerify | GlobalNoMocking
 data EntryReplayingMode = Normal | NoVerify | NoMock -- | Skip
 
@@ -84,7 +82,7 @@ newtype PlaybackError = PlaybackError
 
 
 class (Eq rrItem, Decode rrItem, Encode rrItem) <= RRItem rrItem where
-  toRecordingEntry   :: rrItem -> EntryReplayingMode -> RecordingEntry
+  toRecordingEntry   :: rrItem -> Int -> EntryReplayingMode -> RecordingEntry
   fromRecordingEntry :: RecordingEntry -> Maybe rrItem
   getTag             :: Proxy rrItem -> String
   isMocked           :: Proxy rrItem -> Boolean
@@ -133,7 +131,7 @@ instance ordPlaybackError            :: Ord     PlaybackError where compare = GO
 
 -- Classless types
 newtype RRItemDict rrItem native = RRItemDict
-  { toRecordingEntry   :: rrItem -> EntryReplayingMode -> RecordingEntry
+  { toRecordingEntry   :: rrItem -> Int -> EntryReplayingMode -> RecordingEntry
   , fromRecordingEntry :: RecordingEntry -> Maybe rrItem
   , getTag             :: Proxy rrItem -> String
   , isMocked           :: Proxy rrItem -> Boolean
@@ -145,8 +143,14 @@ newtype RRItemDict rrItem native = RRItemDict
 
 
 
-toRecordingEntry' :: forall rrItem native. RRItemDict rrItem native -> rrItem -> EntryReplayingMode -> RecordingEntry
-toRecordingEntry' (RRItemDict d) mode = d.toRecordingEntry mode
+toRecordingEntry'
+  :: forall rrItem native
+   . RRItemDict rrItem native
+  -> rrItem
+  -> Int
+  -> EntryReplayingMode
+  -> RecordingEntry
+toRecordingEntry' (RRItemDict d) = d.toRecordingEntry
 
 fromRecordingEntry' :: forall rrItem native. RRItemDict rrItem native -> RecordingEntry -> Maybe rrItem
 fromRecordingEntry' (RRItemDict d) = d.fromRecordingEntry
@@ -170,7 +174,12 @@ encodeJSON' :: forall rrItem native. RRItemDict rrItem native -> rrItem -> Strin
 encodeJSON' (RRItemDict d) = d.encodeJSON
 
 
-mkEntryDict :: forall rrItem native. RRItem rrItem => MockedResult rrItem native => (native -> rrItem) -> RRItemDict rrItem native
+mkEntryDict
+  :: forall rrItem native
+   . RRItem rrItem
+  => MockedResult rrItem native
+  => (native -> rrItem)
+  -> RRItemDict rrItem native
 mkEntryDict mkEntry = RRItemDict
   { toRecordingEntry   : toRecordingEntry
   , fromRecordingEntry : fromRecordingEntry
