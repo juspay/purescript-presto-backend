@@ -97,7 +97,7 @@ interpret brt (RunSysCmd cmd rrItemDict next) = do
 
 interpret brt (ThrowException errorMessage) = do
   void $ withRunModeClassless brt
-    (mkEntryDict $ mkThrowExceptionEntry errorMessage)
+    (mkEntryDict errorMessage $ mkThrowExceptionEntry errorMessage)
     (pure UnitEx)
   throwException' errorMessage
 

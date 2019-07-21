@@ -225,10 +225,10 @@ runTests = do
         Right _  -> do
           recording <- readVar recordingVar
           length recording `shouldEqual` 4
-          index recording 0 `shouldEqual` (Just $ RecordingEntry Normal "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}")
-          index recording 1 `shouldEqual` (Just $ RecordingEntry Normal"{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}")
-          index recording 2 `shouldEqual` (Just (RecordingEntry Normal "{\"jsonResult\":{\"contents\":{\"string\":\"Hello there!\",\"code\":1},\"tag\":\"RightEx\"},\"jsonRequest\":{\"url\":\"1\",\"payload\":\"{\\\"number\\\":1,\\\"code\\\":1}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"))
-          index recording 3 `shouldEqual` (Just (RecordingEntry Normal  "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":{\"url\":\"2\",\"payload\":\"{\\\"number\\\":2,\\\"code\\\":2}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"))
+          index recording 0 `shouldEqual` (Just $ RecordingEntry 0 Normal "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}")
+          index recording 1 `shouldEqual` (Just $ RecordingEntry 1 Normal"{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}")
+          index recording 2 `shouldEqual` (Just (RecordingEntry 2 Normal "{\"jsonResult\":{\"contents\":{\"string\":\"Hello there!\",\"code\":1},\"tag\":\"RightEx\"},\"jsonRequest\":{\"url\":\"1\",\"payload\":\"{\\\"number\\\":1,\\\"code\\\":1}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"))
+          index recording 3 `shouldEqual` (Just (RecordingEntry 3 Normal  "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":{\"url\":\"2\",\"payload\":\"{\\\"number\\\":2,\\\"code\\\":2}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"))
 
     it "Record / replay test: log and callAPI success" $ do
       Tuple brt recordingVar <- createRecordingBackendRuntime
@@ -436,8 +436,8 @@ runTests = do
         Right _  -> do
           recording <- readVar recordingVar
           length recording `shouldEqual` 2
-          index recording 0 `shouldEqual` (Just (RecordingEntry Normal "{\"jsonResult\":{\"contents\":{\"string\":\"Hello there!\",\"code\":1},\"tag\":\"RightEx\"},\"jsonRequest\":{\"url\":\"1\",\"payload\":\"{\\\"number\\\":1,\\\"code\\\":1}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"))
-          index recording 1 `shouldEqual` (Just (RecordingEntry Normal  "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":{\"url\":\"2\",\"payload\":\"{\\\"number\\\":2,\\\"code\\\":2}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"))
+          index recording 0 `shouldEqual` (Just (RecordingEntry 0 Normal "{\"jsonResult\":{\"contents\":{\"string\":\"Hello there!\",\"code\":1},\"tag\":\"RightEx\"},\"jsonRequest\":{\"url\":\"1\",\"payload\":\"{\\\"number\\\":1,\\\"code\\\":1}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"))
+          index recording 1 `shouldEqual` (Just (RecordingEntry 1 Normal  "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":{\"url\":\"2\",\"payload\":\"{\\\"number\\\":2,\\\"code\\\":2}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"))
 
     it "Record Test : CallAPIEntry success" $ do
       Tuple brt recordingVar <- createRecordingBackendRuntimeWithMode ["CallAPIEntry"]
@@ -447,8 +447,8 @@ runTests = do
         Right _  -> do
           recording <- readVar recordingVar
           length recording `shouldEqual` 2
-          index recording 0 `shouldEqual` (Just $ RecordingEntry Normal "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}")
-          index recording 1 `shouldEqual` (Just $ RecordingEntry Normal"{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}")
+          index recording 0 `shouldEqual` (Just $ RecordingEntry 0 Normal "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}")
+          index recording 1 `shouldEqual` (Just $ RecordingEntry 1 Normal"{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}")
 
     it "Record Test: runSysCmd success" $ do
       Tuple brt recordingVar <- createRecordingBackendRuntimeWithMode ["RunSysCmdEntry"]
@@ -613,11 +613,10 @@ runTests = do
 
   describe "Replaying Test in Entry config Mode" do
       it "Replay Test in Normal Entry Mode : Log and CallAPI" $ do
-        let entryMode = [
-                         RecordingEntry Normal "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}"
-                        ,RecordingEntry Normal "{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}"
-                        ,RecordingEntry Normal "{\"jsonResult\":{\"contents\":{\"string\":\"Hello there!\",\"code\":1},\"tag\":\"RightEx\"},\"jsonRequest\":{\"url\":\"1\",\"payload\":\"{\\\"number\\\":1,\\\"code\\\":1}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"
-                        ,RecordingEntry Normal "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request:                  {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":{\"url\":\"2\",\"payload\":\"{\\\"number\\\":2,\\\"code\\\":2}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"
+        let entryMode = [ RecordingEntry 0 Normal "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}"
+                        , RecordingEntry 1 Normal "{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}"
+                        , RecordingEntry 2 Normal "{\"jsonResult\":{\"contents\":{\"string\":\"Hello there!\",\"code\":1},\"tag\":\"RightEx\"},\"jsonRequest\":{\"url\":\"1\",\"payload\":\"{\\\"number\\\":1,\\\"code\\\":1}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"
+                        , RecordingEntry 3 Normal "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request:                  {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":{\"url\":\"2\",\"payload\":\"{\\\"number\\\":2,\\\"code\\\":2}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"
                         ]
         Tuple brt recordingVar <- createRecordingBackendRuntimeWithEntryMode entryMode
         stepVar     <- makeVar 0
@@ -643,10 +642,10 @@ runTests = do
         curStep `shouldEqual` 4
 
       it "Replay Test in NoVerify Entry Mode : Log and CallAPI disable LogEntry" $ do
-        let entryMode = [ RecordingEntry NoVerify "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}"
-                        , RecordingEntry NoVerify "{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}"
-                        , RecordingEntry NoVerify "{\"jsonResult\":{\"contents\":{\"string\":\"Hello there!\",\"code\":1},\"tag\":\"RightEx\"},\"jsonRequest\":{\"url\":\"1\",\"payload\":\"{\\\"number\\\":1,\\\"code\\\":1}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"
-                        , RecordingEntry NoVerify "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request:                  {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":{\"url\":\"2\",\"payload\":\"{\\\"number\\\":2,\\\"code\\\":2}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"
+        let entryMode = [ RecordingEntry 0 NoVerify "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}"
+                        , RecordingEntry 1 NoVerify "{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}"
+                        , RecordingEntry 2 NoVerify "{\"jsonResult\":{\"contents\":{\"string\":\"Hello there!\",\"code\":1},\"tag\":\"RightEx\"},\"jsonRequest\":{\"url\":\"1\",\"payload\":\"{\\\"number\\\":1,\\\"code\\\":1}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"
+                        , RecordingEntry 3 NoVerify "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request:                  {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":{\"url\":\"2\",\"payload\":\"{\\\"number\\\":2,\\\"code\\\":2}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"
                         ]
         Tuple brt recordingVar <- createRecordingBackendRuntimeWithEntryMode entryMode
         stepVar     <- makeVar 0
@@ -672,10 +671,10 @@ runTests = do
         curStep `shouldEqual` 4
 
       it "Replay Test in NoVerify Entry Mode : Log and CallAPI" $ do
-        let entryMode = [ RecordingEntry NoMock "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}"
-                        , RecordingEntry NoMock "{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}"
-                        , RecordingEntry NoMock "{\"jsonResult\":{\"contents\":{\"string\":\"Hello there!\",\"code\":1},\"tag\":\"RightEx\"},\"jsonRequest\":{\"url\":\"1\",\"payload\":\"{\\\"number\\\":1,\\\"code\\\":1}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"
-                        , RecordingEntry NoMock "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request:                  {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":{\"url\":\"2\",\"payload\":\"{\\\"number\\\":2,\\\"code\\\":2}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"
+        let entryMode = [ RecordingEntry 0 NoMock "{\"tag\":\"logging1\",\"message\":\"\\\"try1\\\"\"}"
+                        , RecordingEntry 1 NoMock "{\"tag\":\"logging2\",\"message\":\"\\\"try2\\\"\"}"
+                        , RecordingEntry 2 NoMock "{\"jsonResult\":{\"contents\":{\"string\":\"Hello there!\",\"code\":1},\"tag\":\"RightEx\"},\"jsonRequest\":{\"url\":\"1\",\"payload\":\"{\\\"number\\\":1,\\\"code\\\":1}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"
+                        , RecordingEntry 3 NoMock "{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request:                  {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":{\"url\":\"2\",\"payload\":\"{\\\"number\\\":2,\\\"code\\\":2}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}}"
                         ]
         Tuple brt recordingVar <- createRecordingBackendRuntimeWithEntryMode entryMode
         stepVar     <- makeVar 0

@@ -36,7 +36,7 @@ import Data.Enum (class Enum)
 import Data.Foreign.Generic (encodeJSON)
 import Data.Foreign.Class (class Decode, class Encode)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
-import Type.Proxy (Proxy)
+import Type.Proxy (Proxy(..))
 
 data RecordingEntry = RecordingEntry Int EntryReplayingMode String
 data GlobalReplayingMode = GlobalNormal | GlobalNoVerify | GlobalNoMocking
@@ -85,7 +85,6 @@ class (Eq rrItem, Decode rrItem, Encode rrItem) <= RRItem rrItem where
   toRecordingEntry   :: rrItem -> Int -> EntryReplayingMode -> RecordingEntry
   fromRecordingEntry :: RecordingEntry -> Maybe rrItem
   getTag             :: Proxy rrItem -> String
-  isMocked           :: Proxy rrItem -> Boolean
 
 -- Class for conversions of RRItem and native results.
 -- Native result can be unencodable completely.
@@ -133,8 +132,8 @@ instance ordPlaybackError            :: Ord     PlaybackError where compare = GO
 newtype RRItemDict rrItem native = RRItemDict
   { toRecordingEntry   :: rrItem -> Int -> EntryReplayingMode -> RecordingEntry
   , fromRecordingEntry :: RecordingEntry -> Maybe rrItem
-  , getTag             :: Proxy rrItem -> String
-  , isMocked           :: Proxy rrItem -> Boolean
+  , getInfo            :: String
+  , getTag             :: String
   , parseRRItem        :: rrItem -> Maybe native
   , mkEntry            :: native -> rrItem
   , compare            :: rrItem -> rrItem -> Boolean
@@ -155,11 +154,11 @@ toRecordingEntry' (RRItemDict d) = d.toRecordingEntry
 fromRecordingEntry' :: forall rrItem native. RRItemDict rrItem native -> RecordingEntry -> Maybe rrItem
 fromRecordingEntry' (RRItemDict d) = d.fromRecordingEntry
 
-getTag' :: forall rrItem native. RRItemDict rrItem native -> Proxy rrItem -> String
-getTag' (RRItemDict d) = d.getTag
+getInfo' :: forall rrItem native. RRItemDict rrItem native -> String
+getInfo' (RRItemDict d) = d.getInfo
 
-isMocked' :: forall rrItem native. RRItemDict rrItem native -> Proxy rrItem -> Boolean
-isMocked' (RRItemDict d) = d.isMocked
+getTag' :: forall rrItem native. RRItemDict rrItem native -> String
+getTag' (RRItemDict d) = d.getTag
 
 parseRRItem' :: forall rrItem native. RRItemDict rrItem native -> rrItem -> Maybe native
 parseRRItem' (RRItemDict d) = d.parseRRItem
@@ -178,13 +177,14 @@ mkEntryDict
   :: forall rrItem native
    . RRItem rrItem
   => MockedResult rrItem native
-  => (native -> rrItem)
+  => String
+  -> (native -> rrItem)
   -> RRItemDict rrItem native
-mkEntryDict mkEntry = RRItemDict
+mkEntryDict mkInfo mkEntry = RRItemDict
   { toRecordingEntry   : toRecordingEntry
   , fromRecordingEntry : fromRecordingEntry
-  , getTag             : getTag
-  , isMocked           : isMocked
+  , getInfo            : mkInfo
+  , getTag             : getTag (Proxy :: Proxy rrItem)
   , parseRRItem        : parseRRItem
   , mkEntry            : mkEntry
   , compare            : (==)
