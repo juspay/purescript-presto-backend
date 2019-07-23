@@ -85,9 +85,9 @@ pushRecordingEntry
    . RecorderRuntime
   -> RecordingEntry
   -> Aff (avar :: AVAR | eff) Unit
-pushRecordingEntry recorderRt (RecordingEntry _ mode entryName encoded) = do
+pushRecordingEntry recorderRt (RecordingEntry _ mode encoded) = do
   entries <- takeVar recorderRt.recordingVar
-  let re = RecordingEntry (Array.length entries) mode entryName encoded
+  let re = RecordingEntry (Array.length entries) mode encoded
   putVar (Array.snoc entries re) recorderRt.recordingVar
 
 popNextRecordingEntry
@@ -108,7 +108,7 @@ getCurrentEntryReplayMode
 getCurrentEntryReplayMode playerRt = do
   cur <- readVar playerRt.stepVar
   pure $ fromMaybe Normal $ do
-    (RecordingEntry idx mode entryName item) <- Array.index playerRt.recording cur
+    (RecordingEntry idx mode item) <- Array.index playerRt.recording cur
     pure mode
 
 popNextRRItem

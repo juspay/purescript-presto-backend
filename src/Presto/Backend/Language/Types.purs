@@ -28,3 +28,4 @@ import Presto.Backend.Language.Types.DB       as X
 import Presto.Backend.Language.Types.KVDB     as X
 import Presto.Backend.Language.Types.EitherEx as X
 import Presto.Backend.Language.Types.MaybeEx  as X
+import Presto.Backend.Language.Types.UnitEx   as X
