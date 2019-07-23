@@ -38,7 +38,9 @@ import Data.Foreign.Class (class Decode, class Encode)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
 import Type.Proxy (Proxy(..))
 
-data RecordingEntry = RecordingEntry Int EntryReplayingMode String
+type EntryName = String
+
+data RecordingEntry = RecordingEntry Int EntryReplayingMode EntryName String
 data GlobalReplayingMode = GlobalNormal | GlobalNoVerify | GlobalNoMocking
 data EntryReplayingMode = Normal | NoVerify | NoMock -- | Skip
 
