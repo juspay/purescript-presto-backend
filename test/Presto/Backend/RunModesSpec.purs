@@ -231,10 +231,10 @@ runTests = do
         Right _  -> do
           recording <- readVar recordingVar
           length recording `shouldEqual` 4
-          index recording 0 `shouldEqual` (Just $ RecordingEntry 0 Normal  log1 )
-          index recording 1 `shouldEqual` (Just $ RecordingEntry 1 Normal log2 )
-          index recording 2 `shouldEqual` (Just (RecordingEntry 2 Normal  capi1 ))
-          index recording 3 `shouldEqual` (Just (RecordingEntry 3 Normal  capi2 ))
+          index recording 0 `shouldEqual` (Just $ RecordingEntry 0 Normal "LogEntry" log1 )
+          index recording 1 `shouldEqual` (Just $ RecordingEntry 1 Normal "LogEntry" log2 )
+          index recording 2 `shouldEqual` (Just (RecordingEntry 2 Normal  "CallAPIEntry" capi1 ))
+          index recording 3 `shouldEqual` (Just (RecordingEntry 3 Normal  "CallAPIEntry" capi2 ))
 
     it "Record / replay test: log and callAPI success" $ do
       Tuple brt recordingVar <- createRecordingBackendRuntime
@@ -324,7 +324,7 @@ runTests = do
       curStep  <- readVar stepVar
       pbError  <- readVar errorVar
       isRight eResult2 `shouldEqual` false
-      pbError `shouldEqual` (Just (PlaybackError { errorMessage: "\n    Flow step: tag: logging1, message: \"try1\"\n    Recording entry: (RecordingEntry 2 Normal \"{\\\"contents\\\":{\\\"jsonResult\\\":{\\\"contents\\\":{\\\"string\\\":\\\"Hello there!\\\",\\\"code\\\":1},\\\"tag\\\":\\\"RightEx\\\"},\\\"jsonRequest\\\":{\\\"url\\\":\\\"1\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":1,\\\\\\\"code\\\\\\\":1}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}},\\\"tag\\\":\\\"CallAPIEntry\\\"}\")", errorType: UnknownRRItem }))
+      pbError `shouldEqual` (Just (PlaybackError { errorMessage: "\n    Flow step: tag: logging1, message: \"try1\"\n    Recording entry: (RecordingEntry 2 Normal \"CallAPIEntry\" \"{\\\"contents\\\":{\\\"jsonResult\\\":{\\\"contents\\\":{\\\"string\\\":\\\"Hello there!\\\",\\\"code\\\":1},\\\"tag\\\":\\\"RightEx\\\"},\\\"jsonRequest\\\":{\\\"url\\\":\\\"1\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":1,\\\\\\\"code\\\\\\\":1}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}},\\\"tag\\\":\\\"CallAPIEntry\\\"}\")", errorType: UnknownRRItem }))
       curStep `shouldEqual` 3
 
     it "Record / replay test: runSysCmd success" $ do
@@ -442,8 +442,8 @@ runTests = do
         Right _  -> do
           recording <- readVar recordingVar
           length recording `shouldEqual` 2
-          index recording 0 `shouldEqual` (Just (RecordingEntry 0 Normal capi1))
-          index recording 1 `shouldEqual` (Just (RecordingEntry 1 Normal capi2 ))
+          index recording 0 `shouldEqual` (Just (RecordingEntry 0 Normal "CallAPIEntry" capi1))
+          index recording 1 `shouldEqual` (Just (RecordingEntry 1 Normal "CallAPIEntry" capi2 ))
 
     it "Record Test : CallAPIEntry success" $ do
       Tuple brt recordingVar <- createRecordingBackendRuntimeWithMode ["CallAPIEntry"]
@@ -453,8 +453,8 @@ runTests = do
         Right _  -> do
           recording <- readVar recordingVar
           length recording `shouldEqual` 2
-          index recording 0 `shouldEqual` (Just $ RecordingEntry 0 Normal  log1 )
-          index recording 1 `shouldEqual` (Just $ RecordingEntry 1 Normal  log2 )
+          index recording 0 `shouldEqual` (Just $ RecordingEntry 0 Normal  "LogEntry" log1 )
+          index recording 1 `shouldEqual` (Just $ RecordingEntry 1 Normal  "LogEntry" log2 )
 
     it "Record Test: runSysCmd success" $ do
       Tuple brt recordingVar <- createRecordingBackendRuntimeWithMode ["RunSysCmdEntry"]
@@ -619,10 +619,10 @@ runTests = do
 
   describe "Replaying Test in Entry config Mode" do
       it "Replay Test in Normal Entry Mode : Log and CallAPI" $ do
-        let entryMode = [ RecordingEntry 0 Normal  log1
-                        , RecordingEntry 1 Normal  log2
-                        , RecordingEntry 2 Normal  capi1
-                        , RecordingEntry 3 Normal  capi2
+        let entryMode = [ RecordingEntry 0 Normal  "LogEntry" log1
+                        , RecordingEntry 1 Normal  "LogEntry" log2
+                        , RecordingEntry 2 Normal  "CallAPIEntry" capi1
+                        , RecordingEntry 3 Normal  "CallAPIEntry" capi2
                         ]
         Tuple brt recordingVar <- createRecordingBackendRuntimeWithEntryMode entryMode
         stepVar     <- makeVar 0
@@ -648,10 +648,10 @@ runTests = do
         curStep `shouldEqual` 4
 
       it "Replay Test in NoVerify Entry Mode : Log and CallAPI disable LogEntry" $ do
-        let entryMode = [ RecordingEntry 0 NoVerify  log1
-                        , RecordingEntry 1 NoVerify  log2
-                        , RecordingEntry 2 NoVerify  capi1
-                        , RecordingEntry 3 NoVerify  capi2
+        let entryMode = [ RecordingEntry 0 NoVerify  "LogEntry" log1
+                        , RecordingEntry 1 NoVerify  "LogEntry" log2
+                        , RecordingEntry 2 NoVerify  "CallAPIEntry" capi1
+                        , RecordingEntry 3 NoVerify  "CallAPIEntry" capi2
                         ]
         Tuple brt recordingVar <- createRecordingBackendRuntimeWithEntryMode entryMode
         stepVar     <- makeVar 0
@@ -677,10 +677,10 @@ runTests = do
         curStep `shouldEqual` 4
 
       it "Replay Test in NoVerify Entry Mode : Log and CallAPI" $ do
-        let entryMode = [ RecordingEntry 0 NoMock  log1
-                        , RecordingEntry 1 NoMock  log2
-                        , RecordingEntry 2 NoMock  capi1
-                        , RecordingEntry 3 NoMock  capi2
+        let entryMode = [ RecordingEntry 0 NoMock  "LogEntry" log1
+                        , RecordingEntry 1 NoMock  "LogEntry" log2
+                        , RecordingEntry 2 NoMock  "CallAPIEntry" capi1
+                        , RecordingEntry 3 NoMock  "CallAPIEntry" capi2
                         ]
         Tuple brt recordingVar <- createRecordingBackendRuntimeWithEntryMode entryMode
         stepVar     <- makeVar 0
