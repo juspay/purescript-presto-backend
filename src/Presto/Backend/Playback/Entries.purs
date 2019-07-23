@@ -28,6 +28,7 @@ import Data.Foreign.Class (class Encode, class Decode, encode, decode)
 import Data.Foreign (Foreign)
 import Data.Foreign.Generic (defaultOptions, genericDecode, genericDecodeJSON, genericEncode, genericEncodeJSON, encodeJSON, decodeJSON)
 import Data.Foreign.Generic.Class (class GenericDecode, class GenericEncode)
+import Data.Foreign.Generic.Types (Options, SumEncoding(..))
 import Data.Generic.Rep.Show as GShow
 import Data.Generic.Rep (class Generic)
 import Data.Maybe (Maybe(..), isJust)
@@ -194,12 +195,20 @@ mkGetKVDBConnEntry :: String -> KVDBConn -> GetKVDBConnEntry
 mkGetKVDBConnEntry dbName (Redis _)               = GetKVDBConnEntry { dbName, mockedConn : MockedKVDBConn dbName }
 mkGetKVDBConnEntry dbName (MockedKVDB mockedConn) = GetKVDBConnEntry { dbName, mockedConn }
 
+deoptions1 :: Options
+deoptions1 = defaultOptions { unwrapSingleConstructors = false
+                           , unwrapSingleArguments = true }
+
+deoptions2 :: Options
+deoptions2 = defaultOptions { unwrapSingleConstructors = false
+                           , unwrapSingleArguments = false }
+
 
 derive instance genericLogEntry :: Generic LogEntry _
 derive instance eqLogEntry :: Eq LogEntry
 instance showLogEntry  :: Show LogEntry where show = GShow.genericShow
-instance decodeLogEntry :: Decode LogEntry where decode = defaultDecode
-instance encodeLogEntry :: Encode LogEntry where encode = defaultEncode
+instance decodeLogEntry :: Decode LogEntry where decode = genericDecode deoptions1 --defaultDecode
+instance encodeLogEntry :: Encode LogEntry where encode = genericEncode deoptions1 --defaultEncode
 
 instance rrItemLogEntry :: RRItem LogEntry where
   toRecordingEntry rrItem idx mode = (RecordingEntry idx mode "LogEntry") <<< encodeJSON $ rrItem
@@ -298,8 +307,8 @@ instance mockedResultDoAffEntry :: Decode b => MockedResult DoAffEntry b where
 derive instance genericRunDBEntry :: Generic RunDBEntry _
 instance eqRunDBEntry :: Eq RunDBEntry where
   eq e1 e2 = (encodeJSON e1) == (encodeJSON e2)
-instance decodeRunDBEntry :: Decode RunDBEntry where decode = defaultDecode
-instance encodeRunDBEntry :: Encode RunDBEntry where encode = defaultEncode
+instance decodeRunDBEntry :: Decode RunDBEntry where decode = genericDecode deoptions2 --defaultDecode
+instance encodeRunDBEntry :: Encode RunDBEntry where encode = genericEncode deoptions2 --defaultEncode
 instance showRunDBEntry   :: Show RunDBEntry where show = encodeJSON
 instance rrItemRunDBEntry :: RRItem RunDBEntry where
   toRecordingEntry rrItem idx mode = (RecordingEntry idx mode "RunDBEntry") <<< encodeJSON $ rrItem
