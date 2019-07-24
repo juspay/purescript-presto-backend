@@ -267,6 +267,7 @@ runTests = do
               , disableVerify : []
               , disableMocking : []
               , skipEntries : []
+              , entriesFiltered : false
               , stepVar
               , errorVar
               }
@@ -296,6 +297,7 @@ runTests = do
               , disableVerify : []
               , disableMocking : []
               , skipEntries : []
+              , entriesFiltered : false
               , stepVar
               , errorVar
               }
@@ -330,6 +332,7 @@ runTests = do
               , disableVerify : []
               , disableMocking : []
               , skipEntries : []
+              , entriesFiltered : false
               , stepVar
               , errorVar
               }
@@ -363,6 +366,7 @@ runTests = do
               , disableVerify : []
               , disableMocking : []
               , skipEntries : []
+              , entriesFiltered : false
               , stepVar
               , errorVar
               }
@@ -396,6 +400,7 @@ runTests = do
               , disableVerify : []
               , disableMocking : []
               , skipEntries : []
+              , entriesFiltered : false
               , stepVar
               , errorVar
               }
@@ -429,6 +434,7 @@ runTests = do
               , disableVerify : []
               , disableMocking : []
               , skipEntries : []
+              , entriesFiltered : false
               , stepVar
               , errorVar
               }
@@ -508,6 +514,7 @@ runTests = do
               , disableVerify : ["LogEntry"]
               , disableMocking : []
               , skipEntries : []
+              , entriesFiltered : false
               , stepVar
               , errorVar
               }
@@ -536,6 +543,7 @@ runTests = do
               , disableVerify : ["CallAPIEntry"]
               , disableMocking : []
               , skipEntries : []
+              , entriesFiltered : false
               , stepVar
               , errorVar
               }
@@ -566,6 +574,7 @@ runTests = do
               , disableVerify : []
               , disableMocking : ["LogEntry","CallAPIEntry"]
               , skipEntries : []
+              , entriesFiltered : false
               , stepVar
               , errorVar
               }
@@ -596,6 +605,7 @@ runTests = do
               , disableVerify : []
               , disableMocking : ["DoAffEntry"]
               , skipEntries : []
+              , entriesFiltered : false
               , stepVar
               , errorVar
               }
@@ -629,6 +639,7 @@ runTests = do
               , disableVerify : []
               , disableMocking : ["RunSysCmdEntry"]
               , skipEntries : []
+              , entriesFiltered : false
               , stepVar
               , errorVar
               }
@@ -663,6 +674,7 @@ runTests = do
                 , disableVerify : []
                 , disableMocking : []
                 , skipEntries : []
+                , entriesFiltered : false
                 , stepVar
                 , errorVar
                 }
@@ -693,6 +705,7 @@ runTests = do
                 , disableVerify : []
                 , disableMocking : ["LogEntry"]  -- This will have no efect since the priority of Entry Configs are higher than Global Config
                 , skipEntries : []
+                , entriesFiltered : false
                 , stepVar
                 , errorVar
                 }
@@ -723,6 +736,7 @@ runTests = do
                 , disableVerify : []
                 , disableMocking : []
                 , skipEntries : []
+                , entriesFiltered : false
                 , stepVar
                 , errorVar
                 }
@@ -753,6 +767,7 @@ runTests = do
               , disableVerify : []
               , disableMocking : []
               , skipEntries : ["DoAffEntry"]
+              , entriesFiltered : false
               , stepVar
               , errorVar
               }
@@ -784,6 +799,7 @@ runTests = do
               , disableVerify : []
               , disableMocking : []
               , skipEntries : ["DoAffEntry"]
+              , entriesFiltered : false
               , stepVar
               , errorVar
               }

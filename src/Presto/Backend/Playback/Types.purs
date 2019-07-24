@@ -67,6 +67,7 @@ type PlayerRuntime =
   , disableVerify :: Array DisableEntries
   , disableMocking :: Array DisableEntries
   , skipEntries :: Array DisableEntries
+  , entriesFiltered :: Boolean
   , stepVar   :: AVar Int
   , errorVar  :: AVar (Maybe PlaybackError)
   }
