@@ -228,11 +228,15 @@ record recorderRt rrItemDict lAct = do
     $ toRecordingEntry' rrItemDict (mkEntry' rrItemDict native) 0 Normal
   pure native
 
-filterSkippingEntries playerRt = newPlayerRt
+filterSkippingEntries playerRt
+  | playerRt.entriesFiltered = playerRt
+  | otherwise = newPlayerRt
   where
     newRecording = Array.filter pred playerRt.recording
     pred (RecordingEntry _ _ entryName _) = Array.notElem entryName playerRt.skipEntries
-    newPlayerRt = playerRt {recording = newRecording}
+    newPlayerRt = playerRt { recording       = newRecording
+                           , entriesFiltered = true
+                           }
 
 withRunModeClassless
   :: forall eff rt st rrItem native
