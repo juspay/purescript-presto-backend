@@ -189,6 +189,7 @@ replayWithGlobalConfig playerRt rrItemDict lAct eNextRRItemRes  = do
           compareRRItems playerRt rrItemDict stepInfo $ mkEntry' rrItemDict res
           pure res
     GlobalNoMocking -> lAct
+    GlobalSkip -> lAct -- this case can't be reachable
 
 checkForReplayConfig :: PlayerRuntime -> String -> GlobalReplayingMode
 checkForReplayConfig  playerRt tag | Array.elem tag playerRt.disableMocking  = GlobalNoMocking
@@ -200,15 +201,17 @@ replay
   -> RRItemDict rrItem native
   -> InterpreterMT' rt st eff native
   -> InterpreterMT' rt st eff native
-replay playerRt rrItemDict lAct = do
-  entryReplayMode <- lift3 $ getCurrentEntryReplayMode playerRt
-  eNextRRItemRes  <- lift3 $ popNextRRItemAndResult playerRt rrItemDict
-  case entryReplayMode of
-    Normal -> replayWithGlobalConfig playerRt rrItemDict lAct eNextRRItemRes
-    NoVerify -> case eNextRRItemRes of
-      Left err -> setReplayingError playerRt err
-      Right stepInfo -> replayWithMock stepInfo
-    NoMock -> lAct
+replay playerRt rrItemDict lAct
+  | (Array.elem (getTag' rrItemDict) playerRt.skipEntries ) = lAct
+  | otherwise = do
+      entryReplayMode <- lift3 $ getCurrentEntryReplayMode playerRt
+      eNextRRItemRes  <- lift3 $ popNextRRItemAndResult playerRt rrItemDict
+      case entryReplayMode of
+        Normal -> replayWithGlobalConfig playerRt rrItemDict lAct eNextRRItemRes
+        NoVerify -> case eNextRRItemRes of
+          Left err -> setReplayingError playerRt err
+          Right stepInfo -> replayWithMock stepInfo
+        NoMock -> lAct
 
 
 record
@@ -225,6 +228,12 @@ record recorderRt rrItemDict lAct = do
     $ toRecordingEntry' rrItemDict (mkEntry' rrItemDict native) 0 Normal
   pure native
 
+filterSkippingEntries playerRt = newPlayerRt
+  where
+    newRecording = Array.filter pred playerRt.recording
+    pred (RecordingEntry _ _ entryName _) = Array.notElem entryName playerRt.skipEntries
+    newPlayerRt = playerRt {recording = newRecording}
+
 withRunModeClassless
   :: forall eff rt st rrItem native
    . BackendRuntime
@@ -234,4 +243,4 @@ withRunModeClassless
 withRunModeClassless brt@(BackendRuntime rt) rrItemDict lAct = case rt.mode of
   RegularMode              -> lAct
   RecordingMode recorderRt -> record recorderRt rrItemDict lAct
-  ReplayingMode playerRt   -> replay playerRt   rrItemDict lAct
+  ReplayingMode playerRt   -> replay (filterSkippingEntries playerRt)   rrItemDict lAct

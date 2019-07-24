@@ -153,6 +153,17 @@ testDB = "TestDB"
 dbScript0 :: BackendFlow Unit Unit SqlConn
 dbScript0 = getDBConn testDB
 
+skipScript1 :: BackendFlow Unit Unit String
+skipScript1 = do
+  _ <- runSysCmd "echo 'abcde'"
+  _ <- doAffRR (pure "doAffRR result")
+  runSysCmd "echo 'fghij'"
+
+skipScript2 :: BackendFlow Unit Unit String
+skipScript2 = do
+  _ <- runSysCmd "echo 'abcde'"
+  runSysCmd "echo 'fghij'"
+
 mkBackendRuntime :: KVDBRuntime -> RunningMode -> BackendRuntime
 mkBackendRuntime kvdbRuntime mode = BackendRuntime
   { apiRunner
@@ -255,6 +266,7 @@ runTests = do
               { recording
               , disableVerify : []
               , disableMocking : []
+              , skipEntries : []
               , stepVar
               , errorVar
               }
@@ -283,6 +295,7 @@ runTests = do
               { recording
               , disableVerify : []
               , disableMocking : []
+              , skipEntries : []
               , stepVar
               , errorVar
               }
@@ -316,6 +329,7 @@ runTests = do
               { recording
               , disableVerify : []
               , disableMocking : []
+              , skipEntries : []
               , stepVar
               , errorVar
               }
@@ -348,6 +362,7 @@ runTests = do
               { recording
               , disableVerify : []
               , disableMocking : []
+              , skipEntries : []
               , stepVar
               , errorVar
               }
@@ -380,6 +395,7 @@ runTests = do
               { recording
               , disableVerify : []
               , disableMocking : []
+              , skipEntries : []
               , stepVar
               , errorVar
               }
@@ -412,6 +428,7 @@ runTests = do
               { recording
               , disableVerify : []
               , disableMocking : []
+              , skipEntries : []
               , stepVar
               , errorVar
               }
@@ -490,6 +507,7 @@ runTests = do
               { recording
               , disableVerify : ["LogEntry"]
               , disableMocking : []
+              , skipEntries : []
               , stepVar
               , errorVar
               }
@@ -517,6 +535,7 @@ runTests = do
               { recording
               , disableVerify : ["CallAPIEntry"]
               , disableMocking : []
+              , skipEntries : []
               , stepVar
               , errorVar
               }
@@ -525,6 +544,7 @@ runTests = do
       curStep  <- readVar stepVar
       isRight eResult2 `shouldEqual` true
       curStep `shouldEqual` 2
+
   describe "Replaying Test with disableMocking Global Config mode" $ do
     it "Replay Test : LogEntry and CallAPIEntry" $ do
       Tuple brt recordingVar <- createRecordingBackendRuntime
@@ -545,6 +565,7 @@ runTests = do
               { recording
               , disableVerify : []
               , disableMocking : ["LogEntry","CallAPIEntry"]
+              , skipEntries : []
               , stepVar
               , errorVar
               }
@@ -574,6 +595,7 @@ runTests = do
               { recording
               , disableVerify : []
               , disableMocking : ["DoAffEntry"]
+              , skipEntries : []
               , stepVar
               , errorVar
               }
@@ -606,6 +628,7 @@ runTests = do
               { recording
               , disableVerify : []
               , disableMocking : ["RunSysCmdEntry"]
+              , skipEntries : []
               , stepVar
               , errorVar
               }
@@ -639,6 +662,7 @@ runTests = do
                 { recording
                 , disableVerify : []
                 , disableMocking : []
+                , skipEntries : []
                 , stepVar
                 , errorVar
                 }
@@ -668,6 +692,7 @@ runTests = do
                 { recording
                 , disableVerify : []
                 , disableMocking : ["LogEntry"]  -- This will have no efect since the priority of Entry Configs are higher than Global Config
+                , skipEntries : []
                 , stepVar
                 , errorVar
                 }
@@ -676,7 +701,7 @@ runTests = do
         curStep  <- readVar stepVar
         curStep `shouldEqual` 4
 
-      it "Replay Test in NoVerify Entry Mode : Log and CallAPI" $ do
+      it "Replay Test in NoMock Entry Mode : Log and CallAPI" $ do
         let entryMode = [ RecordingEntry 0 NoMock  "LogEntry" log1
                         , RecordingEntry 1 NoMock  "LogEntry" log2
                         , RecordingEntry 2 NoMock  "CallAPIEntry" capi1
@@ -697,6 +722,7 @@ runTests = do
                 { recording
                 , disableVerify : []
                 , disableMocking : []
+                , skipEntries : []
                 , stepVar
                 , errorVar
                 }
@@ -704,3 +730,67 @@ runTests = do
         eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript') unit) unit)
         curStep  <- readVar stepVar
         curStep `shouldEqual` 4
+
+
+  describe "Replaying Test with SkipGlobal Config mode" $ do
+    it "Replay Test : SkipScript - filter entry" $ do
+      Tuple brt recordingVar <- createRecordingBackendRuntime
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt skipScript1) unit) unit)
+      isRight eResult `shouldEqual` true
+
+      stepVar     <- makeVar 0
+      errorVar    <- makeVar Nothing
+      recording   <- readVar recordingVar
+      kvdbRuntime <- createKVDBRuntime
+      let replayingBackendRuntime = BackendRuntime
+            { apiRunner   : apiRunner
+            , connections : StrMap.empty
+            , logRunner   : logRunner
+            , affRunner   : affRunner
+            , kvdbRuntime
+            , mode        : ReplayingMode
+              { recording
+              , disableVerify : []
+              , disableMocking : []
+              , skipEntries : ["DoAffEntry"]
+              , stepVar
+              , errorVar
+              }
+            }
+      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime skipScript2) unit) unit)
+      curStep  <- readVar stepVar
+      curStep `shouldEqual` 2
+      case eResult2 of
+        Right (Tuple n unit) -> n `shouldEqual` "fghij\n"
+        Left  err -> fail $ show err
+
+    it "Replay Test : SkipScript - ignore method in flow" $ do
+      Tuple brt recordingVar <- createRecordingBackendRuntime
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt skipScript2) unit) unit)
+      isRight eResult `shouldEqual` true
+
+      stepVar     <- makeVar 0
+      errorVar    <- makeVar Nothing
+      recording   <- readVar recordingVar
+      kvdbRuntime <- createKVDBRuntime
+      let replayingBackendRuntime = BackendRuntime
+            { apiRunner   : apiRunner
+            , connections : StrMap.empty
+            , logRunner   : logRunner
+            , affRunner   : affRunner
+            , kvdbRuntime
+            , mode        : ReplayingMode
+              { recording
+              , disableVerify : []
+              , disableMocking : []
+              , skipEntries : ["DoAffEntry"]
+              , stepVar
+              , errorVar
+              }
+            }
+      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime skipScript1) unit) unit)
+      curStep  <- readVar stepVar
+      curStep `shouldEqual` 2
+      case eResult2 of
+        Right (Tuple n unit) -> n `shouldEqual` "fghij\n"
+        Left  err -> fail $ show err
