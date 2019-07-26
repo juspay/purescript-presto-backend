@@ -548,7 +548,7 @@ runTests = do
       curStep `shouldEqual` 1
 
 
-    it "Record / replay test: forkFlow success" $ do
+    it "Record / replay test: forkFlow no forked entries" $ do
       {brt, recordingVar, forkedRecordingsVar} <- createRecordingBackendRuntimeForked
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt forkFlowScript) unit) unit)
       case eResult of
@@ -595,6 +595,62 @@ runTests = do
         Right (Tuple n unit) -> n `shouldEqual` "mainflow 6\n"
         Left err -> fail $ show err
       curStep `shouldEqual` 16
+      mbErr <- readVar errorVar
+      mbErr `shouldEqual` Nothing
+      forkedErrs <- readVar forkedFlowErrorsVar
+      StrMap.size forkedErrs `shouldEqual` 2
+
+    it "Record / replay test: forkFlow success" $ do
+      {brt, recordingVar, forkedRecordingsVar} <- createRecordingBackendRuntimeForked
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt forkFlowScript) unit) unit)
+      case eResult of
+        Right (Tuple n unit) -> n `shouldEqual` "mainflow 6\n"
+        _ -> fail $ show eResult
+
+      stepVar           <- makeVar 0
+      errorVar          <- makeVar Nothing
+      recording         <- readVar recordingVar
+      kvdbRuntime       <- createKVDBRuntime
+      forkedRecordings' <- readVar forkedRecordingsVar
+
+      let kvFunc (Tuple k recVar) = Tuple k <$> readVar recVar
+      let (kvs :: Array (Tuple String (AVar RecordingEntries))) = StrMap.toUnfoldable forkedRecordings'
+      forkedRecordings'' <- traverse kvFunc kvs
+      let forkedRecordings = StrMap.fromFoldable forkedRecordings''
+
+      length recording `shouldEqual` 16
+      StrMap.size forkedRecordings `shouldEqual` 3
+
+      forkedFlowErrorsVar <- makeVar StrMap.empty
+      let replayingBackendRuntime = BackendRuntime
+            { apiRunner   : failingApiRunner
+            , connections : StrMap.empty
+            , logRunner   : failingLogRunner
+            , affRunner   : failingAffRunner
+            , kvdbRuntime
+            , mode        : ReplayingMode
+              { flowGUID : ""
+              , forkedFlowRecordings : forkedRecordings
+              , forkedFlowErrorsVar
+              , recording
+              , disableVerify : []
+              , disableMocking : []
+              , skipEntries : []
+              , entriesFiltered : false
+              , stepVar
+              , errorVar
+              }
+            }
+      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime forkFlowScript) unit) unit)
+      curStep  <- readVar stepVar
+      case eResult2 of
+        Right (Tuple n unit) -> n `shouldEqual` "mainflow 6\n"
+        Left err -> fail $ show err
+      curStep `shouldEqual` 16
+      mbErr <- readVar errorVar
+      mbErr `shouldEqual` Nothing
+      forkedErrs <- readVar forkedFlowErrorsVar
+      StrMap.size forkedErrs `shouldEqual` 0
 
 
     it "Record / replay test: getDBConn success" $ do
