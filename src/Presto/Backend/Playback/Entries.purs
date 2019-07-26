@@ -47,6 +47,11 @@ import Presto.Backend.Language.Types.DB (DBError, KVDBConn(MockedKVDB, Redis), M
 
 
 
+data GenerateGUIDEntry = GenerateGUIDEntry
+  { description :: String
+  , guid :: String
+  }
+
 data LogEntry = LogEntry
   { tag     :: String
   , message :: String
@@ -59,6 +64,7 @@ data CallAPIEntry = CallAPIEntry
 
 data ForkFlowEntry = ForkFlowEntry
   { description :: String
+  , guid :: String
   }
 
 data ThrowExceptionEntry = ThrowExceptionEntry
@@ -106,6 +112,9 @@ data RunKVDBSimpleEntry = RunKVDBSimpleEntry
   , jsonResult :: Foreign
   }
 
+mkGenerateGUIDEntry :: String -> String -> GenerateGUIDEntry
+mkGenerateGUIDEntry description guid = GenerateGUIDEntry { description, guid }
+
 mkRunSysCmdEntry :: String -> String -> RunSysCmdEntry
 mkRunSysCmdEntry cmd result = RunSysCmdEntry { cmd, result }
 
@@ -134,8 +143,8 @@ mkCallAPIEntry jReqF aRes = CallAPIEntry
   , jsonResult  : encode <$> aRes
   }
 
-mkForkFlowEntry :: String -> UnitEx -> ForkFlowEntry
-mkForkFlowEntry description _ = ForkFlowEntry { description }
+mkForkFlowEntry :: String -> String -> UnitEx -> ForkFlowEntry
+mkForkFlowEntry description guid _ = ForkFlowEntry { description, guid }
 
 mkRunDBEntry
   :: forall b
@@ -195,6 +204,22 @@ mkGetKVDBConnEntry :: String -> KVDBConn -> GetKVDBConnEntry
 mkGetKVDBConnEntry dbName (Redis _)               = GetKVDBConnEntry { dbName, mockedConn : MockedKVDBConn dbName }
 mkGetKVDBConnEntry dbName (MockedKVDB mockedConn) = GetKVDBConnEntry { dbName, mockedConn }
 
+
+derive instance genericGenerateGUIDEntry :: Generic GenerateGUIDEntry _
+derive instance eqGenerateGUIDEntry :: Eq GenerateGUIDEntry
+instance showGenerateGUIDEntry  :: Show GenerateGUIDEntry where show = GShow.genericShow
+instance decodeGenerateGUIDEntry :: Decode GenerateGUIDEntry where decode = genericDecode defaultOptions
+instance encodeGenerateGUIDEntry :: Encode GenerateGUIDEntry where encode = genericEncode defaultOptions
+
+instance rrItemGenerateGUIDEntry :: RRItem GenerateGUIDEntry where
+  toRecordingEntry rrItem idx mode = (RecordingEntry idx mode "GenerateGUIDEntry") <<< encodeJSON $ rrItem
+  fromRecordingEntry (RecordingEntry idx mode entryName re) = hush $ E.runExcept $ decodeJSON re
+  getTag   _ = "GenerateGUIDEntry"
+
+instance mockedResultGenerateGUIDEntry :: MockedResult GenerateGUIDEntry String where
+  parseRRItem (GenerateGUIDEntry { guid }) = Just guid
+
+
 derive instance genericLogEntry :: Generic LogEntry _
 derive instance eqLogEntry :: Eq LogEntry
 instance showLogEntry  :: Show LogEntry where show = GShow.genericShow
@@ -205,7 +230,6 @@ instance rrItemLogEntry :: RRItem LogEntry where
   toRecordingEntry rrItem idx mode = (RecordingEntry idx mode "LogEntry" ) <<< encodeJSON $ rrItem
   fromRecordingEntry (RecordingEntry idx mode entryName re) = hush $ E.runExcept $ decodeJSON re
   getTag   _ = "LogEntry"
-
 
 instance mockedResultLogEntry :: MockedResult LogEntry UnitEx where
   parseRRItem _ = Just UnitEx

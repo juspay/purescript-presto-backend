@@ -28,7 +28,9 @@ import Control.Monad.Aff (Aff)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (Error)
 import Control.Monad.Free (Free, liftF)
+import Control.Monad (when, unless)
 import Data.Either (Either)
+import Data.String (null)
 import Data.Exists (Exists, mkExists)
 import Data.Foreign (Foreign, toForeign)
 import Data.Foreign.Class (class Decode, class Encode, encode)
@@ -49,7 +51,7 @@ import Presto.Backend.Language.Types.EitherEx (EitherEx, fromCustomEitherEx, fro
 import Presto.Backend.Language.Types.KVDB (Multi)
 import Presto.Backend.Language.Types.KVDB (getKVDBName) as KVDB
 import Presto.Backend.Language.Types.UnitEx (UnitEx, fromUnitEx, toUnitEx)
-import Presto.Backend.Playback.Entries (CallAPIEntry, DoAffEntry, ForkFlowEntry, GetDBConnEntry, GetKVDBConnEntry, LogEntry, RunDBEntry, RunKVDBEitherEntry, RunKVDBSimpleEntry, RunSysCmdEntry, mkCallAPIEntry, mkDoAffEntry, mkForkFlowEntry, mkGetDBConnEntry, mkGetKVDBConnEntry, mkLogEntry, mkRunDBEntry, mkRunKVDBEitherEntry, mkRunKVDBSimpleEntry, mkRunSysCmdEntry) as Playback
+import Presto.Backend.Playback.Entries (CallAPIEntry, GenerateGUIDEntry, DoAffEntry, ForkFlowEntry, GetDBConnEntry, GetKVDBConnEntry, LogEntry, RunDBEntry, RunKVDBEitherEntry, RunKVDBSimpleEntry, RunSysCmdEntry, mkCallAPIEntry, mkDoAffEntry, mkForkFlowEntry, mkGetDBConnEntry, mkGetKVDBConnEntry, mkLogEntry, mkRunDBEntry, mkRunKVDBEitherEntry, mkRunKVDBSimpleEntry, mkRunSysCmdEntry, mkGenerateGUIDEntry) as Playback
 import Presto.Backend.Playback.Types (RRItemDict, mkEntryDict) as Playback
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (class RestEndpoint, Headers, ErrorResponse, APIResult, makeRequest)
@@ -63,6 +65,10 @@ data BackendFlowCommands next st rt s
     | Get (st -> next)
     | Put st (st -> next)
     | Modify (st -> st) (st -> next)
+
+    | GenerateGUID
+        (Playback.RRItemDict Playback.GenerateGUIDEntry String)
+        (String -> next)
 
     | CallAPI (Interaction (EitherEx ErrorResponse s))
         (Playback.RRItemDict Playback.CallAPIEntry (EitherEx ErrorResponse s))
@@ -135,6 +141,14 @@ put st = wrap $ Put st id
 modify :: forall st rt. (st -> st) -> BackendFlow st rt st
 modify fst = wrap $ Modify fst id
 
+generateGUID' :: forall st rt. String -> BackendFlow st rt String
+generateGUID' description = wrap $ GenerateGUID
+    (Playback.mkEntryDict description $ Playback.mkGenerateGUIDEntry description)
+    id
+
+generateGUID :: forall st rt. BackendFlow st rt String
+generateGUID = generateGUID' ""
+
 callAPI
   :: forall st rt a b
    . Encode a
@@ -170,11 +184,14 @@ log tag message = void $ wrap $ Log tag message
     id
 
 forkFlow' :: forall st rt a. String -> BackendFlow st rt a -> BackendFlow st rt Unit
-forkFlow' description flow =
+forkFlow' description flow = do
+  flowGUID <- generateGUID' description
+  unless (null description) $ log "forkFlow" $ "Flow forked. Description: " <> description <> " GUID: " <> flowGUID
+  when   (null description) $ log "forkFlow" $ "Flow forked. GUID: " <> flowGUID
   void $ wrap $ Fork flow
     (Playback.mkEntryDict
-      ("description: " <> description)
-      $ Playback.mkForkFlowEntry description)
+      ("description: " <> description <> " GUID: " <> flowGUID)
+      $ Playback.mkForkFlowEntry description flowGUID)
     id
 
 forkFlow :: forall st rt a. BackendFlow st rt a -> BackendFlow st rt Unit

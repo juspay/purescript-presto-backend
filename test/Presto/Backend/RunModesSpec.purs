@@ -19,7 +19,7 @@ import Data.StrMap as StrMap
 import Data.Tuple (Tuple(..))
 import Debug.Trace (spy)
 import Prelude (class Eq, class Show, Unit, bind, discard, pure, show, unit, ($), (*>), (<>), (==))
-import Presto.Backend.Flow (BackendFlow, callAPI, doAffRR, getDBConn, log, runSysCmd, throwException)
+import Presto.Backend.Flow (BackendFlow, forkFlow, forkFlow', generateGUID, generateGUID', callAPI, doAffRR, getDBConn, log, runSysCmd, throwException)
 import Presto.Backend.Language.Types.DB (MockedSqlConn(MockedSqlConn), SqlConn(MockedSql))
 import Presto.Backend.Playback.Entries (CallAPIEntry(..), DoAffEntry(..), LogEntry(..), RunSysCmdEntry(..))
 import Presto.Backend.Playback.Types (EntryReplayingMode(..), GlobalReplayingMode(..), PlaybackError(..), PlaybackErrorType(..), RecordingEntry(..))
@@ -163,6 +163,41 @@ skipScript2 :: BackendFlow Unit Unit String
 skipScript2 = do
   _ <- runSysCmd "echo 'abcde'"
   runSysCmd "echo 'fghij'"
+
+forkFlowScript :: BackendFlow Unit Unit String
+forkFlowScript = do
+  _ <- doAffRR (pure "doAff from main flow")
+  _ <- forkFlow' "Child 1" $ do
+          _ <- doAffRR (pure "doAff 1 from forkFlow")
+          _ <- doAffRR (pure "doAff 2 from forkFlow")
+          _ <- runSysCmd "sleep 0.5s"
+          _ <- doAffRR (pure "doAff 3 from forkFlow")
+          _ <- doAffRR (pure "doAff 4 from forkFlow")
+          _ <- runSysCmd "sleep 1s"
+          _ <- doAffRR (pure "doAff 5 from forkFlow")
+          doAffRR (pure "doAff 6 from forkFlow")
+  _ <- doAffRR (pure "doAff from main flow")
+  _ <- runSysCmd "echo 'mainflow 1'"
+  _ <- runSysCmd "echo 'mainflow 2'"
+  _ <- forkFlow' "Child 2" $ do
+          _ <- doAffRR (pure "doAff 1 from forkFlow 2")
+          _ <- forkFlow' "Child 2 Child 1" $ do
+                _ <- doAffRR (pure "doAff 1 from forkFlow Child 2 Child 1")
+                _ <- doAffRR (pure "doAff 2 from forkFlow Child 2 Child 1")
+                doAffRR (pure "doAff 3 from forkFlow Child 2 Child 1")
+          _ <- doAffRR (pure "doAff 2 from forkFlow 2")
+          _ <- runSysCmd "sleep 0.5s"
+          _ <- doAffRR (pure "doAff 3 from forkFlow 2")
+          _ <- doAffRR (pure "doAff 4 from forkFlow 2")
+          _ <- runSysCmd "sleep 1s"
+          _ <- doAffRR (pure "doAff 5 from forkFlow 2")
+          doAffRR (pure "doAff 6 from forkFlow 2")
+  _ <- runSysCmd "sleep 0.5s"
+  _ <- runSysCmd "echo 'mainflow 3'"
+  _ <- runSysCmd "echo 'mainflow 4'"
+  _ <- runSysCmd "sleep 0.5s"
+  _ <- runSysCmd "echo 'mainflow 5'"
+  runSysCmd "echo 'mainflow 6'"
 
 mkBackendRuntime :: KVDBRuntime -> RunningMode -> BackendRuntime
 mkBackendRuntime kvdbRuntime mode = BackendRuntime
@@ -445,6 +480,42 @@ runTests = do
         Right (Tuple n unit) -> n `shouldEqual` "This is result."
         Left err -> fail $ show err
       curStep `shouldEqual` 1
+
+
+    it "Record / replay test: forkFlow success" $ do
+      Tuple brt recordingVar <- createRecordingBackendRuntime
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt forkFlowScript) unit) unit)
+      case eResult of
+        Right (Tuple n unit) -> n `shouldEqual` "mainflow 6\n"
+        _ -> fail $ show eResult
+
+      stepVar     <- makeVar 0
+      errorVar    <- makeVar Nothing
+      recording   <- readVar recordingVar
+      kvdbRuntime <- createKVDBRuntime
+      let replayingBackendRuntime = BackendRuntime
+            { apiRunner   : failingApiRunner
+            , connections : StrMap.empty
+            , logRunner   : failingLogRunner
+            , affRunner   : failingAffRunner
+            , kvdbRuntime
+            , mode        : ReplayingMode
+              { recording
+              , disableVerify : []
+              , disableMocking : []
+              , skipEntries : []
+              , entriesFiltered : false
+              , stepVar
+              , errorVar
+              }
+            }
+      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime forkFlowScript) unit) unit)
+      curStep  <- readVar stepVar
+      case eResult2 of
+        Right (Tuple n unit) -> n `shouldEqual` "mainflow 6\n"
+        Left err -> fail $ show err
+      curStep `shouldEqual` 1
+
 
     it "Record / replay test: getDBConn success" $ do
       Tuple (BackendRuntime rt') recordingVar <- createRecordingBackendRuntime

@@ -28,12 +28,14 @@ import Prelude
 
 import Control.Monad.Aff (forkAff)
 import Control.Monad.Eff.Exception (Error)
+import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Except.Trans (runExceptT) as E
 import Control.Monad.Free (foldFree)
 import Control.Monad.Reader.Trans (ask, lift, runReaderT) as R
 import Control.Monad.State.Trans (get, modify, put, runStateT) as S
 import Data.Exists (runExists)
 import Data.Tuple (Tuple)
+import Data.UUID (genUUID)
 import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), BackendFlowCommandsWrapper, BackendFlowWrapper(..))
 import Presto.Backend.SystemCommands (runSysCmd)
 import Presto.Backend.Language.Types.EitherEx (fromEitherEx)
@@ -67,6 +69,11 @@ interpret _ (Get next) = R.lift (S.get) >>= (pure <<< next)
 interpret _ (Put d next) = R.lift (S.put d) *> (pure <<< next) d
 
 interpret _ (Modify d next) = R.lift (S.modify d) *> S.get >>= (pure <<< next)
+
+interpret brt@(BackendRuntime rt) (GenerateGUID rrItemDict next) = do
+  res <- withRunModeClassless brt rrItemDict
+    (lift3 $ liftEff $ show <$> genUUID)
+  pure $ next res
 
 interpret brt@(BackendRuntime rt) (CallAPI apiAct rrItemDict next) = do
   resultEx <- withRunModeClassless brt rrItemDict
