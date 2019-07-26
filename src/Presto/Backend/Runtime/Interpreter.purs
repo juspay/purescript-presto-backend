@@ -27,7 +27,8 @@ module Presto.Backend.Runtime.Interpreter
 import Prelude
 
 import Control.Monad.Aff (forkAff)
-import Control.Monad.Eff.Exception (Error)
+import Control.Monad.Aff.AVar (AVAR, AVar, makeVar, readVar, takeVar, putVar)
+import Control.Monad.Eff.Exception (Error, throwException, error)
 import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Except.Trans (runExceptT) as E
 import Control.Monad.Free (foldFree)
@@ -35,18 +36,20 @@ import Control.Monad.Reader.Trans (ask, lift, runReaderT) as R
 import Control.Monad.State.Trans (get, modify, put, runStateT) as S
 import Data.Exists (runExists)
 import Data.Tuple (Tuple)
+import Data.StrMap as StrMap
 import Data.UUID (genUUID)
+import Data.Maybe (Maybe(..))
 import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), BackendFlowCommandsWrapper, BackendFlowWrapper(..))
 import Presto.Backend.SystemCommands (runSysCmd)
 import Presto.Backend.Language.Types.EitherEx (fromEitherEx)
 import Presto.Backend.Language.Types.UnitEx (UnitEx(..))
 import Presto.Backend.Language.Types.DB (SqlConn(..))
 import Presto.Backend.Runtime.Common (lift3, throwException', getDBConn', getKVDBConn')
-import Presto.Backend.Runtime.Types (InterpreterMT, InterpreterMT', BackendRuntime(..))
+import Presto.Backend.Runtime.Types (InterpreterMT, InterpreterMT', BackendRuntime(..), RunningMode(..))
 import Presto.Backend.Runtime.Types as X
 import Presto.Backend.Playback.Machine.Classless (withRunModeClassless)
 import Presto.Backend.Playback.Entries (mkThrowExceptionEntry)
-import Presto.Backend.Playback.Types (mkEntryDict)
+import Presto.Backend.Playback.Types (RecorderRuntime(..), PlayerRuntime(..), PlaybackError(..), PlaybackErrorType(..), mkEntryDict)
 import Presto.Backend.Runtime.API (runAPIInteraction)
 import Presto.Backend.Runtime.KVDBInterpreter (runKVDB)
 import Presto.Backend.DB.Mock.Types (DBActionDict)
@@ -57,6 +60,79 @@ forkF brt flow = do
   rt <- R.ask
   let m = E.runExceptT ( S.runStateT ( R.runReaderT ( runBackend brt flow ) rt) st)
   void $ lift3 $ forkAff m
+
+forkRecorderRt
+  :: forall eff rt st
+   . String
+  -> RecorderRuntime
+  -> InterpreterMT' rt st eff RecorderRuntime
+forkRecorderRt flowGUID rt = do
+  recordingVar <- lift3 $ makeVar []
+  forkedRecs   <- lift3 $ takeVar rt.forkedRecordingsVar
+  let forkedRecs' = StrMap.insert flowGUID recordingVar forkedRecs
+  lift3 $ putVar forkedRecs' rt.forkedRecordingsVar
+  pure
+    { flowGUID
+    , recordingVar
+    , forkedRecordingsVar : rt.forkedRecordingsVar
+    , disableEntries      : rt.disableEntries
+    }
+
+forkPlayerRt
+  :: forall eff rt st
+   . String
+  -> PlayerRuntime
+  -> InterpreterMT' rt st eff (Maybe PlayerRuntime)
+forkPlayerRt flowGUID rt =
+  case StrMap.lookup flowGUID rt.forkedFlowRecordings of
+    Nothing -> do
+      let missedRecsErr = PlaybackError
+            { errorType    : ForkedFlowRecordingsMissed
+            , errorMessage : "No recordings found for forked flow: " <> flowGUID
+            }
+      forkedFlowErrors <- lift3 $ takeVar rt.forkedFlowErrorsVar
+      let forkedFlowErrors' = StrMap.insert flowGUID missedRecsErr forkedFlowErrors
+      lift3 $ putVar forkedFlowErrors' rt.forkedFlowErrorsVar
+      pure Nothing
+    Just recording -> do
+      stepVar  <- lift3 $ makeVar 0
+      errorVar <- lift3 $ makeVar Nothing
+      pure $ Just
+        { flowGUID
+        , stepVar
+        , errorVar
+        , recording
+        , forkedFlowRecordings  : rt.forkedFlowRecordings
+        , forkedFlowErrorsVar   : rt.forkedFlowErrorsVar
+        , disableVerify         : rt.disableVerify
+        , disableMocking        : rt.disableMocking
+        , skipEntries           : rt.skipEntries
+        , entriesFiltered       : rt.entriesFiltered
+        }
+
+forkBackendRuntime
+  :: forall eff rt st
+   . String
+  -> BackendRuntime
+  -> InterpreterMT' rt st eff (Maybe BackendRuntime)
+forkBackendRuntime flowGUID brt@(BackendRuntime rt) = do
+  mbForkedMode <- case rt.mode of
+    RegularMode              -> pure $ Just RegularMode
+    RecordingMode recorderRt -> (Just <<< RecordingMode) <$> forkRecorderRt flowGUID recorderRt
+    ReplayingMode playerRt   -> do
+      mbRt <- forkPlayerRt flowGUID playerRt
+      pure $ ReplayingMode <$> mbRt
+
+  case mbForkedMode of
+    Nothing         -> pure Nothing
+    Just forkedMode -> pure $ Just $ BackendRuntime
+          { apiRunner   : rt.apiRunner
+          , connections : rt.connections
+          , logRunner   : rt.logRunner
+          , affRunner   : rt.affRunner
+          , kvdbRuntime : rt.kvdbRuntime
+          , mode        : forkedMode
+          }
 
 getMockedDBValue :: forall st rt eff a. BackendRuntime -> DBActionDict -> InterpreterMT' rt st eff a
 getMockedDBValue brt mockedDbActDict = throwException' "Mocking is not yet implemented for DB."
@@ -92,10 +168,15 @@ interpret brt@(BackendRuntime rt) (Log tag message rrItemDict next) = do
     (lift3 (rt.logRunner tag message) *> pure UnitEx)
   pure $ next res
 
-interpret brt (Fork flow rrItemDict next) = do
-  res <- withRunModeClassless brt rrItemDict
-    (forkF brt flow *> pure UnitEx)
-  pure $ next res
+interpret brt@(BackendRuntime rt) (Fork flow flowGUID rrItemDict next) = do
+  mbForkedRt <- forkBackendRuntime flowGUID brt
+
+  void $ withRunModeClassless brt rrItemDict
+      (case mbForkedRt of
+        Nothing -> (lift3 (rt.logRunner flowGUID "Failed to fork flow.") *> pure UnitEx)
+        Just forkedBrt -> forkF forkedBrt flow *> pure UnitEx)
+
+  pure $ next UnitEx
 
 interpret brt (RunSysCmd cmd rrItemDict next) = do
   res <- withRunModeClassless brt rrItemDict

@@ -1,7 +1,7 @@
 module Presto.Backend.RunModesSpec where
 
 import Control.Monad.Aff (Aff)
-import Control.Monad.Aff.AVar (AVAR, makeVar, readVar)
+import Control.Monad.Aff.AVar (AVAR, AVar, makeVar, readVar)
 import Control.Monad.Aff.Class (liftAff)
 import Control.Monad.Eff.Exception (error, message)
 import Control.Monad.Error.Class (throwError)
@@ -17,12 +17,13 @@ import Data.Generic.Rep.Show as GShow
 import Data.Maybe (Maybe(Nothing, Just))
 import Data.StrMap as StrMap
 import Data.Tuple (Tuple(..))
+import Data.Traversable (traverse)
 import Debug.Trace (spy)
-import Prelude (class Eq, class Show, Unit, bind, discard, pure, show, unit, ($), (*>), (<>), (==))
+import Prelude (class Eq, class Show, Unit, (<$>), bind, discard, pure, show, unit, ($), (*>), (<>), (==))
 import Presto.Backend.Flow (BackendFlow, forkFlow, forkFlow', generateGUID, generateGUID', callAPI, doAffRR, getDBConn, log, runSysCmd, throwException)
 import Presto.Backend.Language.Types.DB (MockedSqlConn(MockedSqlConn), SqlConn(MockedSql))
 import Presto.Backend.Playback.Entries (CallAPIEntry(..), DoAffEntry(..), LogEntry(..), RunSysCmdEntry(..))
-import Presto.Backend.Playback.Types (EntryReplayingMode(..), GlobalReplayingMode(..), PlaybackError(..), PlaybackErrorType(..), RecordingEntry(..))
+import Presto.Backend.Playback.Types (RecordingEntries, EntryReplayingMode(..), GlobalReplayingMode(..), PlaybackError(..), PlaybackErrorType(..), RecordingEntry(..))
 import Presto.Backend.Runtime.Interpreter (RunningMode(..), runBackend)
 import Presto.Backend.Runtime.Types (Connection(..), BackendRuntime(..), RunningMode(..), KVDBRuntime(..))
 import Presto.Backend.Types.API (class RestEndpoint, APIResult, Request(..), Headers(..), Response(..), ErrorPayload(..), Method(..), defaultDecodeResponse)
@@ -231,21 +232,62 @@ createRegularBackendRuntime = do
   kvdbRuntime <- createKVDBRuntime
   pure $ mkBackendRuntime kvdbRuntime RegularMode
 
+createRecordingBackendRuntimeForked
+  :: forall eff
+   . Aff ( avar :: AVAR | eff )
+      { brt :: BackendRuntime
+      , recordingVar :: AVar RecordingEntries
+      , forkedRecordingsVar :: AVar (StrMap.StrMap (AVar RecordingEntries))
+      }
+createRecordingBackendRuntimeForked = do
+  kvdbRuntime  <- createKVDBRuntime
+  recordingVar <- makeVar []
+  forkedRecordingsVar <- makeVar StrMap.empty
+  let brt = mkBackendRuntime kvdbRuntime $ RecordingMode
+        { flowGUID : ""
+        , recordingVar
+        , forkedRecordingsVar
+        , disableEntries : []
+        }
+  pure { brt, recordingVar, forkedRecordingsVar }
+
+createRecordingBackendRuntime
+  :: forall eff
+   . Aff ( avar :: AVAR | eff ) (Tuple BackendRuntime (AVar (Array RecordingEntry)))
 createRecordingBackendRuntime = do
   kvdbRuntime  <- createKVDBRuntime
   recordingVar <- makeVar []
-  let brt = mkBackendRuntime kvdbRuntime $ RecordingMode { recordingVar , disableEntries : [] }
+  forkedRecordingsVar <- makeVar StrMap.empty
+  let brt = mkBackendRuntime kvdbRuntime $ RecordingMode
+        { flowGUID : ""
+        , recordingVar
+        , forkedRecordingsVar
+        , disableEntries : []
+        }
   pure $ Tuple brt recordingVar
 
 createRecordingBackendRuntimeWithMode entries  = do
     kvdbRuntime <- createKVDBRuntime
     recordingVar <- makeVar []
-    let brt = mkBackendRuntime kvdbRuntime $ RecordingMode {recordingVar , disableEntries : entries}
+    forkedRecordingsVar <- makeVar StrMap.empty
+    let brt = mkBackendRuntime kvdbRuntime $ RecordingMode
+          { flowGUID : ""
+          , recordingVar
+          , forkedRecordingsVar
+          , disableEntries : entries
+          }
     pure $ Tuple brt recordingVar
+
 createRecordingBackendRuntimeWithEntryMode entryMode = do
   kvdbRuntime  <- createKVDBRuntime
   recordingVar <- makeVar entryMode
-  let brt = mkBackendRuntime kvdbRuntime $ RecordingMode { recordingVar , disableEntries : [] }
+  forkedRecordingsVar <- makeVar StrMap.empty
+  let brt = mkBackendRuntime kvdbRuntime $ RecordingMode
+        { flowGUID : ""
+        , forkedRecordingsVar
+        , recordingVar
+        , disableEntries : []
+        }
   pure $ Tuple brt recordingVar
 
 
@@ -291,6 +333,7 @@ runTests = do
       errorVar    <- makeVar Nothing
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
+      forkedFlowErrorsVar <- makeVar StrMap.empty
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -298,7 +341,10 @@ runTests = do
             , affRunner   : failingAffRunner
             , kvdbRuntime
             , mode        : ReplayingMode
-              { recording
+              { flowGUID : ""
+              , forkedFlowRecordings : StrMap.empty
+              , forkedFlowErrorsVar
+              , recording
               , disableVerify : []
               , disableMocking : []
               , skipEntries : []
@@ -321,6 +367,7 @@ runTests = do
       errorVar    <- makeVar Nothing
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
+      forkedFlowErrorsVar <- makeVar StrMap.empty
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -328,7 +375,10 @@ runTests = do
             , affRunner   : failingAffRunner
             , kvdbRuntime
             , mode        : ReplayingMode
-              { recording
+              { flowGUID : ""
+              , forkedFlowRecordings : StrMap.empty
+              , forkedFlowErrorsVar
+              , recording
               , disableVerify : []
               , disableMocking : []
               , skipEntries : []
@@ -356,6 +406,7 @@ runTests = do
       errorVar    <- makeVar Nothing
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
+      forkedFlowErrorsVar <- makeVar StrMap.empty
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -363,7 +414,10 @@ runTests = do
             , affRunner   : failingAffRunner
             , kvdbRuntime
             , mode        : ReplayingMode
-              { recording
+              { flowGUID : ""
+              , forkedFlowRecordings : StrMap.empty
+              , forkedFlowErrorsVar
+              , recording
               , disableVerify : []
               , disableMocking : []
               , skipEntries : []
@@ -390,6 +444,7 @@ runTests = do
       errorVar    <- makeVar Nothing
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
+      forkedFlowErrorsVar <- makeVar StrMap.empty
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -397,7 +452,10 @@ runTests = do
             , affRunner   : failingAffRunner
             , kvdbRuntime
             , mode        : ReplayingMode
-              { recording
+              { flowGUID : ""
+              , forkedFlowRecordings : StrMap.empty
+              , forkedFlowErrorsVar
+              , recording
               , disableVerify : []
               , disableMocking : []
               , skipEntries : []
@@ -424,6 +482,7 @@ runTests = do
       errorVar    <- makeVar Nothing
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
+      forkedFlowErrorsVar <- makeVar StrMap.empty
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -431,7 +490,10 @@ runTests = do
             , affRunner   : failingAffRunner
             , kvdbRuntime
             , mode        : ReplayingMode
-              { recording
+              { flowGUID : ""
+              , forkedFlowRecordings : StrMap.empty
+              , forkedFlowErrorsVar
+              , recording
               , disableVerify : []
               , disableMocking : []
               , skipEntries : []
@@ -458,6 +520,7 @@ runTests = do
       errorVar    <- makeVar Nothing
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
+      forkedFlowErrorsVar <- makeVar StrMap.empty
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -465,7 +528,10 @@ runTests = do
             , affRunner   : failingAffRunner
             , kvdbRuntime
             , mode        : ReplayingMode
-              { recording
+              { flowGUID : ""
+              , forkedFlowRecordings : StrMap.empty
+              , forkedFlowErrorsVar
+              , recording
               , disableVerify : []
               , disableMocking : []
               , skipEntries : []
@@ -483,16 +549,27 @@ runTests = do
 
 
     it "Record / replay test: forkFlow success" $ do
-      Tuple brt recordingVar <- createRecordingBackendRuntime
+      {brt, recordingVar, forkedRecordingsVar} <- createRecordingBackendRuntimeForked
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt forkFlowScript) unit) unit)
       case eResult of
         Right (Tuple n unit) -> n `shouldEqual` "mainflow 6\n"
         _ -> fail $ show eResult
 
-      stepVar     <- makeVar 0
-      errorVar    <- makeVar Nothing
-      recording   <- readVar recordingVar
-      kvdbRuntime <- createKVDBRuntime
+      stepVar           <- makeVar 0
+      errorVar          <- makeVar Nothing
+      recording         <- readVar recordingVar
+      kvdbRuntime       <- createKVDBRuntime
+      forkedRecordings' <- readVar forkedRecordingsVar
+
+      let kvFunc (Tuple k recVar) = Tuple k <$> readVar recVar
+      let (kvs :: Array (Tuple String (AVar RecordingEntries))) = StrMap.toUnfoldable forkedRecordings'
+      forkedRecordings'' <- traverse kvFunc kvs
+      let forkedRecordings = StrMap.fromFoldable forkedRecordings''
+
+      length recording `shouldEqual` 16
+      StrMap.size forkedRecordings `shouldEqual` 3
+
+      forkedFlowErrorsVar <- makeVar StrMap.empty
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -500,7 +577,10 @@ runTests = do
             , affRunner   : failingAffRunner
             , kvdbRuntime
             , mode        : ReplayingMode
-              { recording
+              { flowGUID : ""
+              , forkedFlowRecordings : StrMap.empty
+              , forkedFlowErrorsVar
+              , recording
               , disableVerify : []
               , disableMocking : []
               , skipEntries : []
@@ -514,7 +594,7 @@ runTests = do
       case eResult2 of
         Right (Tuple n unit) -> n `shouldEqual` "mainflow 6\n"
         Left err -> fail $ show err
-      curStep `shouldEqual` 1
+      curStep `shouldEqual` 16
 
 
     it "Record / replay test: getDBConn success" $ do
@@ -574,6 +654,7 @@ runTests = do
       errorVar    <- makeVar Nothing
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
+      forkedFlowErrorsVar <- makeVar StrMap.empty
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -581,7 +662,10 @@ runTests = do
             , affRunner   : failingAffRunner
             , kvdbRuntime
             , mode        : ReplayingMode
-              { recording
+              { flowGUID : ""
+              , forkedFlowRecordings : StrMap.empty
+              , forkedFlowErrorsVar
+              , recording
               , disableVerify : ["LogEntry"]
               , disableMocking : []
               , skipEntries : []
@@ -603,6 +687,7 @@ runTests = do
       errorVar    <- makeVar Nothing
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
+      forkedFlowErrorsVar <- makeVar StrMap.empty
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -610,7 +695,10 @@ runTests = do
             , affRunner   : failingAffRunner
             , kvdbRuntime
             , mode        : ReplayingMode
-              { recording
+              { flowGUID : ""
+              , forkedFlowRecordings : StrMap.empty
+              , forkedFlowErrorsVar
+              , recording
               , disableVerify : ["CallAPIEntry"]
               , disableMocking : []
               , skipEntries : []
@@ -634,6 +722,7 @@ runTests = do
       errorVar    <- makeVar Nothing
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
+      forkedFlowErrorsVar <- makeVar StrMap.empty
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : apiRunner
             , connections : StrMap.empty
@@ -641,7 +730,10 @@ runTests = do
             , affRunner   : failingAffRunner
             , kvdbRuntime
             , mode        : ReplayingMode
-              { recording
+              { flowGUID : ""
+              , forkedFlowRecordings : StrMap.empty
+              , forkedFlowErrorsVar
+              , recording
               , disableVerify : []
               , disableMocking : ["LogEntry","CallAPIEntry"]
               , skipEntries : []
@@ -665,6 +757,7 @@ runTests = do
       errorVar    <- makeVar Nothing
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
+      forkedFlowErrorsVar <- makeVar StrMap.empty
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -672,7 +765,10 @@ runTests = do
             , affRunner   : affRunner
             , kvdbRuntime
             , mode        : ReplayingMode
-              { recording
+              { flowGUID : ""
+              , forkedFlowRecordings : StrMap.empty
+              , forkedFlowErrorsVar
+              , recording
               , disableVerify : []
               , disableMocking : ["DoAffEntry"]
               , skipEntries : []
@@ -699,6 +795,7 @@ runTests = do
       errorVar    <- makeVar Nothing
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
+      forkedFlowErrorsVar <- makeVar StrMap.empty
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -706,7 +803,10 @@ runTests = do
             , affRunner   : failingAffRunner
             , kvdbRuntime
             , mode        : ReplayingMode
-              { recording
+              { flowGUID : ""
+              , forkedFlowRecordings : StrMap.empty
+              , forkedFlowErrorsVar
+              , recording
               , disableVerify : []
               , disableMocking : ["RunSysCmdEntry"]
               , skipEntries : []
@@ -734,6 +834,7 @@ runTests = do
         errorVar    <- makeVar Nothing
         recording   <- readVar recordingVar
         kvdbRuntime <- createKVDBRuntime
+        forkedFlowErrorsVar <- makeVar StrMap.empty
         let replayingBackendRuntime = BackendRuntime
               { apiRunner   : failingApiRunner
               , connections : StrMap.empty
@@ -741,7 +842,10 @@ runTests = do
               , affRunner   : failingAffRunner
               , kvdbRuntime
               , mode        : ReplayingMode
-                { recording
+                { flowGUID : ""
+                , forkedFlowRecordings : StrMap.empty
+                , forkedFlowErrorsVar
+                , recording
                 , disableVerify : []
                 , disableMocking : []
                 , skipEntries : []
@@ -765,6 +869,7 @@ runTests = do
         errorVar    <- makeVar Nothing
         recording   <- readVar recordingVar
         kvdbRuntime <- createKVDBRuntime
+        forkedFlowErrorsVar <- makeVar StrMap.empty
         let replayingBackendRuntime = BackendRuntime
               { apiRunner   : failingApiRunner
               , connections : StrMap.empty
@@ -772,7 +877,10 @@ runTests = do
               , affRunner   : failingAffRunner
               , kvdbRuntime
               , mode        : ReplayingMode
-                { recording
+                { flowGUID : ""
+                , forkedFlowRecordings : StrMap.empty
+                , forkedFlowErrorsVar
+                , recording
                 , disableVerify : []
                 , disableMocking : ["LogEntry"]  -- This will have no efect since the priority of Entry Configs are higher than Global Config
                 , skipEntries : []
@@ -796,6 +904,7 @@ runTests = do
         errorVar    <- makeVar Nothing
         recording   <- readVar recordingVar
         kvdbRuntime <- createKVDBRuntime
+        forkedFlowErrorsVar <- makeVar StrMap.empty
         let replayingBackendRuntime = BackendRuntime
               { apiRunner   : apiRunner
               , connections : StrMap.empty
@@ -803,7 +912,10 @@ runTests = do
               , affRunner   : failingAffRunner
               , kvdbRuntime
               , mode        : ReplayingMode
-                { recording
+                { flowGUID : ""
+                , forkedFlowRecordings : StrMap.empty
+                , forkedFlowErrorsVar
+                , recording
                 , disableVerify : []
                 , disableMocking : []
                 , skipEntries : []
@@ -827,6 +939,7 @@ runTests = do
       errorVar    <- makeVar Nothing
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
+      forkedFlowErrorsVar <- makeVar StrMap.empty
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : apiRunner
             , connections : StrMap.empty
@@ -834,7 +947,10 @@ runTests = do
             , affRunner   : affRunner
             , kvdbRuntime
             , mode        : ReplayingMode
-              { recording
+              { flowGUID : ""
+              , forkedFlowRecordings : StrMap.empty
+              , forkedFlowErrorsVar
+              , recording
               , disableVerify : []
               , disableMocking : []
               , skipEntries : ["DoAffEntry"]
@@ -859,6 +975,7 @@ runTests = do
       errorVar    <- makeVar Nothing
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
+      forkedFlowErrorsVar <- makeVar StrMap.empty
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : apiRunner
             , connections : StrMap.empty
@@ -866,7 +983,10 @@ runTests = do
             , affRunner   : affRunner
             , kvdbRuntime
             , mode        : ReplayingMode
-              { recording
+              { flowGUID : ""
+              , forkedFlowRecordings : StrMap.empty
+              , forkedFlowErrorsVar
+              , recording
               , disableVerify : []
               , disableMocking : []
               , skipEntries : ["DoAffEntry"]

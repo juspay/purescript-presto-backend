@@ -85,6 +85,7 @@ data BackendFlowCommands next st rt s
         (UnitEx -> next)
 
     | Fork (BackendFlow st rt s)
+        String
         (Playback.RRItemDict Playback.ForkFlowEntry UnitEx)
         (UnitEx -> next)
 
@@ -188,7 +189,7 @@ forkFlow' description flow = do
   flowGUID <- generateGUID' description
   unless (null description) $ log "forkFlow" $ "Flow forked. Description: " <> description <> " GUID: " <> flowGUID
   when   (null description) $ log "forkFlow" $ "Flow forked. GUID: " <> flowGUID
-  void $ wrap $ Fork flow
+  void $ wrap $ Fork flow flowGUID
     (Playback.mkEntryDict
       ("description: " <> description <> " GUID: " <> flowGUID)
       $ Playback.mkForkFlowEntry description flowGUID)

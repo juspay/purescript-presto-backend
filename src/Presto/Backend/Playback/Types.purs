@@ -25,6 +25,7 @@ import Prelude
 
 import Control.Monad.Aff.AVar (AVar)
 import Data.Maybe (Maybe)
+import Data.StrMap as StrMap
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Bounded as GBounded
 import Data.Generic.Rep.Enum as GEnum
@@ -52,24 +53,29 @@ instance showEntryReplayingMode :: Show EntryReplayingMode where show = GShow.ge
 instance ordEntryReplayingMode :: Ord EntryReplayingMode where compare = GOrd.genericCompare
 
 
-type DisableEntries  = String
--- TODO: it might be Data.Sequence.Ordered is better
+type DisableEntries = String
 
-newtype Recording = Recording (Array RecordingEntry)
+type RecordingEntries = Array RecordingEntry
+newtype Recording = Recording RecordingEntries
 
 type RecorderRuntime =
-  { recordingVar :: AVar (Array RecordingEntry)
-  , disableEntries :: Array DisableEntries
+  { flowGUID            :: String
+  , recordingVar        :: AVar RecordingEntries
+  , forkedRecordingsVar :: AVar (StrMap.StrMap (AVar RecordingEntries))
+  , disableEntries      :: Array DisableEntries
   }
 
 type PlayerRuntime =
-  { recording :: Array RecordingEntry
-  , disableVerify :: Array DisableEntries
-  , disableMocking :: Array DisableEntries
-  , skipEntries :: Array DisableEntries
-  , entriesFiltered :: Boolean
-  , stepVar   :: AVar Int
-  , errorVar  :: AVar (Maybe PlaybackError)
+  { flowGUID               :: String
+  , recording              :: RecordingEntries
+  , stepVar                :: AVar Int
+  , errorVar               :: AVar (Maybe PlaybackError)
+  , forkedFlowRecordings   :: StrMap.StrMap RecordingEntries
+  , forkedFlowErrorsVar    :: AVar (StrMap.StrMap PlaybackError)
+  , disableVerify          :: Array DisableEntries
+  , disableMocking         :: Array DisableEntries
+  , skipEntries            :: Array DisableEntries
+  , entriesFiltered        :: Boolean
   }
 
 data PlaybackErrorType
@@ -78,6 +84,7 @@ data PlaybackErrorType
   | MockDecodingFailed
   | ItemMismatch
   | UnknownPlaybackError
+  | ForkedFlowRecordingsMissed
 
 newtype PlaybackError = PlaybackError
   { errorType :: PlaybackErrorType
