@@ -356,7 +356,12 @@ runTests = do
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
       curStep  <- readVar stepVar
       isRight eResult2 `shouldEqual` true
+      case [eResult, eResult2] of
+        [Right res, Right res2] -> res `shouldEqual` res2
+        _ -> fail "Not equal."
       curStep `shouldEqual` 4
+      mbErr <- readVar errorVar
+      mbErr `shouldEqual` Nothing
 
     it "Record / replay test: index out of range" $ do
       Tuple brt recordingVar <- createRecordingBackendRuntime
@@ -471,6 +476,9 @@ runTests = do
         Left err -> fail $ show err
       curStep `shouldEqual` 1
 
+      mbErr <- readVar errorVar
+      mbErr `shouldEqual` Nothing
+
     it "Record / replay test: throwException success" $ do
       Tuple brt recordingVar <- createRecordingBackendRuntime
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt $ throwException "This is error!") unit) unit)
@@ -508,6 +516,9 @@ runTests = do
         Left (Tuple err _) -> message err `shouldEqual` "This is error!"
         _ -> fail "Unexpected success."
       curStep `shouldEqual` 1
+
+      mbErr <- readVar errorVar
+      mbErr `shouldEqual` Nothing
 
     it "Record / replay test: doAff success" $ do
       Tuple brt recordingVar <- createRecordingBackendRuntime
@@ -547,6 +558,8 @@ runTests = do
         Left err -> fail $ show err
       curStep `shouldEqual` 1
 
+      mbErr <- readVar errorVar
+      mbErr `shouldEqual` Nothing
 
     it "Record / replay test: forkFlow no forked entries" $ do
       {brt, recordingVar, forkedRecordingsVar} <- createRecordingBackendRuntimeForked
@@ -652,7 +665,6 @@ runTests = do
       forkedErrs <- readVar forkedFlowErrorsVar
       StrMap.size forkedErrs `shouldEqual` 0
 
-
     it "Record / replay test: getDBConn success" $ do
       Tuple (BackendRuntime rt') recordingVar <- createRecordingBackendRuntime
       let conns = StrMap.singleton testDB $ SqlConn $ MockedSql $ MockedSqlConn testDB
@@ -734,6 +746,9 @@ runTests = do
       curStep  <- readVar stepVar
       isRight eResult2 `shouldEqual` true
       curStep `shouldEqual` 2
+      mbErr <- readVar errorVar
+      mbErr `shouldEqual` Nothing
+
     it "Replay test : CallAPIEntry" $ do
       Tuple brt recordingVar <- createRecordingBackendRuntime
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt callAPIScript) unit) unit)
@@ -767,6 +782,8 @@ runTests = do
       curStep  <- readVar stepVar
       isRight eResult2 `shouldEqual` true
       curStep `shouldEqual` 2
+      mbErr <- readVar errorVar
+      mbErr `shouldEqual` Nothing
 
   describe "Replaying Test with disableMocking Global Config mode" $ do
     it "Replay Test : LogEntry and CallAPIEntry" $ do
@@ -801,6 +818,8 @@ runTests = do
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript') unit) unit)
       curStep  <- readVar stepVar
       curStep `shouldEqual` 4
+      mbErr <- readVar errorVar
+      mbErr `shouldEqual` Nothing
 
     it "Replay Test : DoAffEntry" $ do
       Tuple brt recordingVar <- createRecordingBackendRuntime
@@ -834,12 +853,15 @@ runTests = do
               }
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime doAffScript') unit) unit)
+      mbErr <- readVar errorVar
+      mbErr `shouldEqual` Nothing
       case eResult2 of
         Right (Tuple n unit) -> n `shouldEqual` "This is result 2."
         _ -> fail $ show eResult
 
       curStep  <- readVar stepVar
       curStep `shouldEqual` 1
+
     it "Replay test: runSysCmd success" $ do
       Tuple brt recordingVar <- createRecordingBackendRuntime
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt runSysCmdScript) unit) unit)
@@ -877,6 +899,8 @@ runTests = do
         Right (Tuple n unit) -> n `shouldEqual` "DEF\n"
         Left err -> fail $ show err
       curStep `shouldEqual` 1
+      mbErr <- readVar errorVar
+      mbErr `shouldEqual` Nothing
 
   describe "Replaying Test in Entry config Mode" do
       it "Replay Test in Normal Entry Mode : Log and CallAPI" $ do
@@ -913,6 +937,8 @@ runTests = do
         eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
         curStep  <- readVar stepVar
         curStep `shouldEqual` 4
+        mbErr <- readVar errorVar
+        mbErr `shouldEqual` Nothing
 
       it "Replay Test in NoVerify Entry Mode : Log and CallAPI disable LogEntry" $ do
         let entryMode = [ RecordingEntry 0 NoVerify  "LogEntry" log1
@@ -948,6 +974,8 @@ runTests = do
         eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript') unit) unit)
         curStep  <- readVar stepVar
         curStep `shouldEqual` 4
+        mbErr <- readVar errorVar
+        mbErr `shouldEqual` Nothing
 
       it "Replay Test in NoMock Entry Mode : Log and CallAPI" $ do
         let entryMode = [ RecordingEntry 0 NoMock  "LogEntry" log1
@@ -983,7 +1011,8 @@ runTests = do
         eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript') unit) unit)
         curStep  <- readVar stepVar
         curStep `shouldEqual` 4
-
+        mbErr <- readVar errorVar
+        mbErr `shouldEqual` Nothing
 
   describe "Replaying Test with SkipGlobal Config mode" $ do
     it "Replay Test : SkipScript - filter entry" $ do
@@ -1018,6 +1047,8 @@ runTests = do
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime skipScript2) unit) unit)
       curStep  <- readVar stepVar
       curStep `shouldEqual` 2
+      mbErr <- readVar errorVar
+      mbErr `shouldEqual` Nothing
       case eResult2 of
         Right (Tuple n unit) -> n `shouldEqual` "fghij\n"
         Left  err -> fail $ show err
@@ -1054,6 +1085,8 @@ runTests = do
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime skipScript1) unit) unit)
       curStep  <- readVar stepVar
       curStep `shouldEqual` 2
+      mbErr <- readVar errorVar
+      mbErr `shouldEqual` Nothing
       case eResult2 of
         Right (Tuple n unit) -> n `shouldEqual` "fghij\n"
         Left  err -> fail $ show err
