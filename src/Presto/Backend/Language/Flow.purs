@@ -171,9 +171,10 @@ doAffRR
   :: forall st rt a
    . Encode a
   => Decode a
-  => (forall eff. BackendAff eff a)
+  => String
+  -> (forall eff. BackendAff eff a)
   -> BackendFlow st rt a
-doAffRR aff = wrap $ DoAffRR aff (Playback.mkEntryDict "doAffRR" Playback.mkDoAffEntry) id
+doAffRR description aff = wrap $ DoAffRR aff (Playback.mkEntryDict "doAffRR" $ Playback.mkDoAffEntry description) id
 
 -- TODO: this is not a correct solution, jsonStringify is a strange function
 -- that feels hacky.
