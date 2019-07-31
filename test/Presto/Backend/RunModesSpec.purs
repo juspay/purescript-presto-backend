@@ -143,7 +143,7 @@ runSysCmdScript' :: BackendFlow Unit Unit String
 runSysCmdScript' = runSysCmd "echo 'DEF'"
 
 doAffScript :: BackendFlow Unit Unit String
-doAffScript = doAffRR  (pure  "This is result.")
+doAffScript = doAffRR (pure  "This is result.")
 
 doAffScript' :: BackendFlow Unit Unit String
 doAffScript' = doAffRR (pure "This is result 2.")

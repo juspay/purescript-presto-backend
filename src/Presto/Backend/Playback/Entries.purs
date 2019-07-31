@@ -78,6 +78,7 @@ data RunSysCmdEntry = RunSysCmdEntry
 
 data DoAffEntry = DoAffEntry
   { jsonResult :: Foreign
+  , description :: String
   }
 
 data RunDBEntry = RunDBEntry
@@ -128,8 +129,9 @@ mkDoAffEntry
   :: forall b
    . Encode b
   => Decode b
-  => b -> DoAffEntry
-mkDoAffEntry result = DoAffEntry { jsonResult: encode result }
+  => String -> b -> DoAffEntry
+mkDoAffEntry description result = DoAffEntry { jsonResult : encode result
+                                             , description : description }
 
 mkCallAPIEntry
   :: forall b
