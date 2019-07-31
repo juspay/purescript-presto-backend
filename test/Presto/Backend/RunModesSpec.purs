@@ -143,10 +143,10 @@ runSysCmdScript' :: BackendFlow Unit Unit String
 runSysCmdScript' = runSysCmd "echo 'DEF'"
 
 doAffScript :: BackendFlow Unit Unit String
-doAffScript = doAffRR "description"  (pure  "This is result.")
+doAffScript = doAffRR (pure  "This is result.")
 
 doAffScript' :: BackendFlow Unit Unit String
-doAffScript' = doAffRR "description" (pure "This is result 2.")
+doAffScript' = doAffRR (pure "This is result 2.")
 
 testDB :: String
 testDB = "TestDB"
@@ -157,7 +157,7 @@ dbScript0 = getDBConn testDB
 skipScript1 :: BackendFlow Unit Unit String
 skipScript1 = do
   _ <- runSysCmd "echo 'abcde'"
-  _ <- doAffRR "description" (pure "doAffRR result")
+  _ <- doAffRR (pure "doAffRR result")
   runSysCmd "echo 'fghij'"
 
 skipScript2 :: BackendFlow Unit Unit String
@@ -167,32 +167,32 @@ skipScript2 = do
 
 forkFlowScript :: BackendFlow Unit Unit String
 forkFlowScript = do
-  _ <- doAffRR "description" (pure "doAff from main flow")
+  _ <- doAffRR (pure "doAff from main flow")
   _ <- forkFlow' "Child 1" $ do
-          _ <- doAffRR "description" (pure "doAff 1 from forkFlow")
-          _ <- doAffRR "description" (pure "doAff 2 from forkFlow")
+          _ <- doAffRR (pure "doAff 1 from forkFlow")
+          _ <- doAffRR (pure "doAff 2 from forkFlow")
           _ <- runSysCmd "sleep 0.5s"
-          _ <- doAffRR "description" (pure "doAff 3 from forkFlow")
-          _ <- doAffRR "description" (pure "doAff 4 from forkFlow")
+          _ <- doAffRR (pure "doAff 3 from forkFlow")
+          _ <- doAffRR (pure "doAff 4 from forkFlow")
           _ <- runSysCmd "sleep 1s"
-          _ <- doAffRR "description" (pure "doAff 5 from forkFlow")
-          doAffRR "description" (pure "doAff 6 from forkFlow")
-  _ <- doAffRR "description" (pure "doAff from main flow")
+          _ <- doAffRR (pure "doAff 5 from forkFlow")
+          doAffRR (pure "doAff 6 from forkFlow")
+  _ <- doAffRR (pure "doAff from main flow")
   _ <- runSysCmd "echo 'mainflow 1'"
   _ <- runSysCmd "echo 'mainflow 2'"
   _ <- forkFlow' "Child 2" $ do
-          _ <- doAffRR "description" (pure "doAff 1 from forkFlow 2")
+          _ <- doAffRR (pure "doAff 1 from forkFlow 2")
           _ <- forkFlow' "Child 2 Child 1" $ do
-                _ <- doAffRR "description" (pure "doAff 1 from forkFlow Child 2 Child 1")
-                _ <- doAffRR "description" (pure "doAff 2 from forkFlow Child 2 Child 1")
-                doAffRR "description" (pure "doAff 3 from forkFlow Child 2 Child 1")
-          _ <- doAffRR "description" (pure "doAff 2 from forkFlow 2")
+                _ <- doAffRR (pure "doAff 1 from forkFlow Child 2 Child 1")
+                _ <- doAffRR (pure "doAff 2 from forkFlow Child 2 Child 1")
+                doAffRR (pure "doAff 3 from forkFlow Child 2 Child 1")
+          _ <- doAffRR (pure "doAff 2 from forkFlow 2")
           _ <- runSysCmd "sleep 0.5s"
-          _ <- doAffRR "description" (pure "doAff 3 from forkFlow 2")
-          _ <- doAffRR "description" (pure "doAff 4 from forkFlow 2")
+          _ <- doAffRR (pure "doAff 3 from forkFlow 2")
+          _ <- doAffRR (pure "doAff 4 from forkFlow 2")
           _ <- runSysCmd "sleep 1s"
-          _ <- doAffRR "description" (pure "doAff 5 from forkFlow 2")
-          doAffRR "description" (pure "doAff 6 from forkFlow 2")
+          _ <- doAffRR (pure "doAff 5 from forkFlow 2")
+          doAffRR (pure "doAff 6 from forkFlow 2")
   _ <- runSysCmd "sleep 0.5s"
   _ <- runSysCmd "echo 'mainflow 3'"
   _ <- runSysCmd "echo 'mainflow 4'"
