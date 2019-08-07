@@ -174,7 +174,7 @@ doAffRR'
   => String
   -> (forall eff. BackendAff eff a)
   -> BackendFlow st rt a
-doAffRR' description aff = wrap $ DoAffRR aff (Playback.mkEntryDict "doAffRR" $ Playback.mkDoAffEntry description) id
+doAffRR' description aff = wrap $ DoAffRR aff (Playback.mkEntryDict ("doAffRR' " <> description) $ Playback.mkDoAffEntry description) id
 
 doAffRR
   :: forall st rt a
