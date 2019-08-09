@@ -66,4 +66,5 @@ newtype BackendRuntime = BackendRuntime
   , affRunner   :: AffRunner
   , kvdbRuntime :: KVDBRuntime
   , mode        :: RunningMode
+  , options     :: StrMap String
   }

@@ -10,8 +10,9 @@ import Control.Monad.Reader.Trans (runReaderT)
 import Control.Monad.State.Trans (runStateT)
 import Data.Array (length, index)
 import Data.Either (Either(Left, Right), isRight)
+import Data.Foreign (Foreign, F)
 import Data.Foreign.Class (class Decode, class Encode)
-import Data.Foreign.Generic (encodeJSON)
+import Data.Foreign.Generic (encodeJSON, decodeJSON)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show as GShow
 import Data.Maybe (Maybe(Nothing, Just))
@@ -19,17 +20,42 @@ import Data.StrMap as StrMap
 import Data.Tuple (Tuple(..))
 import Data.Traversable (traverse)
 import Debug.Trace (spy)
-import Prelude (class Eq, class Show, Unit, (<$>), bind, discard, pure, show, unit, ($), (*>), (<>), (==))
-import Presto.Backend.Flow (BackendFlow, forkFlow, forkFlow', generateGUID, generateGUID', callAPI, doAffRR, getDBConn, log, runSysCmd, throwException)
+import Prelude (class Eq, class Show, Unit, (<$>), bind, discard, pure, show, unit, ($), (*>), (<>), (==), id)
+import Presto.Backend.Flow (BackendFlow, getOption, forkFlow, forkFlow', generateGUID, generateGUID', callAPI, doAffRR, getDBConn, log, runSysCmd, throwException)
 import Presto.Backend.Language.Types.DB (MockedSqlConn(MockedSqlConn), SqlConn(MockedSql))
 import Presto.Backend.Playback.Entries (CallAPIEntry(..), DoAffEntry(..), LogEntry(..), RunSysCmdEntry(..))
 import Presto.Backend.Playback.Types (RecordingEntries, EntryReplayingMode(..), GlobalReplayingMode(..), PlaybackError(..), PlaybackErrorType(..), RecordingEntry(..))
 import Presto.Backend.Runtime.Interpreter (RunningMode(..), runBackend)
 import Presto.Backend.Runtime.Types (Connection(..), BackendRuntime(..), RunningMode(..), KVDBRuntime(..))
 import Presto.Backend.Types.API (class RestEndpoint, APIResult, Request(..), Headers(..), Response(..), ErrorPayload(..), Method(..), defaultDecodeResponse)
+import Presto.Backend.Types.Options (class OptionEntity, encodeValue, decodeValue, toRawKey, fromRawKey)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
 import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual, fail)
+import Data.Foreign.Generic.EnumEncoding (class GenericDecodeEnum, class GenericEncodeEnum, genericDecodeEnum, genericEncodeEnum)
+import Data.Ord
+
+defaultEnumDecode :: forall a b. Generic a b => GenericDecodeEnum b => Foreign -> F a
+defaultEnumDecode x = genericDecodeEnum { constructorTagTransform: id } x
+
+defaultEnumEncode ::  forall a b. Generic a b => GenericEncodeEnum b => a -> Foreign
+defaultEnumEncode x = genericEncodeEnum { constructorTagTransform: id } x
+
+data Gateway = GwA | GwB
+data GatewayKey = Gatewaykey String
+
+derive instance eqGateway :: Eq Gateway
+derive instance ordGateway :: Ord Gateway
+derive instance genericGatewayy :: Generic Gateway _
+instance showGateway :: Show Gateway where show = GShow.genericShow
+instance decodeGateway :: Decode Gateway where decode = defaultEnumDecode
+instance encodeGateway :: Encode Gateway where encode = defaultEnumEncode
+
+instance optionGateway :: OptionEntity GatewayKey Gateway where
+  decodeValue =  decodeJSON -- :: String -> F v
+  encodeValue = encodeJSON -- :: v -> String
+  fromRawKey = Gatewaykey -- :: String -> k
+  toRawKey (Gatewaykey str) = str -- :: k -> String
 
 data SomeRequest = SomeRequest
   { code   :: Int
@@ -94,6 +120,9 @@ apiRunner r
 -- TODO: lazy?
 affRunner :: forall a. Aff _ a -> Aff _ a
 affRunner aff = aff
+
+options :: StrMap.StrMap String
+options = StrMap.insert "explicitGWB" (encodeValue GwB) $ StrMap.singleton "explicitGWA" "\"GwA\""
 
 emptyHeaders :: Headers
 emptyHeaders = Headers []
@@ -200,6 +229,12 @@ forkFlowScript = do
   _ <- runSysCmd "echo 'mainflow 5'"
   runSysCmd "echo 'mainflow 6'"
 
+getOptionScript :: BackendFlow Unit Unit (Tuple (Maybe Gateway) (Maybe Gateway))
+getOptionScript = do
+  gwa <- getOption $ Gatewaykey "explicitGWA"
+  gwb <- getOption $ Gatewaykey "explicitGWB"
+  pure $ Tuple gwa gwb
+
 mkBackendRuntime :: KVDBRuntime -> RunningMode -> BackendRuntime
 mkBackendRuntime kvdbRuntime mode = BackendRuntime
   { apiRunner
@@ -208,6 +243,7 @@ mkBackendRuntime kvdbRuntime mode = BackendRuntime
   , affRunner
   , kvdbRuntime
   , mode
+  , options
   }
 
 createKVDBRuntime :: forall t184.
@@ -293,6 +329,18 @@ createRecordingBackendRuntimeWithEntryMode entryMode = do
 
 runTests :: Spec _ Unit
 runTests = do
+  describe "Options test" do
+    it "getOption test" $ do
+      -- fail $ encodeValue GwA
+      brt <- createRegularBackendRuntime
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt getOptionScript) unit) unit)
+      case eResult of
+        Left err -> fail $ show err
+        Right (Tuple (Tuple gwa gwb) unit) -> do
+          gwa `shouldEqual` (Just GwA)
+          gwb `shouldEqual` (Just GwB)
+
+
   describe "Regular mode tests" do
     it "Log regular mode test" $ do
       brt <- createRegularBackendRuntime
@@ -352,6 +400,7 @@ runTests = do
               , stepVar
               , errorVar
               }
+              , options
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
       curStep  <- readVar stepVar
@@ -391,6 +440,7 @@ runTests = do
               , stepVar
               , errorVar
               }
+              , options
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
       curStep  <- readVar stepVar
@@ -430,6 +480,7 @@ runTests = do
               , stepVar
               , errorVar
               }
+              , options
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
       curStep  <- readVar stepVar
@@ -468,6 +519,7 @@ runTests = do
               , stepVar
               , errorVar
               }
+              , options
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime runSysCmdScript) unit) unit)
       curStep  <- readVar stepVar
@@ -509,6 +561,7 @@ runTests = do
               , stepVar
               , errorVar
               }
+              , options
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime $ throwException "This is error!") unit) unit)
       curStep  <- readVar stepVar
@@ -550,6 +603,7 @@ runTests = do
               , stepVar
               , errorVar
               }
+              , options
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime doAffScript) unit) unit)
       curStep  <- readVar stepVar
@@ -601,6 +655,7 @@ runTests = do
               , stepVar
               , errorVar
               }
+              , options
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime forkFlowScript) unit) unit)
       curStep  <- readVar stepVar
@@ -653,6 +708,7 @@ runTests = do
               , stepVar
               , errorVar
               }
+              , options
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime forkFlowScript) unit) unit)
       curStep  <- readVar stepVar
@@ -741,6 +797,7 @@ runTests = do
               , stepVar
               , errorVar
               }
+              , options
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logScript') unit) unit)
       curStep  <- readVar stepVar
@@ -777,6 +834,7 @@ runTests = do
               , stepVar
               , errorVar
               }
+              , options
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime callAPIScript') unit) unit)
       curStep  <- readVar stepVar
@@ -814,6 +872,7 @@ runTests = do
               , stepVar
               , errorVar
               }
+              , options
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript') unit) unit)
       curStep  <- readVar stepVar
@@ -851,6 +910,7 @@ runTests = do
               , stepVar
               , errorVar
               }
+              , options
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime doAffScript') unit) unit)
       mbErr <- readVar errorVar
@@ -892,6 +952,7 @@ runTests = do
               , stepVar
               , errorVar
               }
+              , options
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime runSysCmdScript') unit) unit)
       curStep  <- readVar stepVar
@@ -933,6 +994,7 @@ runTests = do
                 , stepVar
                 , errorVar
                 }
+                , options
               }
         eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript) unit) unit)
         curStep  <- readVar stepVar
@@ -970,6 +1032,7 @@ runTests = do
                 , stepVar
                 , errorVar
                 }
+                , options
               }
         eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript') unit) unit)
         curStep  <- readVar stepVar
@@ -1007,6 +1070,7 @@ runTests = do
                 , stepVar
                 , errorVar
                 }
+                , options
               }
         eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIScript') unit) unit)
         curStep  <- readVar stepVar
@@ -1043,6 +1107,7 @@ runTests = do
               , stepVar
               , errorVar
               }
+              , options
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime skipScript2) unit) unit)
       curStep  <- readVar stepVar
@@ -1081,6 +1146,7 @@ runTests = do
               , stepVar
               , errorVar
               }
+              , options
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime skipScript1) unit) unit)
       curStep  <- readVar stepVar

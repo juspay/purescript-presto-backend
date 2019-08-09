@@ -41,7 +41,8 @@ import Data.UUID (genUUID)
 import Data.Maybe (Maybe(..))
 import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), BackendFlowCommandsWrapper, BackendFlowWrapper(..))
 import Presto.Backend.SystemCommands (runSysCmd)
-import Presto.Backend.Language.Types.EitherEx (fromEitherEx)
+import Presto.Backend.Language.Types.EitherEx (fromEitherEx, toEitherEx)
+import Presto.Backend.Language.Types.MaybeEx (fromMaybeEx, toMaybeEx)
 import Presto.Backend.Language.Types.UnitEx (UnitEx(..))
 import Presto.Backend.Language.Types.DB (SqlConn(..))
 import Presto.Backend.Runtime.Common (lift3, throwException', getDBConn', getKVDBConn')
@@ -132,6 +133,7 @@ forkBackendRuntime flowGUID brt@(BackendRuntime rt) = do
           , affRunner   : rt.affRunner
           , kvdbRuntime : rt.kvdbRuntime
           , mode        : forkedMode
+          , options     : rt.options
           }
 
 getMockedDBValue :: forall st rt eff a. BackendRuntime -> DBActionDict -> InterpreterMT' rt st eff a
@@ -145,6 +147,11 @@ interpret _ (Get next) = R.lift (S.get) >>= (pure <<< next)
 interpret _ (Put d next) = R.lift (S.put d) *> (pure <<< next) d
 
 interpret _ (Modify d next) = R.lift (S.modify d) *> S.get >>= (pure <<< next)
+
+interpret brt@(BackendRuntime rt) (GetOption key rrItemDict next) = do
+  res <- withRunModeClassless brt rrItemDict
+    (lift3 $ pure $ toMaybeEx $ StrMap.lookup key rt.options)
+  pure $ next $ fromMaybeEx res
 
 interpret brt@(BackendRuntime rt) (GenerateGUID rrItemDict next) = do
   res <- withRunModeClassless brt rrItemDict

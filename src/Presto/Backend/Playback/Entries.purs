@@ -37,15 +37,19 @@ import Data.Tuple (Tuple(..))
 import Presto.Backend.Runtime.Common (jsonStringify)
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (APIResult(..), ErrorPayload, ErrorResponse, Response)
+import Presto.Backend.Types.Options (class OptionEntity, toRawKey)
 import Presto.Core.Utils.Encoding (defaultDecode, defaultEncode, defaultEnumDecode, defaultEnumEncode)
 import Prelude (class Eq, bind, pure, ($), (<$>), (<<<), (==))
 
 import Control.Monad.Except (runExcept) as E
 import Presto.Backend.Language.Types.EitherEx (EitherEx(..))
+import Presto.Backend.Language.Types.MaybeEx (MaybeEx(..))
 import Presto.Backend.Language.Types.UnitEx (UnitEx(..))
 import Presto.Backend.Language.Types.DB (DBError, KVDBConn(MockedKVDB, Redis), MockedKVDBConn(MockedKVDBConn), MockedSqlConn(MockedSqlConn), SqlConn(MockedSql, Sequelize))
 
-
+data GetOptionEntry = GetOptionEntry
+  { key    :: String
+  , result :: MaybeEx String}
 
 data GenerateGUIDEntry = GenerateGUIDEntry
   { description :: String
@@ -111,6 +115,12 @@ data RunKVDBSimpleEntry = RunKVDBSimpleEntry
   , dbMethod   :: String
   , params     :: String
   , jsonResult :: Foreign
+  }
+
+mkGetOptionEntry :: String -> MaybeEx String -> GetOptionEntry
+mkGetOptionEntry key result = GetOptionEntry
+  { key
+  , result
   }
 
 mkGenerateGUIDEntry :: String -> String -> GenerateGUIDEntry
@@ -206,6 +216,19 @@ mkGetKVDBConnEntry :: String -> KVDBConn -> GetKVDBConnEntry
 mkGetKVDBConnEntry dbName (Redis _)               = GetKVDBConnEntry { dbName, mockedConn : MockedKVDBConn dbName }
 mkGetKVDBConnEntry dbName (MockedKVDB mockedConn) = GetKVDBConnEntry { dbName, mockedConn }
 
+derive instance genericGetOptionEntry :: Generic GetOptionEntry _
+derive instance eqGetOptionEntry :: Eq GetOptionEntry
+instance showGetOptionEntry   :: Show GetOptionEntry where show = encodeJSON
+instance decodeGetOptionEntry :: Decode GetOptionEntry where decode = genericDecode defaultOptions
+instance encodeGetOptionEntry :: Encode GetOptionEntry where encode = genericEncode defaultOptions
+
+instance rrItemGetOptionEntry :: RRItem GetOptionEntry where
+  toRecordingEntry rrItem idx mode = (RecordingEntry idx mode "GetOptionEntry") <<< encodeJSON $ rrItem
+  fromRecordingEntry (RecordingEntry idx mode entryName re) = hush $ E.runExcept $ decodeJSON re
+  getTag   _ = "GetOptionEntry"
+
+instance mockedResultGetOptionEntry :: MockedResult GetOptionEntry (MaybeEx String) where
+  parseRRItem (GetOptionEntry e) = Just e.result 
 
 derive instance genericGenerateGUIDEntry :: Generic GenerateGUIDEntry _
 derive instance eqGenerateGUIDEntry :: Eq GenerateGUIDEntry
