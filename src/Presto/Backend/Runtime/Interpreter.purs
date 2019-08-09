@@ -28,6 +28,7 @@ import Prelude
 
 import Control.Monad.Aff (forkAff)
 import Control.Monad.Aff.AVar (AVAR, AVar, makeVar, readVar, takeVar, putVar)
+import Control.Monad.Aff.Class (liftAff)
 import Control.Monad.Eff.Exception (Error, throwException, error)
 import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Except.Trans (runExceptT) as E
@@ -41,8 +42,9 @@ import Data.UUID (genUUID)
 import Data.Maybe (Maybe(..))
 import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), BackendFlowCommandsWrapper, BackendFlowWrapper(..))
 import Presto.Backend.SystemCommands (runSysCmd)
-import Presto.Backend.Language.Types.EitherEx (fromEitherEx)
-import Presto.Backend.Language.Types.UnitEx (UnitEx(..))
+import Presto.Backend.Language.Types.EitherEx (fromEitherEx, toEitherEx)
+import Presto.Backend.Language.Types.MaybeEx (fromMaybeEx, toMaybeEx)
+import Presto.Backend.Language.Types.UnitEx (UnitEx(..), fromUnitEx)
 import Presto.Backend.Language.Types.DB (SqlConn(..))
 import Presto.Backend.Runtime.Common (lift3, throwException', getDBConn', getKVDBConn')
 import Presto.Backend.Runtime.Types (InterpreterMT, InterpreterMT', BackendRuntime(..), RunningMode(..))
@@ -132,6 +134,7 @@ forkBackendRuntime flowGUID brt@(BackendRuntime rt) = do
           , affRunner   : rt.affRunner
           , kvdbRuntime : rt.kvdbRuntime
           , mode        : forkedMode
+          , options     : rt.options
           }
 
 getMockedDBValue :: forall st rt eff a. BackendRuntime -> DBActionDict -> InterpreterMT' rt st eff a
@@ -145,6 +148,21 @@ interpret _ (Get next) = R.lift (S.get) >>= (pure <<< next)
 interpret _ (Put d next) = R.lift (S.put d) *> (pure <<< next) d
 
 interpret _ (Modify d next) = R.lift (S.modify d) *> S.get >>= (pure <<< next)
+
+interpret brt@(BackendRuntime rt) (SetOption key val rrItemDict next) = do
+  res <- withRunModeClassless brt rrItemDict
+    (lift3 $ do
+      options <- liftAff $ takeVar rt.options
+      (liftAff $ putVar (StrMap.insert key val options ) rt.options) *> pure UnitEx
+    )
+  pure $ next res
+
+interpret brt@(BackendRuntime rt) (GetOption key rrItemDict next) = do
+  res <- withRunModeClassless brt rrItemDict
+    (lift3 $ do
+      options <- liftAff $ readVar rt.options
+      pure $ toMaybeEx $ StrMap.lookup key options)
+  pure $ next $ fromMaybeEx res
 
 interpret brt@(BackendRuntime rt) (GenerateGUID rrItemDict next) = do
   res <- withRunModeClassless brt rrItemDict

@@ -27,14 +27,15 @@ import Cache.Types (EntryID(..), Item(..))
 import Control.Monad.Aff (Aff)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (Error)
+import Control.Monad.Except (runExcept)
 import Control.Monad.Free (Free, liftF)
 import Control.Monad (when, unless)
-import Data.Either (Either)
+import Data.Either (Either(..))
 import Data.String (null)
 import Data.Exists (Exists, mkExists)
 import Data.Foreign (Foreign, toForeign)
 import Data.Foreign.Class (class Decode, class Encode, encode)
-import Data.Foreign.Generic (encodeJSON)
+import Data.Foreign.Generic (encodeJSON, decodeJSON)
 import Data.Maybe (Maybe(Just, Nothing))
 import Data.Newtype (class Newtype)
 import Data.Options (Options)
@@ -48,13 +49,15 @@ import Presto.Backend.KVDB.Mock.Types as KVDBMock
 import Presto.Backend.Language.KVDB (KVDB, delCache, delCacheInMulti, dequeue, dequeueInMulti, enqueue, enqueueInMulti, execMulti, expire, expireInMulti, getCache, getCacheInMulti, getHashKey, getHashKeyInMulti, getQueueIdx, getQueueIdxInMulti, incr, incrInMulti, keyExistsCache, newMulti, publishToChannel, publishToChannelInMulti, setCache, setCacheInMulti, setHash, setHashInMulti, setMessageHandler, subscribe, subscribeToMulti, addInMulti) as KVDB
 import Presto.Backend.Language.Types.DB (DBError, KVDBConn, MockedKVDBConn, MockedSqlConn, SqlConn, fromDBMaybeResult, toDBMaybeResult)
 import Presto.Backend.Language.Types.EitherEx (EitherEx, fromCustomEitherEx, fromCustomEitherExF, toCustomEitherEx, toCustomEitherExF)
+import Presto.Backend.Language.Types.MaybeEx (MaybeEx)
 import Presto.Backend.Language.Types.KVDB (Multi)
 import Presto.Backend.Language.Types.KVDB (getKVDBName) as KVDB
 import Presto.Backend.Language.Types.UnitEx (UnitEx, fromUnitEx, toUnitEx)
-import Presto.Backend.Playback.Entries (CallAPIEntry, GenerateGUIDEntry, DoAffEntry, ForkFlowEntry, GetDBConnEntry, GetKVDBConnEntry, LogEntry, RunDBEntry, RunKVDBEitherEntry, RunKVDBSimpleEntry, RunSysCmdEntry, mkCallAPIEntry, mkDoAffEntry, mkForkFlowEntry, mkGetDBConnEntry, mkGetKVDBConnEntry, mkLogEntry, mkRunDBEntry, mkRunKVDBEitherEntry, mkRunKVDBSimpleEntry, mkRunSysCmdEntry, mkGenerateGUIDEntry) as Playback
+import Presto.Backend.Playback.Entries (CallAPIEntry, GenerateGUIDEntry, DoAffEntry, ForkFlowEntry, GetDBConnEntry, GetKVDBConnEntry, LogEntry, GetOptionEntry, RunDBEntry, RunKVDBEitherEntry, RunKVDBSimpleEntry, RunSysCmdEntry, SetOptionEntry, mkCallAPIEntry, mkDoAffEntry, mkForkFlowEntry, mkGetDBConnEntry, mkGetKVDBConnEntry, mkLogEntry, mkGetOptionEntry, mkRunDBEntry, mkRunKVDBEitherEntry, mkRunKVDBSimpleEntry, mkRunSysCmdEntry, mkGenerateGUIDEntry, mkSetOptionEntry) as Playback
 import Presto.Backend.Playback.Types (RRItemDict, mkEntryDict) as Playback
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (class RestEndpoint, Headers, ErrorResponse, APIResult, makeRequest)
+import Presto.Backend.Types.Options (class OptionEntity)
 import Presto.Backend.Runtime.Common (jsonStringify)
 import Presto.Core.Types.Language.Interaction (Interaction)
 import Sequelize.Class (class Model)
@@ -121,6 +124,14 @@ data BackendFlowCommands next st rt s
         (Playback.RRItemDict Playback.RunKVDBSimpleEntry s)
         (s -> next)
 
+    | GetOption  String
+        (Playback.RRItemDict Playback.GetOptionEntry (MaybeEx String))
+        (Maybe String -> next)
+
+    | SetOption String String
+        (Playback.RRItemDict Playback.SetOptionEntry UnitEx)
+        (UnitEx -> next)
+
 type BackendFlowCommandsWrapper st rt s next = BackendFlowCommands next st rt s
 
 newtype BackendFlowWrapper st rt next = BackendFlowWrapper (Exists (BackendFlowCommands next st rt))
@@ -141,6 +152,48 @@ put st = wrap $ Put st id
 
 modify :: forall st rt. (st -> st) -> BackendFlow st rt st
 modify fst = wrap $ Modify fst id
+
+setOption' :: forall st rt. String -> String -> BackendFlow st rt Unit
+setOption' key val = void $ wrap $
+  SetOption key val
+    (Playback.mkEntryDict
+      ("setOption key: " <> key <> " value: " <> val)
+      $ Playback.mkSetOptionEntry key val)
+    id
+
+setOption
+  :: forall k v st rt
+   . OptionEntity k v
+   => Encode k
+   => Encode v
+   => k -> v -> BackendFlow st rt Unit
+setOption k v = do
+  let rawKey = encodeJSON k
+  let rawVal = encodeJSON v
+  setOption' rawKey rawVal
+
+getOption' :: forall st rt. String -> BackendFlow st rt (Maybe String)
+getOption' key = wrap $
+  GetOption key
+    (Playback.mkEntryDict
+      ("getOption key: " <> key)
+      $ Playback.mkGetOptionEntry key)
+    id
+
+getOption
+  :: forall k v st rt
+   . OptionEntity k v
+   => Encode k
+   => Decode v
+   => k -> BackendFlow st rt (Maybe v)
+getOption k = do
+  let rawKey = encodeJSON k
+  eRawVal <- getOption' rawKey
+  case eRawVal of
+    Nothing -> pure Nothing
+    Just rawV -> case (runExcept $ decodeJSON rawV) of
+      Left err -> pure Nothing
+      Right val -> pure $ Just val
 
 generateGUID' :: forall st rt. String -> BackendFlow st rt String
 generateGUID' description = wrap $ GenerateGUID
