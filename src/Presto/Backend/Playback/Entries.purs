@@ -37,7 +37,7 @@ import Data.Tuple (Tuple(..))
 import Presto.Backend.Runtime.Common (jsonStringify)
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (APIResult(..), ErrorPayload, ErrorResponse, Response)
-import Presto.Backend.Types.Options (class OptionEntity, toRawKey)
+import Presto.Backend.Types.Options (class OptionEntity)
 import Presto.Core.Utils.Encoding (defaultDecode, defaultEncode, defaultEnumDecode, defaultEnumEncode)
 import Prelude (class Eq, bind, pure, ($), (<$>), (<<<), (==))
 

@@ -28,7 +28,7 @@ import Presto.Backend.Playback.Types (RecordingEntries, EntryReplayingMode(..), 
 import Presto.Backend.Runtime.Interpreter (RunningMode(..), runBackend)
 import Presto.Backend.Runtime.Types (Connection(..), BackendRuntime(..), RunningMode(..), KVDBRuntime(..))
 import Presto.Backend.Types.API (class RestEndpoint, APIResult, Request(..), Headers(..), Response(..), ErrorPayload(..), Method(..), defaultDecodeResponse)
-import Presto.Backend.Types.Options (class OptionEntity, toRawKey, fromRawKey)
+import Presto.Backend.Types.Options (class OptionEntity)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
 import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual, fail)
@@ -42,18 +42,20 @@ defaultEnumEncode ::  forall a b. Generic a b => GenericEncodeEnum b => a -> For
 defaultEnumEncode x = genericEncodeEnum { constructorTagTransform: id } x
 
 data Gateway = GwA | GwB | GwC
-data GatewayKey = Gatewaykey String
+data GatewayKey = GatewayKey String
+
+derive instance genericGatewayKey :: Generic GatewayKey _
+instance decodeGatewaykey :: Decode GatewayKey where decode = defaultDecode
+instance encodeGatewaykey :: Encode GatewayKey where encode = defaultEncode
 
 derive instance eqGateway :: Eq Gateway
 derive instance ordGateway :: Ord Gateway
-derive instance genericGatewayy :: Generic Gateway _
+derive instance genericGateway :: Generic Gateway _
 instance showGateway :: Show Gateway where show = GShow.genericShow
 instance decodeGateway :: Decode Gateway where decode = defaultEnumDecode
 instance encodeGateway :: Encode Gateway where encode = defaultEnumEncode
 
 instance optionGateway :: OptionEntity GatewayKey Gateway where
-  fromRawKey = Gatewaykey
-  toRawKey (Gatewaykey str) = str
 
 data SomeRequest = SomeRequest
   { code   :: Int
@@ -120,7 +122,7 @@ affRunner :: forall a. Aff _ a -> Aff _ a
 affRunner aff = aff
 
 optionsV :: StrMap.StrMap String
-optionsV = StrMap.insert "explicitGWB" (encodeJSON GwB) $ StrMap.singleton "explicitGWA" "\"GwA\""
+optionsV = StrMap.insert (encodeJSON $ GatewayKey "explicitGWB") (encodeJSON GwB) $ StrMap.singleton (encodeJSON $ GatewayKey "explicitGWA") "\"GwA\""
 
 mkOptions = makeVar optionsV
 
@@ -231,14 +233,14 @@ forkFlowScript = do
 
 getOptionScript :: BackendFlow Unit Unit (Tuple (Maybe Gateway) (Maybe Gateway))
 getOptionScript = do
-  gwa <- getOption $ Gatewaykey "explicitGWA"
-  gwb <- getOption $ Gatewaykey "explicitGWB"
+  gwa <- getOption $ GatewayKey "explicitGWA"
+  gwb <- getOption $ GatewayKey "explicitGWB"
   pure $ Tuple gwa gwb
 
 setOptionScript :: BackendFlow Unit Unit (Maybe Gateway)
 setOptionScript = do
-  setOption (Gatewaykey  "explicitGWC") GwC
-  getOption $ Gatewaykey "explicitGWC"
+  setOption (GatewayKey  "explicitGWC") GwC
+  getOption $ GatewayKey "explicitGWC"
 
 mkBackendRuntime :: AVar (StrMap.StrMap String) -> KVDBRuntime -> RunningMode -> BackendRuntime
 mkBackendRuntime options kvdbRuntime mode = BackendRuntime

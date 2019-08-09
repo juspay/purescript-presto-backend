@@ -57,7 +57,7 @@ import Presto.Backend.Playback.Entries (CallAPIEntry, GenerateGUIDEntry, DoAffEn
 import Presto.Backend.Playback.Types (RRItemDict, mkEntryDict) as Playback
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (class RestEndpoint, Headers, ErrorResponse, APIResult, makeRequest)
-import Presto.Backend.Types.Options (class OptionEntity, toRawKey, fromRawKey)
+import Presto.Backend.Types.Options (class OptionEntity)
 import Presto.Backend.Runtime.Common (jsonStringify)
 import Presto.Core.Types.Language.Interaction (Interaction)
 import Sequelize.Class (class Model)
@@ -163,9 +163,11 @@ setOption' key val = void $ wrap $
 
 setOption :: forall k v st rt
    . OptionEntity k v
+   => Encode k
+   => Encode v
    => k -> v -> BackendFlow st rt Unit
 setOption k v = do
-  let rawKey = toRawKey k
+  let rawKey = encodeJSON k
   let rawVal = encodeJSON v
   setOption' rawKey rawVal
 
@@ -179,9 +181,11 @@ getOption' key = wrap $
 
 getOption :: forall k v st rt
    . OptionEntity k v
+   => Encode k
+   => Decode v
    => k -> BackendFlow st rt (Maybe v)
 getOption k = do
-  let rawKey = toRawKey k
+  let rawKey = encodeJSON k
   eRawVal <- getOption' rawKey
   case eRawVal of
     Nothing -> pure Nothing

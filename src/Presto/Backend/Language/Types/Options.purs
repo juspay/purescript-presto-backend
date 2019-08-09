@@ -21,13 +21,9 @@
 
 module Presto.Backend.Types.Options
   (class OptionEntity
-  , fromRawKey
-  , toRawKey
   ) where
 
 import Data.Foreign (F)
 import Data.Foreign.Class (class Encode, class Decode)
 
-class (Decode v, Encode v) <= OptionEntity k v |  v -> k, k -> v where
-  fromRawKey :: String -> k
-  toRawKey :: k -> String
+class (Decode k, Decode v, Encode k, Encode v) <= OptionEntity k v |  k -> v
