@@ -54,7 +54,8 @@ data SetOptionEntry = SetOptionEntry
 
 data GetOptionEntry = GetOptionEntry
   { key    :: String
-  , result :: MaybeEx String}
+  , result :: MaybeEx String
+  }
 
 data GenerateGUIDEntry = GenerateGUIDEntry
   { description :: String
@@ -126,10 +127,7 @@ mkSetOptionEntry :: String -> String -> UnitEx -> SetOptionEntry
 mkSetOptionEntry key value _ = SetOptionEntry {key, value}
 
 mkGetOptionEntry :: String -> MaybeEx String -> GetOptionEntry
-mkGetOptionEntry key result = GetOptionEntry
-  { key
-  , result
-  }
+mkGetOptionEntry key result = GetOptionEntry { key, result}
 
 mkGenerateGUIDEntry :: String -> String -> GenerateGUIDEntry
 mkGenerateGUIDEntry description guid = GenerateGUIDEntry { description, guid }

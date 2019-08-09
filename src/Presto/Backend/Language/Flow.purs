@@ -161,7 +161,8 @@ setOption' key val = void $ wrap $
       $ Playback.mkSetOptionEntry key val)
     id
 
-setOption :: forall k v st rt
+setOption
+  :: forall k v st rt
    . OptionEntity k v
    => Encode k
    => Encode v
@@ -179,7 +180,8 @@ getOption' key = wrap $
       $ Playback.mkGetOptionEntry key)
     id
 
-getOption :: forall k v st rt
+getOption
+  :: forall k v st rt
    . OptionEntity k v
    => Encode k
    => Decode v
