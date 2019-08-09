@@ -21,7 +21,7 @@ import Data.Tuple (Tuple(..))
 import Data.Traversable (traverse)
 import Debug.Trace (spy)
 import Prelude (class Eq, class Show, Unit, (<$>), bind, discard, pure, show, unit, ($), (*>), (<>), (==), id)
-import Presto.Backend.Flow (BackendFlow, getOption, forkFlow, forkFlow', generateGUID, generateGUID', callAPI, doAffRR, getDBConn, log, runSysCmd, throwException)
+import Presto.Backend.Flow (BackendFlow, getOption, setOption, forkFlow, forkFlow', generateGUID, generateGUID', callAPI, doAffRR, getDBConn, log, runSysCmd, throwException)
 import Presto.Backend.Language.Types.DB (MockedSqlConn(MockedSqlConn), SqlConn(MockedSql))
 import Presto.Backend.Playback.Entries (CallAPIEntry(..), DoAffEntry(..), LogEntry(..), RunSysCmdEntry(..))
 import Presto.Backend.Playback.Types (RecordingEntries, EntryReplayingMode(..), GlobalReplayingMode(..), PlaybackError(..), PlaybackErrorType(..), RecordingEntry(..))
@@ -41,7 +41,7 @@ defaultEnumDecode x = genericDecodeEnum { constructorTagTransform: id } x
 defaultEnumEncode ::  forall a b. Generic a b => GenericEncodeEnum b => a -> Foreign
 defaultEnumEncode x = genericEncodeEnum { constructorTagTransform: id } x
 
-data Gateway = GwA | GwB
+data Gateway = GwA | GwB | GwC
 data GatewayKey = Gatewaykey String
 
 derive instance eqGateway :: Eq Gateway
@@ -121,8 +121,10 @@ apiRunner r
 affRunner :: forall a. Aff _ a -> Aff _ a
 affRunner aff = aff
 
-options :: StrMap.StrMap String
-options = StrMap.insert "explicitGWB" (encodeValue GwB) $ StrMap.singleton "explicitGWA" "\"GwA\""
+optionsV :: StrMap.StrMap String
+optionsV = StrMap.insert "explicitGWB" (encodeValue GwB) $ StrMap.singleton "explicitGWA" "\"GwA\""
+
+mkOptions = makeVar optionsV
 
 emptyHeaders :: Headers
 emptyHeaders = Headers []
@@ -235,8 +237,13 @@ getOptionScript = do
   gwb <- getOption $ Gatewaykey "explicitGWB"
   pure $ Tuple gwa gwb
 
-mkBackendRuntime :: KVDBRuntime -> RunningMode -> BackendRuntime
-mkBackendRuntime kvdbRuntime mode = BackendRuntime
+setOptionScript :: BackendFlow Unit Unit (Maybe Gateway)
+setOptionScript = do
+  setOption (Gatewaykey  "explicitGWC") GwC
+  getOption $ Gatewaykey "explicitGWC"
+
+mkBackendRuntime :: AVar (StrMap.StrMap String) -> KVDBRuntime -> RunningMode -> BackendRuntime
+mkBackendRuntime options kvdbRuntime mode = BackendRuntime
   { apiRunner
   , connections : StrMap.empty
   , logRunner
@@ -266,7 +273,8 @@ createRegularBackendRuntime :: forall t274.
     BackendRuntime
 createRegularBackendRuntime = do
   kvdbRuntime <- createKVDBRuntime
-  pure $ mkBackendRuntime kvdbRuntime RegularMode
+  options <-mkOptions
+  pure $ mkBackendRuntime options kvdbRuntime RegularMode
 
 createRecordingBackendRuntimeForked
   :: forall eff
@@ -278,8 +286,9 @@ createRecordingBackendRuntimeForked
 createRecordingBackendRuntimeForked = do
   kvdbRuntime  <- createKVDBRuntime
   recordingVar <- makeVar []
+  options <- mkOptions
   forkedRecordingsVar <- makeVar StrMap.empty
-  let brt = mkBackendRuntime kvdbRuntime $ RecordingMode
+  let brt = mkBackendRuntime options kvdbRuntime $ RecordingMode
         { flowGUID : ""
         , recordingVar
         , forkedRecordingsVar
@@ -294,7 +303,8 @@ createRecordingBackendRuntime = do
   kvdbRuntime  <- createKVDBRuntime
   recordingVar <- makeVar []
   forkedRecordingsVar <- makeVar StrMap.empty
-  let brt = mkBackendRuntime kvdbRuntime $ RecordingMode
+  options <- mkOptions
+  let brt = mkBackendRuntime options kvdbRuntime $ RecordingMode
         { flowGUID : ""
         , recordingVar
         , forkedRecordingsVar
@@ -306,7 +316,8 @@ createRecordingBackendRuntimeWithMode entries  = do
     kvdbRuntime <- createKVDBRuntime
     recordingVar <- makeVar []
     forkedRecordingsVar <- makeVar StrMap.empty
-    let brt = mkBackendRuntime kvdbRuntime $ RecordingMode
+    options <- mkOptions
+    let brt = mkBackendRuntime options kvdbRuntime $ RecordingMode
           { flowGUID : ""
           , recordingVar
           , forkedRecordingsVar
@@ -318,7 +329,8 @@ createRecordingBackendRuntimeWithEntryMode entryMode = do
   kvdbRuntime  <- createKVDBRuntime
   recordingVar <- makeVar entryMode
   forkedRecordingsVar <- makeVar StrMap.empty
-  let brt = mkBackendRuntime kvdbRuntime $ RecordingMode
+  options <- mkOptions
+  let brt = mkBackendRuntime options kvdbRuntime $ RecordingMode
         { flowGUID : ""
         , forkedRecordingsVar
         , recordingVar
@@ -331,7 +343,6 @@ runTests :: Spec _ Unit
 runTests = do
   describe "Options test" do
     it "getOption test" $ do
-      -- fail $ encodeValue GwA
       brt <- createRegularBackendRuntime
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt getOptionScript) unit) unit)
       case eResult of
@@ -340,6 +351,12 @@ runTests = do
           gwa `shouldEqual` (Just GwA)
           gwb `shouldEqual` (Just GwB)
 
+    it "setOption test" $ do
+      brt <- createRegularBackendRuntime
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt setOptionScript) unit) unit)
+      case eResult of
+        Left err -> fail $ show err
+        Right (Tuple gwc unit) -> gwc `shouldEqual` Just GwC
 
   describe "Regular mode tests" do
     it "Log regular mode test" $ do
@@ -382,6 +399,7 @@ runTests = do
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
       forkedFlowErrorsVar <- makeVar StrMap.empty
+      options <- mkOptions
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -422,6 +440,7 @@ runTests = do
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
       forkedFlowErrorsVar <- makeVar StrMap.empty
+      options <- mkOptions
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -462,6 +481,7 @@ runTests = do
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
       forkedFlowErrorsVar <- makeVar StrMap.empty
+      options <- mkOptions
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -501,6 +521,7 @@ runTests = do
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
       forkedFlowErrorsVar <- makeVar StrMap.empty
+      options <- mkOptions
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -543,6 +564,7 @@ runTests = do
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
       forkedFlowErrorsVar <- makeVar StrMap.empty
+      options <- mkOptions
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -585,6 +607,7 @@ runTests = do
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
       forkedFlowErrorsVar <- makeVar StrMap.empty
+      options <- mkOptions
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -637,6 +660,7 @@ runTests = do
       StrMap.size forkedRecordings `shouldEqual` 3
 
       forkedFlowErrorsVar <- makeVar StrMap.empty
+      options <- mkOptions
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -690,6 +714,7 @@ runTests = do
       StrMap.size forkedRecordings `shouldEqual` 3
 
       forkedFlowErrorsVar <- makeVar StrMap.empty
+      options <- mkOptions
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -779,6 +804,7 @@ runTests = do
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
       forkedFlowErrorsVar <- makeVar StrMap.empty
+      options <- mkOptions
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -816,6 +842,7 @@ runTests = do
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
       forkedFlowErrorsVar <- makeVar StrMap.empty
+      options <- mkOptions
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -854,6 +881,7 @@ runTests = do
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
       forkedFlowErrorsVar <- makeVar StrMap.empty
+      options <- mkOptions
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : apiRunner
             , connections : StrMap.empty
@@ -892,6 +920,7 @@ runTests = do
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
       forkedFlowErrorsVar <- makeVar StrMap.empty
+      options <- mkOptions
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -934,6 +963,7 @@ runTests = do
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
       forkedFlowErrorsVar <- makeVar StrMap.empty
+      options <- mkOptions
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : failingApiRunner
             , connections : StrMap.empty
@@ -976,6 +1006,7 @@ runTests = do
         recording   <- readVar recordingVar
         kvdbRuntime <- createKVDBRuntime
         forkedFlowErrorsVar <- makeVar StrMap.empty
+        options <- mkOptions
         let replayingBackendRuntime = BackendRuntime
               { apiRunner   : failingApiRunner
               , connections : StrMap.empty
@@ -1014,6 +1045,7 @@ runTests = do
         recording   <- readVar recordingVar
         kvdbRuntime <- createKVDBRuntime
         forkedFlowErrorsVar <- makeVar StrMap.empty
+        options <- mkOptions
         let replayingBackendRuntime = BackendRuntime
               { apiRunner   : failingApiRunner
               , connections : StrMap.empty
@@ -1052,6 +1084,7 @@ runTests = do
         recording   <- readVar recordingVar
         kvdbRuntime <- createKVDBRuntime
         forkedFlowErrorsVar <- makeVar StrMap.empty
+        options <- mkOptions
         let replayingBackendRuntime = BackendRuntime
               { apiRunner   : apiRunner
               , connections : StrMap.empty
@@ -1089,6 +1122,7 @@ runTests = do
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
       forkedFlowErrorsVar <- makeVar StrMap.empty
+      options <- mkOptions
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : apiRunner
             , connections : StrMap.empty
@@ -1128,6 +1162,7 @@ runTests = do
       recording   <- readVar recordingVar
       kvdbRuntime <- createKVDBRuntime
       forkedFlowErrorsVar <- makeVar StrMap.empty
+      options <- mkOptions
       let replayingBackendRuntime = BackendRuntime
             { apiRunner   : apiRunner
             , connections : StrMap.empty

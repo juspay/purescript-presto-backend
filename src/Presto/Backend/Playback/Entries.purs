@@ -47,6 +47,11 @@ import Presto.Backend.Language.Types.MaybeEx (MaybeEx(..))
 import Presto.Backend.Language.Types.UnitEx (UnitEx(..))
 import Presto.Backend.Language.Types.DB (DBError, KVDBConn(MockedKVDB, Redis), MockedKVDBConn(MockedKVDBConn), MockedSqlConn(MockedSqlConn), SqlConn(MockedSql, Sequelize))
 
+data SetOptionEntry = SetOptionEntry
+  { key   :: String
+  , value :: String
+  }
+
 data GetOptionEntry = GetOptionEntry
   { key    :: String
   , result :: MaybeEx String}
@@ -116,6 +121,9 @@ data RunKVDBSimpleEntry = RunKVDBSimpleEntry
   , params     :: String
   , jsonResult :: Foreign
   }
+
+mkSetOptionEntry :: String -> String -> UnitEx -> SetOptionEntry
+mkSetOptionEntry key value _ = SetOptionEntry {key, value}
 
 mkGetOptionEntry :: String -> MaybeEx String -> GetOptionEntry
 mkGetOptionEntry key result = GetOptionEntry
@@ -215,6 +223,20 @@ mkGetDBConnEntry dbName (MockedSql mockedConn) = GetDBConnEntry { dbName, mocked
 mkGetKVDBConnEntry :: String -> KVDBConn -> GetKVDBConnEntry
 mkGetKVDBConnEntry dbName (Redis _)               = GetKVDBConnEntry { dbName, mockedConn : MockedKVDBConn dbName }
 mkGetKVDBConnEntry dbName (MockedKVDB mockedConn) = GetKVDBConnEntry { dbName, mockedConn }
+
+derive instance genericSetOptionEntry :: Generic SetOptionEntry _
+derive instance eqSetOptionEntry :: Eq SetOptionEntry
+instance showSetOptionEntry   :: Show SetOptionEntry where show = encodeJSON
+instance decodeSetOptionEntry :: Decode SetOptionEntry where decode = genericDecode defaultOptions
+instance encodeSetOptionEntry :: Encode SetOptionEntry where encode = genericEncode defaultOptions
+
+instance rrItemSetOptionEntry :: RRItem SetOptionEntry where
+  toRecordingEntry rrItem idx mode = (RecordingEntry idx mode "SetOptionEntry") <<< encodeJSON $ rrItem
+  fromRecordingEntry (RecordingEntry idx mode entryName re) = hush $ E.runExcept $ decodeJSON re
+  getTag   _ = "SetOptionEntry"
+
+instance mockedResultSetOptionEntry :: MockedResult SetOptionEntry UnitEx where
+  parseRRItem (SetOptionEntry e) = Just UnitEx
 
 derive instance genericGetOptionEntry :: Generic GetOptionEntry _
 derive instance eqGetOptionEntry :: Eq GetOptionEntry

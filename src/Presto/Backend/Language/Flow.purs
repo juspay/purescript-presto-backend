@@ -53,11 +53,11 @@ import Presto.Backend.Language.Types.MaybeEx (MaybeEx)
 import Presto.Backend.Language.Types.KVDB (Multi)
 import Presto.Backend.Language.Types.KVDB (getKVDBName) as KVDB
 import Presto.Backend.Language.Types.UnitEx (UnitEx, fromUnitEx, toUnitEx)
-import Presto.Backend.Playback.Entries (CallAPIEntry, GenerateGUIDEntry, DoAffEntry, ForkFlowEntry, GetDBConnEntry, GetKVDBConnEntry, LogEntry, GetOptionEntry, RunDBEntry, RunKVDBEitherEntry, RunKVDBSimpleEntry, RunSysCmdEntry, mkCallAPIEntry, mkDoAffEntry, mkForkFlowEntry, mkGetDBConnEntry, mkGetKVDBConnEntry, mkLogEntry, mkGetOptionEntry, mkRunDBEntry, mkRunKVDBEitherEntry, mkRunKVDBSimpleEntry, mkRunSysCmdEntry, mkGenerateGUIDEntry) as Playback
+import Presto.Backend.Playback.Entries (CallAPIEntry, GenerateGUIDEntry, DoAffEntry, ForkFlowEntry, GetDBConnEntry, GetKVDBConnEntry, LogEntry, GetOptionEntry, RunDBEntry, RunKVDBEitherEntry, RunKVDBSimpleEntry, RunSysCmdEntry, SetOptionEntry, mkCallAPIEntry, mkDoAffEntry, mkForkFlowEntry, mkGetDBConnEntry, mkGetKVDBConnEntry, mkLogEntry, mkGetOptionEntry, mkRunDBEntry, mkRunKVDBEitherEntry, mkRunKVDBSimpleEntry, mkRunSysCmdEntry, mkGenerateGUIDEntry, mkSetOptionEntry) as Playback
 import Presto.Backend.Playback.Types (RRItemDict, mkEntryDict) as Playback
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (class RestEndpoint, Headers, ErrorResponse, APIResult, makeRequest)
-import Presto.Backend.Types.Options (class OptionEntity, toRawKey, fromRawKey, decodeValue)
+import Presto.Backend.Types.Options (class OptionEntity, toRawKey, fromRawKey, decodeValue, encodeValue)
 import Presto.Backend.Runtime.Common (jsonStringify)
 import Presto.Core.Types.Language.Interaction (Interaction)
 import Sequelize.Class (class Model)
@@ -128,9 +128,9 @@ data BackendFlowCommands next st rt s
         (Playback.RRItemDict Playback.GetOptionEntry (MaybeEx String))
         (Maybe String -> next)
 
- --   | SetOption String String
- --       (Playback.RRItemDict Playback.OptionEntry UnitEx)
- --       (UnitEx -> next)
+    | SetOption String String
+        (Playback.RRItemDict Playback.SetOptionEntry UnitEx)
+        (UnitEx -> next)
 
 type BackendFlowCommandsWrapper st rt s next = BackendFlowCommands next st rt s
 
@@ -152,6 +152,22 @@ put st = wrap $ Put st id
 
 modify :: forall st rt. (st -> st) -> BackendFlow st rt st
 modify fst = wrap $ Modify fst id
+
+setOption' :: forall st rt. String -> String -> BackendFlow st rt Unit
+setOption' key val = void $ wrap $
+  SetOption key val
+    (Playback.mkEntryDict
+      ("setOption key: " <> key <> " value: " <> val)
+      $ Playback.mkSetOptionEntry key val)
+    id
+
+setOption :: forall k v st rt
+   . OptionEntity k v
+   => k -> v -> BackendFlow st rt Unit
+setOption k v = do
+  let rawKey = toRawKey k
+  let rawVal = encodeValue v
+  setOption' rawKey rawVal
 
 getOption' :: forall st rt. String -> BackendFlow st rt (Maybe String)
 getOption' key = wrap $
