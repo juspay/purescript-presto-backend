@@ -21,24 +21,13 @@
 
 module Presto.Backend.Types.Options
   (class OptionEntity
-  , decodeValue
-  , encodeValue
   , fromRawKey
   , toRawKey
   ) where
 
-import Prelude
 import Data.Foreign (F)
-import Data.Maybe
-import Data.Either
-import Data.StrMap
-import Control.Monad.Except (runExcept)
 import Data.Foreign.Class (class Encode, class Decode)
-import Data.Foreign.Generic (encodeJSON, decodeJSON)
-import Presto.Backend.Language.Types.EitherEx
 
 class (Decode v, Encode v) <= OptionEntity k v |  v -> k, k -> v where
-  decodeValue :: String -> F v
-  encodeValue :: v -> String
   fromRawKey :: String -> k
   toRawKey :: k -> String

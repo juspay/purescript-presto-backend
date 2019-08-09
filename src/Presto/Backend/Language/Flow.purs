@@ -35,7 +35,7 @@ import Data.String (null)
 import Data.Exists (Exists, mkExists)
 import Data.Foreign (Foreign, toForeign)
 import Data.Foreign.Class (class Decode, class Encode, encode)
-import Data.Foreign.Generic (encodeJSON)
+import Data.Foreign.Generic (encodeJSON, decodeJSON)
 import Data.Maybe (Maybe(Just, Nothing))
 import Data.Newtype (class Newtype)
 import Data.Options (Options)
@@ -57,7 +57,7 @@ import Presto.Backend.Playback.Entries (CallAPIEntry, GenerateGUIDEntry, DoAffEn
 import Presto.Backend.Playback.Types (RRItemDict, mkEntryDict) as Playback
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (class RestEndpoint, Headers, ErrorResponse, APIResult, makeRequest)
-import Presto.Backend.Types.Options (class OptionEntity, toRawKey, fromRawKey, decodeValue, encodeValue)
+import Presto.Backend.Types.Options (class OptionEntity, toRawKey, fromRawKey)
 import Presto.Backend.Runtime.Common (jsonStringify)
 import Presto.Core.Types.Language.Interaction (Interaction)
 import Sequelize.Class (class Model)
@@ -166,7 +166,7 @@ setOption :: forall k v st rt
    => k -> v -> BackendFlow st rt Unit
 setOption k v = do
   let rawKey = toRawKey k
-  let rawVal = encodeValue v
+  let rawVal = encodeJSON v
   setOption' rawKey rawVal
 
 getOption' :: forall st rt. String -> BackendFlow st rt (Maybe String)
@@ -185,7 +185,7 @@ getOption k = do
   eRawVal <- getOption' rawKey
   case eRawVal of
     Nothing -> pure Nothing
-    Just rawV -> case (runExcept $ decodeValue rawV) of
+    Just rawV -> case (runExcept $ decodeJSON rawV) of
       Left err -> pure Nothing
       Right val -> pure $ Just val
 

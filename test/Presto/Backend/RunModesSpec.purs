@@ -28,7 +28,7 @@ import Presto.Backend.Playback.Types (RecordingEntries, EntryReplayingMode(..), 
 import Presto.Backend.Runtime.Interpreter (RunningMode(..), runBackend)
 import Presto.Backend.Runtime.Types (Connection(..), BackendRuntime(..), RunningMode(..), KVDBRuntime(..))
 import Presto.Backend.Types.API (class RestEndpoint, APIResult, Request(..), Headers(..), Response(..), ErrorPayload(..), Method(..), defaultDecodeResponse)
-import Presto.Backend.Types.Options (class OptionEntity, encodeValue, decodeValue, toRawKey, fromRawKey)
+import Presto.Backend.Types.Options (class OptionEntity, toRawKey, fromRawKey)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
 import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual, fail)
@@ -52,10 +52,8 @@ instance decodeGateway :: Decode Gateway where decode = defaultEnumDecode
 instance encodeGateway :: Encode Gateway where encode = defaultEnumEncode
 
 instance optionGateway :: OptionEntity GatewayKey Gateway where
-  decodeValue =  decodeJSON -- :: String -> F v
-  encodeValue = encodeJSON -- :: v -> String
-  fromRawKey = Gatewaykey -- :: String -> k
-  toRawKey (Gatewaykey str) = str -- :: k -> String
+  fromRawKey = Gatewaykey
+  toRawKey (Gatewaykey str) = str
 
 data SomeRequest = SomeRequest
   { code   :: Int
@@ -122,7 +120,7 @@ affRunner :: forall a. Aff _ a -> Aff _ a
 affRunner aff = aff
 
 optionsV :: StrMap.StrMap String
-optionsV = StrMap.insert "explicitGWB" (encodeValue GwB) $ StrMap.singleton "explicitGWA" "\"GwA\""
+optionsV = StrMap.insert "explicitGWB" (encodeJSON GwB) $ StrMap.singleton "explicitGWA" "\"GwA\""
 
 mkOptions = makeVar optionsV
 
