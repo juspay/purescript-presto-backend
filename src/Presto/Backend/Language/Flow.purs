@@ -40,7 +40,6 @@ import Data.Options (Options)
 import Data.Options (options) as Opt
 import Data.String (null)
 import Data.Time.Duration (Milliseconds, Seconds)
-import Data.Tuple (Tuple)
 import Presto.Backend.APIInteract (apiInteract)
 import Presto.Backend.DB.Mock.Actions (mkCreate, mkCreateWithOpts, mkDelete, mkFindAll, mkFindOne, mkQuery, mkUpdate) as SqlDBMock
 import Presto.Backend.DB.Mock.Types (DBActionDict, mkDbActionDict) as SqlDBMock
@@ -97,7 +96,7 @@ data BackendFlowCommands next st rt s
         (String -> next)
 
     | ParSequence (Array (BackendFlow st rt s))
-        (Array (Either (Tuple Error st) s) → next)
+        (Array (Either Error s) → next)
 
     | ThrowException String
 
@@ -263,7 +262,7 @@ forkFlow' description flow = do
 forkFlow :: forall st rt a. BackendFlow st rt a -> BackendFlow st rt Unit
 forkFlow = forkFlow' ""
 
-parSequence :: ∀ st rt a. Array (BackendFlow st rt a) → BackendFlow st rt (Array (Either (Tuple Error st) a))
+parSequence :: ∀ st rt a. Array (BackendFlow st rt a) → BackendFlow st rt (Array (Either Error a))
 parSequence tbf = wrap $ ParSequence tbf id
 
 runSysCmd :: forall st rt. String -> BackendFlow st rt String

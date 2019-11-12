@@ -37,6 +37,7 @@ import Control.Monad.Reader.Trans (ask, lift, runReaderT) as R
 import Control.Monad.State.Trans (get, modify, put, runStateT) as S
 import Control.Parallel (parSequence)
 import Data.Array (foldl, (:))
+import Data.Either (Either(..), either)
 import Data.Exists (runExists)
 import Data.Maybe (Maybe(..))
 import Data.StrMap as StrMap
@@ -201,7 +202,7 @@ interpret brt@(BackendRuntime rt) (Fork flow flowGUID rrItemDict next) = do
 interpret brt@(BackendRuntime rt) (ParSequence aflow next) = do
   st ← R.lift S.get
   rt ← R.ask
-  (next <<< map (map fst)) <$> (lift3 $ parSequence $ foldl (flowToAff st rt) [] aflow)
+  (next <<< map (either (Left <<< fst) (Right <<< fst))) <$> (lift3 $ parSequence $ foldl (flowToAff st rt) [] aflow)
   where
       flowToAff st rt acc flow = E.runExceptT (S.runStateT (R.runReaderT (runBackend brt flow) rt) st) : acc
 
