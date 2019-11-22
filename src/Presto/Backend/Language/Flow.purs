@@ -23,13 +23,15 @@ module Presto.Backend.Flow where
 
 import Prelude
 
-import Cache.Types (EntryID, Item)
+import Cache.Types (EntryID(..), Item(..))
 import Control.Monad.Aff (Aff)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (Error)
 import Control.Monad.Except (runExcept)
 import Control.Monad.Free (Free, liftF)
+import Control.Monad (when, unless)
 import Data.Either (Either(..))
+import Data.String (null)
 import Data.Exists (Exists, mkExists)
 import Data.Foreign (Foreign, toForeign)
 import Data.Foreign.Class (class Decode, class Encode, encode)
@@ -38,7 +40,6 @@ import Data.Maybe (Maybe(Just, Nothing))
 import Data.Newtype (class Newtype)
 import Data.Options (Options)
 import Data.Options (options) as Opt
-import Data.String (null)
 import Data.Time.Duration (Milliseconds, Seconds)
 import Presto.Backend.APIInteract (apiInteract)
 import Presto.Backend.DB.Mock.Actions (mkCreate, mkCreateWithOpts, mkDelete, mkFindAll, mkFindOne, mkQuery, mkUpdate) as SqlDBMock
@@ -48,16 +49,16 @@ import Presto.Backend.KVDB.Mock.Types as KVDBMock
 import Presto.Backend.Language.KVDB (KVDB, delCache, delCacheInMulti, dequeue, dequeueInMulti, enqueue, enqueueInMulti, execMulti, expire, expireInMulti, getCache, getCacheInMulti, getHashKey, getHashKeyInMulti, getQueueIdx, getQueueIdxInMulti, incr, incrInMulti, keyExistsCache, newMulti, publishToChannel, publishToChannelInMulti, setCache, setCacheInMulti, setHash, setHashInMulti, setMessageHandler, subscribe, subscribeToMulti, addInMulti) as KVDB
 import Presto.Backend.Language.Types.DB (DBError, KVDBConn, MockedKVDBConn, MockedSqlConn, SqlConn, fromDBMaybeResult, toDBMaybeResult)
 import Presto.Backend.Language.Types.EitherEx (EitherEx, fromCustomEitherEx, fromCustomEitherExF, toCustomEitherEx, toCustomEitherExF)
+import Presto.Backend.Language.Types.MaybeEx (MaybeEx)
 import Presto.Backend.Language.Types.KVDB (Multi)
 import Presto.Backend.Language.Types.KVDB (getKVDBName) as KVDB
-import Presto.Backend.Language.Types.MaybeEx (MaybeEx)
 import Presto.Backend.Language.Types.UnitEx (UnitEx, fromUnitEx, toUnitEx)
 import Presto.Backend.Playback.Entries (CallAPIEntry, GenerateGUIDEntry, DoAffEntry, ForkFlowEntry, GetDBConnEntry, GetKVDBConnEntry, LogEntry, GetOptionEntry, RunDBEntry, RunKVDBEitherEntry, RunKVDBSimpleEntry, RunSysCmdEntry, SetOptionEntry, mkCallAPIEntry, mkDoAffEntry, mkForkFlowEntry, mkGetDBConnEntry, mkGetKVDBConnEntry, mkLogEntry, mkGetOptionEntry, mkRunDBEntry, mkRunKVDBEitherEntry, mkRunKVDBSimpleEntry, mkRunSysCmdEntry, mkGenerateGUIDEntry, mkSetOptionEntry) as Playback
 import Presto.Backend.Playback.Types (RRItemDict, mkEntryDict) as Playback
-import Presto.Backend.Runtime.Common (jsonStringify)
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (class RestEndpoint, Headers, ErrorResponse, APIResult, makeRequest)
 import Presto.Backend.Types.Options (class OptionEntity)
+import Presto.Backend.Runtime.Common (jsonStringify)
 import Presto.Core.Types.Language.Interaction (Interaction)
 import Sequelize.Class (class Model)
 import Sequelize.Types (Conn, SEQUELIZE)
@@ -94,9 +95,6 @@ data BackendFlowCommands next st rt s
     | RunSysCmd String
         (Playback.RRItemDict Playback.RunSysCmdEntry String)
         (String -> next)
-
-    | ParSequence (Array (BackendFlow st rt s))
-        (Array (Either Error s) → next)
 
     | ThrowException String
 
@@ -261,9 +259,6 @@ forkFlow' description flow = do
 
 forkFlow :: forall st rt a. BackendFlow st rt a -> BackendFlow st rt Unit
 forkFlow = forkFlow' ""
-
-parSequence :: ∀ st rt a. Array (BackendFlow st rt a) → BackendFlow st rt (Array (Either Error a))
-parSequence tbf = wrap $ ParSequence tbf id
 
 runSysCmd :: forall st rt. String -> BackendFlow st rt String
 runSysCmd cmd =
