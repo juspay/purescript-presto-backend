@@ -34,7 +34,7 @@
     "zipkin-context-cls": "^0.13.0",
     "zipkin-instrumentation-axios": "git://github.com/juspay/zipkin-instrumentation-axios",
     "zipkin-transport-http": "^0.13.0",
-    "sequelize": "^4.4.2",
+    "sequelize": "^5.15.1",
     "sequelize-cli": "^2.7.0",
     "cls-hooked": "^4.2.2"
   },
