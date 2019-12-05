@@ -25,7 +25,7 @@
   },
   "homepage": "https://github.com/juspay/purescript-presto-backend#readme",
   "dependencies": {
-    "axios": "^0.18.0",
+    "axios": "^0.18.1",
     "big-integer": "^1.6.43",
     "child_process": "^1.0.2",
     "express": "^4.16.3",
