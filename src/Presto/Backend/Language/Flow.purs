@@ -42,6 +42,7 @@ import Sequelize.Class (class Model)
 import Sequelize.Types (Conn)
 
 type APIResult s = Either ErrorResponse s
+type LogLevel = String
 newtype Control s = Control (AVar s)
 data BackendException err = CustomException err | StringException Error
 
@@ -64,14 +65,16 @@ data BackendFlowCommands next st rt error s =
     | Delete (Either Error Int) (Either Error Int -> next)
     | GetDBConn String (Conn -> next)
     | GetCacheConn String (CacheConn -> next)
-    | Log String s next
+    | Log LogLevel String s next
     | SetWithOptions CacheConn (Array String) (Either Error String -> next)
     | SetCache CacheConn String String (Either Error String -> next)
     | SetCacheWithExpiry CacheConn String String String (Either Error String -> next)
     | GetCache CacheConn String (Either Error String -> next)
+    | GetKeysCache CacheConn String (Either Error (Array String) -> next)
     | DelCache CacheConn String (Either Error String -> next)
     | Expire CacheConn String String (Either Error String -> next)
     | Incr CacheConn String (Either Error String -> next)
+    | Decr CacheConn String (Either Error String -> next)
     | SetHash CacheConn String String (Either Error String -> next)
     | GetHashKey CacheConn String String (Either Error String -> next)
     | PublishToChannel CacheConn String String (Either Error String -> next)
@@ -191,6 +194,11 @@ getCache cacheName key = do
   cacheConn <- getCacheConn cacheName
   wrap $ GetCache cacheConn key identity
 
+getkeysCache :: forall st rt error. String -> String -> BackendFlow st rt error (Either Error (Array String))
+getkeysCache cacheName key = do
+  cacheConn <- getCacheConn cacheName
+  wrap $ GetKeysCache cacheConn key identity
+
 delCache :: forall st rt error. String -> String -> BackendFlow st rt error (Either Error String)
 delCache cacheName key = do
   cacheConn <- getCacheConn cacheName
@@ -201,8 +209,8 @@ setCacheWithExpiry cacheName key value ttl = do
   cacheConn <- getCacheConn cacheName
   wrap $ SetCacheWithExpiry cacheConn key value ttl identity
 
-log :: forall st rt error a. String -> a -> BackendFlow st rt error Unit
-log tag message = wrap $ Log tag message unit
+log :: forall st rt error a. LogLevel -> String -> a -> BackendFlow st rt error Unit
+log level tag message = wrap $ Log level tag message unit
 
 expire :: forall st rt error. String -> String -> String -> BackendFlow st rt error (Either Error String)
 expire cacheName key ttl = do
@@ -213,6 +221,11 @@ incr :: forall st rt error. String -> String -> BackendFlow st rt error (Either 
 incr cacheName key = do
   cacheConn <- getCacheConn cacheName
   wrap $ Incr cacheConn key identity
+
+decr :: forall st rt error. String -> String -> BackendFlow st rt error (Either Error String)
+decr cacheName key = do
+  cacheConn <- getCacheConn cacheName
+  wrap $ Decr cacheConn key identity
 
 setHash :: forall st rt error. String -> String -> String -> BackendFlow st rt error (Either Error String)
 setHash cacheName key value = do
@@ -227,7 +240,7 @@ getHashKey cacheName key field = do
 setWithOptions :: forall st rt error. String -> Array String -> BackendFlow st rt error (Either Error String)
 setWithOptions cacheName arr = do
   cacheConn <- getCacheConn cacheName
-  wrap $ SetWithOptions cacheConn arr identity 
+  wrap $ SetWithOptions cacheConn arr identity
 
 publishToChannel :: forall st rt error. String -> String -> String -> BackendFlow st rt error (Either Error String)
 publishToChannel cacheName channel message = do

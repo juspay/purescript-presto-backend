@@ -104,7 +104,7 @@ create conn entity = do
         Left err -> pure $ Left $ error $ show err
 
 bulkCreate':: forall a b. Submodel a b => ModelOf a -> Array b->  Aff (Array b)
-bulkCreate' m e = do 
+bulkCreate' m e = do
   rows <- bulkCreate m e
   case mapInstanceToModel rows of
     Right v -> pure v
@@ -128,13 +128,14 @@ update conn updateValues whereC = do
     case model of
         Right m -> do
             val <- attempt $ updateModel' m updateValues whereClause
-            case val of
-                Right {affectedCount : 0, affectedRows } -> pure <<< Right $ []
-                Right {affectedCount , affectedRows : Nothing } -> do
+            case getDialect conn, val of
+               _, Right {affectedCount : 0, affectedRows } -> pure <<< Right $ []
+               Just "postgres" , Right {affectedCount , affectedRows : Nothing } -> pure <<< Right $ []
+               _ , Right {affectedCount , affectedRows : Nothing } -> do
                     recs <- findAll' m $ whereClause <> useMaster := true
                     pure <<< Right $ recs
-                Right {affectedCount , affectedRows : Just x } -> pure <<< Right $ x
-                Left err -> pure <<< Left $ error $ show err
+               _, Right {affectedCount , affectedRows : Just x } -> pure <<< Right $ x
+               _, Left err -> pure <<< Left $ error $ show err
         Left err -> pure $ Left $ error $ show err
 
 delete :: forall a. Model a => Conn -> Options a -> Aff (Either Error Int)
