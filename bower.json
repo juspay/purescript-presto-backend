@@ -23,7 +23,7 @@
     "purescript-sequelize": "https://github.com/shubhamkumar-juspay/purescript-sequelize.git#compiler/0.12",
     "purescript-body-parser": "https://github.com/juspay/purescript-body-parser.git#0.12.upgrade",
     "purescript-uuid": "^5.0.0",
-    "purescript-redis": "https://github.com/juspay/purescript-redis.git#0.12.upgrade",
+    "purescript-redis": "https://github.com/shubhamkumar-juspay/purescript-redis.git#0.12.upgrade",
     "purescript-node-process": "^6.0.0",
     "purescript-test-unit": "^14.0.0"
   },
