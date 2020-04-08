@@ -22,28 +22,19 @@
 module Presto.Backend.Playback.Entries where
 
 import Prelude
-import Presto.Backend.Playback.Types
-import Data.Either (Either(..), note, hush, isLeft)
+import Presto.Backend.Playback.Types (class MockedResult, class RRItem, RecordingEntry(..))
+import Data.Either (hush)
 import Data.Foreign.Class (class Encode, class Decode, encode, decode)
 import Data.Foreign (Foreign)
-import Data.Foreign.Generic (defaultOptions, genericDecode, genericDecodeJSON, genericEncode, genericEncodeJSON, encodeJSON, decodeJSON)
-import Data.Foreign.Generic.Class (class GenericDecode, class GenericEncode)
-import Data.Foreign.Generic.Types (Options, SumEncoding(..))
+import Data.Foreign.Generic (decodeJSON, defaultOptions, encodeJSON, genericDecode, genericEncode)
 import Data.Generic.Rep.Show as GShow
 import Data.Generic.Rep (class Generic)
-import Data.Maybe (Maybe(..), isJust)
-import Data.Newtype (class Newtype)
-import Data.Tuple (Tuple(..))
-import Presto.Backend.Runtime.Common (jsonStringify)
-import Presto.Backend.Types (BackendAff)
-import Presto.Backend.Types.API (APIResult(..), ErrorPayload, ErrorResponse, Response)
-import Presto.Backend.Types.Options (class OptionEntity)
-import Presto.Core.Utils.Encoding (defaultDecode, defaultEncode, defaultEnumDecode, defaultEnumEncode)
-import Prelude (class Eq, bind, pure, ($), (<$>), (<<<), (==))
+import Data.Maybe (Maybe(Just))
+import Presto.Backend.Types.API (ErrorResponse, Response)
 
 import Control.Monad.Except (runExcept) as E
 import Presto.Backend.Language.Types.EitherEx (EitherEx(..))
-import Presto.Backend.Language.Types.MaybeEx (MaybeEx(..))
+import Presto.Backend.Language.Types.MaybeEx (MaybeEx)
 import Presto.Backend.Language.Types.UnitEx (UnitEx(..))
 import Presto.Backend.Language.Types.DB (DBError, KVDBConn(MockedKVDB, Redis), MockedKVDBConn(MockedKVDBConn), MockedSqlConn(MockedSqlConn), SqlConn(MockedSql, Sequelize))
 
@@ -248,7 +239,7 @@ instance rrItemGetOptionEntry :: RRItem GetOptionEntry where
   getTag   _ = "GetOptionEntry"
 
 instance mockedResultGetOptionEntry :: MockedResult GetOptionEntry (MaybeEx String) where
-  parseRRItem (GetOptionEntry e) = Just e.result 
+  parseRRItem (GetOptionEntry e) = Just e.result
 
 derive instance genericGenerateGUIDEntry :: Generic GenerateGUIDEntry _
 derive instance eqGenerateGUIDEntry :: Eq GenerateGUIDEntry
@@ -323,7 +314,7 @@ instance rrItemCallAPIEntry :: RRItem CallAPIEntry where
 
 instance mockedResultCallAPIEntry
   :: Decode b
-  => MockedResult CallAPIEntry (EitherEx (Response ErrorPayload) b) where
+  => MockedResult CallAPIEntry (EitherEx Response b) where
     parseRRItem (CallAPIEntry ce) = do
       eResult <- case ce.jsonResult of
         LeftEx  errResp -> Just $ LeftEx errResp

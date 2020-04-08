@@ -49,7 +49,7 @@ apiInteract a headers = do
                        Left y -> Response
                                     { code : 0
                                     , status : ""
-                                    , response : ErrorPayload
+                                    , response : encode $ ErrorPayload
                                                     { error: true
                                                     , errorMessage: show x <> "\n" <> show y
                                                     , userMessage: "Unknown error"

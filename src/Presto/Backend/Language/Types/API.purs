@@ -46,7 +46,7 @@ import Prelude
 
 import Control.Monad.Aff (Aff)
 import Data.Either (Either)
-import Data.Foreign (F)
+import Data.Foreign (F, Foreign)
 import Data.Foreign.Class (class Decode, class Encode)
 import Data.Foreign.Generic.Class (class GenericDecode, class GenericEncode)
 import Data.Generic.Rep (class Generic)
@@ -103,13 +103,13 @@ newtype Request = Request
   , headers :: Headers
   }
 
-newtype Response a = Response
+newtype Response = Response
   { code :: Int
   , status :: String
-  , response :: a
+  , response :: Foreign
   }
 
-responsePayload :: forall a. Response a -> a
+responsePayload :: Response -> Foreign
 responsePayload (Response r) = r.response
 
 newtype ErrorPayload = ErrorPayload
@@ -118,7 +118,7 @@ newtype ErrorPayload = ErrorPayload
   , userMessage :: String
   }
 
-type ErrorResponse = Response ErrorPayload
+type ErrorResponse = Response
 
 derive instance genericMethod :: Generic Method _
 instance encodeMethod :: Encode Method where
@@ -155,14 +155,11 @@ instance decodeErrorPayload :: Decode ErrorPayload where
 instance showErrorPayload :: Show ErrorPayload where
   show (ErrorPayload payload) = payload.userMessage
 
-derive instance genericResponse :: Generic (Response a) _
-derive instance eqResponse :: Eq a => Eq (Response a)
-instance decodeResponseG :: Decode a => Decode (Response a) where
+derive instance genericResponse :: Generic Response _
+instance decodeResponseG :: Decode Response where
   decode = defaultDecode
-instance encodeResponseG :: Encode a => Encode (Response a) where
+instance encodeResponseG :: Encode Response where
   encode = defaultEncode
-instance showResponse :: Show a => Show (Response a) where
-  show (Response r) = show r.code <> "_" <> r.status <> "_" <> (show r.response)
 
 derive instance genericGetReqBody :: Generic GetReqBody _
 instance decodeGetReqBody :: Decode GetReqBody where decode = defaultDecode
