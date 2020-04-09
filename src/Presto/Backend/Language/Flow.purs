@@ -23,42 +23,42 @@ module Presto.Backend.Flow where
 
 import Prelude
 
-import Cache.Types (EntryID(..), Item(..))
+import Cache.Types (EntryID, Item, SetOptions)
 import Control.Monad.Aff (Aff)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (Error)
 import Control.Monad.Except (runExcept)
 import Control.Monad.Free (Free, liftF)
-import Control.Monad (when, unless)
+import Data.Bifunctor (bimap)
 import Data.Either (Either(..))
-import Data.String (null)
 import Data.Exists (Exists, mkExists)
 import Data.Foreign (Foreign, toForeign)
 import Data.Foreign.Class (class Decode, class Encode, encode)
 import Data.Foreign.Generic (encodeJSON, decodeJSON)
-import Data.Maybe (Maybe(Just, Nothing))
+import Data.Maybe (Maybe(Just, Nothing), fromMaybe)
 import Data.Newtype (class Newtype)
 import Data.Options (Options)
 import Data.Options (options) as Opt
+import Data.String (null)
 import Data.Time.Duration (Milliseconds, Seconds)
 import Presto.Backend.APIInteract (apiInteract)
 import Presto.Backend.DB.Mock.Actions (mkCreate, mkCreateWithOpts, mkDelete, mkFindAll, mkFindOne, mkQuery, mkUpdate) as SqlDBMock
 import Presto.Backend.DB.Mock.Types (DBActionDict, mkDbActionDict) as SqlDBMock
 import Presto.Backend.DBImpl (create, createWithOpts, delete, findAll, findOne, query, update, update') as DB
 import Presto.Backend.KVDB.Mock.Types as KVDBMock
-import Presto.Backend.Language.KVDB (KVDB, delCache, delCacheInMulti, dequeue, dequeueInMulti, enqueue, enqueueInMulti, execMulti, expire, expireInMulti, getCache, getCacheInMulti, getHashKey, getHashKeyInMulti, getQueueIdx, getQueueIdxInMulti, incr, incrInMulti, keyExistsCache, newMulti, publishToChannel, publishToChannelInMulti, setCache, setCacheInMulti, setHash, setHashInMulti, setMessageHandler, subscribe, subscribeToMulti, addInMulti) as KVDB
-import Presto.Backend.Language.Types.DB (DBError, KVDBConn, MockedKVDBConn, MockedSqlConn, SqlConn, fromDBMaybeResult, toDBMaybeResult)
-import Presto.Backend.Language.Types.EitherEx (EitherEx, fromCustomEitherEx, fromCustomEitherExF, toCustomEitherEx, toCustomEitherExF)
-import Presto.Backend.Language.Types.MaybeEx (MaybeEx)
+import Presto.Backend.Language.KVDB (KVDB, addInMulti, delCache, delCacheInMulti, dequeue, dequeueInMulti, enqueue, enqueueInMulti, execMulti, expire, expireInMulti, getCache, getCacheInMulti, getHashKey, getHashKeyInMulti, getQueueIdx, getQueueIdxInMulti, incr, incrInMulti, keyExistsCache, newMulti, publishToChannel, publishToChannelInMulti, setCache, setCacheInMulti, setCacheWithOpts, setHash, setHashInMulti, setMessageHandler, subscribe, subscribeToMulti) as KVDB
+import Presto.Backend.Language.Types.DB (DBError, KVDBConn, MockedKVDBConn, MockedSqlConn, SqlConn, fromDBError, fromDBMaybeResult, toDBError, toDBMaybeResult)
+import Presto.Backend.Language.Types.EitherEx (EitherEx, fromCustomEitherEx, fromCustomEitherExF, fromEitherEx, toCustomEitherEx, toCustomEitherExF, toEitherEx)
 import Presto.Backend.Language.Types.KVDB (Multi)
 import Presto.Backend.Language.Types.KVDB (getKVDBName) as KVDB
+import Presto.Backend.Language.Types.MaybeEx (MaybeEx)
 import Presto.Backend.Language.Types.UnitEx (UnitEx, fromUnitEx, toUnitEx)
 import Presto.Backend.Playback.Entries (CallAPIEntry, GenerateGUIDEntry, DoAffEntry, ForkFlowEntry, GetDBConnEntry, GetKVDBConnEntry, LogEntry, GetOptionEntry, RunDBEntry, RunKVDBEitherEntry, RunKVDBSimpleEntry, RunSysCmdEntry, SetOptionEntry, mkCallAPIEntry, mkDoAffEntry, mkForkFlowEntry, mkGetDBConnEntry, mkGetKVDBConnEntry, mkLogEntry, mkGetOptionEntry, mkRunDBEntry, mkRunKVDBEitherEntry, mkRunKVDBSimpleEntry, mkRunSysCmdEntry, mkGenerateGUIDEntry, mkSetOptionEntry) as Playback
 import Presto.Backend.Playback.Types (RRItemDict, mkEntryDict) as Playback
+import Presto.Backend.Runtime.Common (jsonStringify)
 import Presto.Backend.Types (BackendAff)
 import Presto.Backend.Types.API (class RestEndpoint, Headers, ErrorResponse, APIResult, makeRequest)
 import Presto.Backend.Types.Options (class OptionEntity)
-import Presto.Backend.Runtime.Common (jsonStringify)
 import Presto.Core.Types.Language.Interaction (Interaction)
 import Sequelize.Class (class Model)
 import Sequelize.Types (Conn, SEQUELIZE)
@@ -396,6 +396,17 @@ setCache dbName key value = do
         $ Playback.mkRunKVDBEitherEntry dbName "setCache" ("key: " <> key <> ", value: " <> value))
       id
   pure $ fromCustomEitherExF fromUnitEx eRes
+
+setCacheWithOpts :: forall st rt. String -> String ->  String -> Maybe Milliseconds -> SetOptions -> BackendFlow st rt (Either Error Boolean)
+setCacheWithOpts dbName key value mbTtl opts = do
+  eRes <- wrap $ RunKVDBEither dbName
+          ((toEitherEx <<< bimap toDBError id) <$> KVDB.setCacheWithOpts key value mbTtl opts)
+          KVDBMock.mkKVDBActionDict
+          (Playback.mkEntryDict
+            ("dbName: " <> dbName <> ", setCacheWithOpts, key: " <> key <> ", value: " <> value <> ", opts: " <> (show opts))
+            $ Playback.mkRunKVDBEitherEntry dbName "setCacheWithOpts" ("key: " <> key <> ", value: " <> value <> ", opts: " <> (show opts)))
+          id
+  (pure <<< bimap fromDBError id <<< fromEitherEx) eRes
 
 -- Not sure about this method.
 -- Should we wrap Unit?
