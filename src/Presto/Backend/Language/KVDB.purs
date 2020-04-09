@@ -89,7 +89,7 @@ setCacheInMulti key value mbTtl multi = wrapKVDBMethod $ SetCacheInMulti key val
 setCache :: forall st rt. String -> String -> Maybe Milliseconds -> KVDB (Either Error Unit)
 setCache key value mbTtl = wrapKVDBMethod $ SetCache key value mbTtl id
 
-setCacheWithOpts :: forall st rt. String -> String -> Maybe Milliseconds -> SetOptions -> KVDB (Either Error Boolean)
+setCacheWithOpts :: String -> String -> Maybe Milliseconds -> SetOptions -> KVDB (Either Error Boolean)
 setCacheWithOpts key value mbTtl opts = wrapKVDBMethod $ SetCacheWithOpts key value mbTtl opts id
 
 -- Why this function returns Multi???
