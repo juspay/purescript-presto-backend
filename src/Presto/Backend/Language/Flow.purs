@@ -403,8 +403,8 @@ setCacheWithOpts dbName key value mbTtl opts = do
           ((toEitherEx <<< bimap toDBError id) <$> KVDB.setCacheWithOpts key value mbTtl opts)
           KVDBMock.mkKVDBActionDict
           (Playback.mkEntryDict
-            ("dbName: " <> dbName <> ", setCache, key: " <> key <> ", value: " <> value <> ", opts: " <> (show opts))
-            $ Playback.mkRunKVDBEitherEntry dbName "setCache" ("key: " <> key <> ", value: " <> value <> ", opts: " <> (show opts)))
+            ("dbName: " <> dbName <> ", setCacheWithOpts, key: " <> key <> ", value: " <> value <> ", opts: " <> (show opts))
+            $ Playback.mkRunKVDBEitherEntry dbName "setCacheWithOpts" ("key: " <> key <> ", value: " <> value <> ", opts: " <> (show opts)))
           id
   (pure <<< bimap fromDBError id <<< fromEitherEx) eRes
 
