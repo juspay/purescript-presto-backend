@@ -23,19 +23,20 @@ module Presto.Backend.Language.KVDB where
 
 import Prelude
 
-import Cache.Types (EntryID(..), Item(..))
+import Cache.Types (EntryID(..), Item(..), SetOptions)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (Error)
 import Control.Monad.Free (Free, liftF)
 import Data.Either (Either)
 import Data.Exists (Exists, mkExists)
-import Data.Maybe (Maybe)
 import Data.Foreign (Foreign)
+import Data.Maybe (Maybe)
 import Data.Time.Duration (Milliseconds, Seconds)
 import Presto.Backend.Language.Types.KVDB (Multi)
 
 data KVDBMethod next s
     = SetCache String String (Maybe Milliseconds) (Either Error Unit -> next)
+    | SetCacheWithOpts String String (Maybe Milliseconds) SetOptions (Either Error Boolean -> next)
     | GetCache String (Either Error (Maybe String) -> next)
     | KeyExistsCache String (Either Error Boolean -> next)
     | DelCache String (Either Error Int -> next)
@@ -87,6 +88,9 @@ setCacheInMulti key value mbTtl multi = wrapKVDBMethod $ SetCacheInMulti key val
 
 setCache :: forall st rt. String -> String -> Maybe Milliseconds -> KVDB (Either Error Unit)
 setCache key value mbTtl = wrapKVDBMethod $ SetCache key value mbTtl id
+
+setCacheWithOpts :: forall st rt. String -> String -> Maybe Milliseconds -> SetOptions -> KVDB (Either Error Boolean)
+setCacheWithOpts key value mbTtl opts = wrapKVDBMethod $ SetCacheWithOpts key value mbTtl opts id
 
 -- Why this function returns Multi???
 getCacheInMulti :: forall st rt. String -> Multi -> KVDB Multi

@@ -149,6 +149,9 @@ interpretKVDB
 interpretKVDB _ _ simpleConn (SetCache key value mbTtl next) =
   (lift3 $ void <$> set simpleConn key value mbTtl NoOptions) >>= (pure <<< next)
 
+interpretKVDB _ _ simpleConn (SetCacheWithOpts key value mbTtl opts next) =
+  (lift3 $ set simpleConn key value mbTtl opts) >>= (pure <<< next)
+
 interpretKVDB _ _ simpleConn (GetCache key next) =
   (lift3 $ get simpleConn key) >>= (pure <<< next)
 
