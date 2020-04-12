@@ -21,31 +21,22 @@
 
 module Presto.Backend.Playback.Entries where
 
-import Prelude
-import Presto.Backend.Playback.Types
-import Data.Either (Either(..), note, hush, isLeft)
+import Prelude (class Eq, class Show, Unit, bind, pure, unit, ($), (<$>), (<<<), (==))
+import Presto.Backend.Playback.Types (class MockedResult, class RRItem, RecordingEntry(..))
+import Data.Either (Either(Left, Right), either, hush)
 import Data.Foreign.Class (class Encode, class Decode, encode, decode)
 import Data.Foreign (Foreign)
-import Data.Foreign.Generic (defaultOptions, genericDecode, genericDecodeJSON, genericEncode, genericEncodeJSON, encodeJSON, decodeJSON)
-import Data.Foreign.Generic.Class (class GenericDecode, class GenericEncode)
-import Data.Foreign.Generic.Types (Options, SumEncoding(..))
+import Data.Foreign.Generic (decodeJSON, defaultOptions, encodeJSON, genericDecode, genericEncode)
 import Data.Generic.Rep.Show as GShow
 import Data.Generic.Rep (class Generic)
-import Data.Maybe (Maybe(..), isJust)
-import Data.Newtype (class Newtype)
-import Data.Tuple (Tuple(..))
-import Presto.Backend.Runtime.Common (jsonStringify)
-import Presto.Backend.Types (BackendAff)
-import Presto.Backend.Types.API (APIResult(..), ErrorPayload, ErrorResponse, Response)
-import Presto.Backend.Types.Options (class OptionEntity)
-import Presto.Core.Utils.Encoding (defaultDecode, defaultEncode, defaultEnumDecode, defaultEnumEncode)
-import Prelude (class Eq, bind, pure, ($), (<$>), (<<<), (==))
+import Data.Maybe (Maybe(Just, Nothing))
+import Presto.Backend.Types.API (ErrorPayload, ErrorResponse, Response)
 
 import Control.Monad.Except (runExcept) as E
-import Presto.Backend.Language.Types.EitherEx (EitherEx(..))
-import Presto.Backend.Language.Types.MaybeEx (MaybeEx(..))
-import Presto.Backend.Language.Types.UnitEx (UnitEx(..))
 import Presto.Backend.Language.Types.DB (DBError, KVDBConn(MockedKVDB, Redis), MockedKVDBConn(MockedKVDBConn), MockedSqlConn(MockedSqlConn), SqlConn(MockedSql, Sequelize))
+import Presto.Backend.Language.Types.EitherEx (EitherEx(..))
+import Presto.Backend.Language.Types.MaybeEx (MaybeEx)
+import Presto.Backend.Language.Types.UnitEx (UnitEx(..))
 
 data SetOptionEntry = SetOptionEntry
   { key   :: String
@@ -70,6 +61,11 @@ data LogEntry = LogEntry
 data CallAPIEntry = CallAPIEntry
   { jsonRequest :: Foreign
   , jsonResult  :: EitherEx ErrorResponse Foreign
+  }
+
+data CallAPIGenericEntry = CallAPIGenericEntry
+  { jsonRequest :: Foreign
+  , jsonResult :: EitherEx ErrorResponse Foreign
   }
 
 data ForkFlowEntry = ForkFlowEntry
@@ -161,6 +157,20 @@ mkCallAPIEntry jReqF aRes = CallAPIEntry
   , jsonResult  : encode <$> aRes
   }
 
+mkCallAPIGenericEntry
+  :: ∀ err b
+   . Encode b
+   ⇒ Decode b
+   ⇒ Encode err
+   ⇒ Decode err
+   ⇒ (Unit → Foreign)
+   → EitherEx ErrorResponse (Either err b)
+   → CallAPIGenericEntry
+mkCallAPIGenericEntry jReqF aRes = CallAPIGenericEntry
+  { jsonRequest : jReqF unit
+  , jsonResult  : either encode encode <$> aRes
+  }
+
 mkForkFlowEntry :: String -> String -> UnitEx -> ForkFlowEntry
 mkForkFlowEntry description guid _ = ForkFlowEntry { description, guid }
 
@@ -248,7 +258,7 @@ instance rrItemGetOptionEntry :: RRItem GetOptionEntry where
   getTag   _ = "GetOptionEntry"
 
 instance mockedResultGetOptionEntry :: MockedResult GetOptionEntry (MaybeEx String) where
-  parseRRItem (GetOptionEntry e) = Just e.result 
+  parseRRItem (GetOptionEntry e) = Just e.result
 
 derive instance genericGenerateGUIDEntry :: Generic GenerateGUIDEntry _
 derive instance eqGenerateGUIDEntry :: Eq GenerateGUIDEntry
@@ -331,6 +341,31 @@ instance mockedResultCallAPIEntry
             (resultEx :: b) <- hush $ E.runExcept $ decode strResp
             Just $ RightEx resultEx
       pure  eResult
+
+derive instance genericCallAPIGenericEntry :: Generic CallAPIGenericEntry _
+instance eqCallAPIGenericEntry :: Eq CallAPIGenericEntry where
+  eq e1 e2 = encodeJSON e1 == encodeJSON e2
+instance decodeCallAPIGenericEntry :: Decode CallAPIGenericEntry where decode = genericDecode defaultOptions
+instance encodeCallAPIGenericEntry :: Encode CallAPIGenericEntry where encode = genericEncode defaultOptions
+instance showCallAPIGenericEntry  :: Show CallAPIGenericEntry where show = encodeJSON
+instance rrItemCallAPIGenericEntry :: RRItem CallAPIGenericEntry where
+  toRecordingEntry rrItem idx mode = (RecordingEntry idx mode "CallAPIGenericEntry") <<< encodeJSON $ rrItem
+  fromRecordingEntry (RecordingEntry idx mode entryName re) = hush $ E.runExcept $ decodeJSON re
+  getTag   _ = "CallAPIGenericEntry"
+
+instance mockedResultCallAPIGenericEntry
+  :: (Decode b, Decode err)
+  => MockedResult CallAPIGenericEntry (EitherEx (Response ErrorPayload) (Either err b)) where
+    parseRRItem (CallAPIGenericEntry ce) =
+      case ce.jsonResult of
+        LeftEx  errResp -> Just $ LeftEx errResp
+        RightEx strResp ->
+          case E.runExcept $ decode strResp of
+            Right (resultEx :: b) → Just $ RightEx $ Right resultEx
+            Left err →
+              case E.runExcept $ decode strResp of
+                Right (resultEx :: err) → Just  $ RightEx $ Left resultEx
+                Left err → Nothing
 
 derive instance genericRunSysCmdEntry :: Generic RunSysCmdEntry _
 derive instance eqRunSysCmdEntry :: Eq RunSysCmdEntry

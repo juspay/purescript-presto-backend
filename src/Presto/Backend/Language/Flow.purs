@@ -24,14 +24,13 @@ module Presto.Backend.Flow where
 import Prelude
 
 import Cache.Types (EntryID(..), Item(..))
+import Control.Monad (when, unless)
 import Control.Monad.Aff (Aff)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (Error)
 import Control.Monad.Except (runExcept)
 import Control.Monad.Free (Free, liftF)
-import Control.Monad (when, unless)
 import Data.Either (Either(..))
-import Data.String (null)
 import Data.Exists (Exists, mkExists)
 import Data.Foreign (Foreign, toForeign)
 import Data.Foreign.Class (class Decode, class Encode, encode)
@@ -40,8 +39,9 @@ import Data.Maybe (Maybe(Just, Nothing))
 import Data.Newtype (class Newtype)
 import Data.Options (Options)
 import Data.Options (options) as Opt
+import Data.String (null)
 import Data.Time.Duration (Milliseconds, Seconds)
-import Presto.Backend.APIInteract (apiInteract)
+import Presto.Backend.APIInteract (apiInteract, apiInteractGeneric)
 import Presto.Backend.DB.Mock.Actions (mkCreate, mkCreateWithOpts, mkDelete, mkFindAll, mkFindOne, mkQuery, mkUpdate) as SqlDBMock
 import Presto.Backend.DB.Mock.Types (DBActionDict, mkDbActionDict) as SqlDBMock
 import Presto.Backend.DBImpl (create, createWithOpts, delete, findAll, findOne, query, update, update') as DB
@@ -49,16 +49,16 @@ import Presto.Backend.KVDB.Mock.Types as KVDBMock
 import Presto.Backend.Language.KVDB (KVDB, delCache, delCacheInMulti, dequeue, dequeueInMulti, enqueue, enqueueInMulti, execMulti, expire, expireInMulti, getCache, getCacheInMulti, getHashKey, getHashKeyInMulti, getQueueIdx, getQueueIdxInMulti, incr, incrInMulti, keyExistsCache, newMulti, publishToChannel, publishToChannelInMulti, setCache, setCacheInMulti, setHash, setHashInMulti, setMessageHandler, subscribe, subscribeToMulti, addInMulti) as KVDB
 import Presto.Backend.Language.Types.DB (DBError, KVDBConn, MockedKVDBConn, MockedSqlConn, SqlConn, fromDBMaybeResult, toDBMaybeResult)
 import Presto.Backend.Language.Types.EitherEx (EitherEx, fromCustomEitherEx, fromCustomEitherExF, toCustomEitherEx, toCustomEitherExF)
-import Presto.Backend.Language.Types.MaybeEx (MaybeEx)
 import Presto.Backend.Language.Types.KVDB (Multi)
 import Presto.Backend.Language.Types.KVDB (getKVDBName) as KVDB
+import Presto.Backend.Language.Types.MaybeEx (MaybeEx)
 import Presto.Backend.Language.Types.UnitEx (UnitEx, fromUnitEx, toUnitEx)
-import Presto.Backend.Playback.Entries (CallAPIEntry, GenerateGUIDEntry, DoAffEntry, ForkFlowEntry, GetDBConnEntry, GetKVDBConnEntry, LogEntry, GetOptionEntry, RunDBEntry, RunKVDBEitherEntry, RunKVDBSimpleEntry, RunSysCmdEntry, SetOptionEntry, mkCallAPIEntry, mkDoAffEntry, mkForkFlowEntry, mkGetDBConnEntry, mkGetKVDBConnEntry, mkLogEntry, mkGetOptionEntry, mkRunDBEntry, mkRunKVDBEitherEntry, mkRunKVDBSimpleEntry, mkRunSysCmdEntry, mkGenerateGUIDEntry, mkSetOptionEntry) as Playback
+import Presto.Backend.Playback.Entries (CallAPIEntry, CallAPIGenericEntry(..), DoAffEntry, ForkFlowEntry, GenerateGUIDEntry, GetDBConnEntry, GetKVDBConnEntry, GetOptionEntry, LogEntry, RunDBEntry, RunKVDBEitherEntry, RunKVDBSimpleEntry, RunSysCmdEntry, SetOptionEntry, mkCallAPIEntry, mkCallAPIGenericEntry, mkDoAffEntry, mkForkFlowEntry, mkGenerateGUIDEntry, mkGetDBConnEntry, mkGetKVDBConnEntry, mkGetOptionEntry, mkLogEntry, mkRunDBEntry, mkRunKVDBEitherEntry, mkRunKVDBSimpleEntry, mkRunSysCmdEntry, mkSetOptionEntry) as Playback
 import Presto.Backend.Playback.Types (RRItemDict, mkEntryDict) as Playback
-import Presto.Backend.Types (BackendAff)
-import Presto.Backend.Types.API (class RestEndpoint, Headers, ErrorResponse, APIResult, makeRequest)
-import Presto.Backend.Types.Options (class OptionEntity)
 import Presto.Backend.Runtime.Common (jsonStringify)
+import Presto.Backend.Types (BackendAff)
+import Presto.Backend.Types.API (class RestEndpoint, APIResult, ErrorResponse, Headers, Response(..), makeRequest)
+import Presto.Backend.Types.Options (class OptionEntity)
 import Presto.Core.Types.Language.Interaction (Interaction)
 import Sequelize.Class (class Model)
 import Sequelize.Types (Conn, SEQUELIZE)
@@ -76,6 +76,10 @@ data BackendFlowCommands next st rt s
     | CallAPI (Interaction (EitherEx ErrorResponse s))
         (Playback.RRItemDict Playback.CallAPIEntry (EitherEx ErrorResponse s))
         (APIResult s -> next)
+
+    | CallAPIGeneric (Interaction (EitherEx ErrorResponse s))
+        (Playback.RRItemDict Playback.CallAPIGenericEntry (EitherEx ErrorResponse s))
+        (Either ErrorResponse s → next)
 
     | DoAff (forall eff. BackendAff eff s) (s -> next)
 
@@ -215,6 +219,22 @@ callAPI headers a = wrap $ CallAPI
   (Playback.mkEntryDict
     (encodeJSON $ makeRequest a headers)
     (Playback.mkCallAPIEntry (\_ -> encode $ makeRequest a headers)))
+  id
+
+callAPIGeneric
+  :: ∀ st rt a b err
+   . Encode a
+   ⇒ Encode b
+   ⇒ Decode b
+   ⇒ Encode err
+   ⇒ Decode err
+   ⇒ RestEndpoint a b
+   ⇒ Headers → a → BackendFlow st rt (Either ErrorResponse (Either (Response err) b))
+callAPIGeneric headers a = wrap $ CallAPIGeneric
+  (apiInteractGeneric a headers)
+  (Playback.mkEntryDict
+    (encodeJSON $ makeRequest a headers)
+    (Playback.mkCallAPIGenericEntry (\_ → encode $ makeRequest a headers)))
   id
 
 doAff :: forall st rt a. (forall eff. BackendAff eff a) -> BackendFlow st rt a

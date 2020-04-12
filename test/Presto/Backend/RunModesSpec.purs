@@ -1,5 +1,7 @@
 module Presto.Backend.RunModesSpec where
 
+import Data.Ord
+
 import Control.Monad.Aff (Aff)
 import Control.Monad.Aff.AVar (AVAR, AVar, makeVar, readVar)
 import Control.Monad.Aff.Class (liftAff)
@@ -13,15 +15,16 @@ import Data.Either (Either(Left, Right), isRight)
 import Data.Foreign (Foreign, F)
 import Data.Foreign.Class (class Decode, class Encode)
 import Data.Foreign.Generic (encodeJSON, decodeJSON)
+import Data.Foreign.Generic.EnumEncoding (class GenericDecodeEnum, class GenericEncodeEnum, genericDecodeEnum, genericEncodeEnum)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show as GShow
 import Data.Maybe (Maybe(Nothing, Just))
 import Data.StrMap as StrMap
-import Data.Tuple (Tuple(..))
 import Data.Traversable (traverse)
+import Data.Tuple (Tuple(..))
 import Debug.Trace (spy)
 import Prelude (class Eq, class Show, Unit, (<$>), bind, discard, pure, show, unit, ($), (*>), (<>), (==), id)
-import Presto.Backend.Flow (BackendFlow, getOption, setOption, forkFlow, forkFlow', generateGUID, generateGUID', callAPI, doAffRR, getDBConn, log, runSysCmd, throwException)
+import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), callAPI, callAPIGeneric, doAffRR, forkFlow, forkFlow', generateGUID, generateGUID', getDBConn, getOption, log, runSysCmd, setOption, throwException)
 import Presto.Backend.Language.Types.DB (MockedSqlConn(MockedSqlConn), SqlConn(MockedSql))
 import Presto.Backend.Playback.Entries (CallAPIEntry(..), DoAffEntry(..), LogEntry(..), RunSysCmdEntry(..))
 import Presto.Backend.Playback.Types (RecordingEntries, EntryReplayingMode(..), GlobalReplayingMode(..), PlaybackError(..), PlaybackErrorType(..), RecordingEntry(..))
@@ -32,8 +35,6 @@ import Presto.Backend.Types.Options (class OptionEntity)
 import Presto.Core.Utils.Encoding (defaultEncode, defaultDecode)
 import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual, fail)
-import Data.Foreign.Generic.EnumEncoding (class GenericDecodeEnum, class GenericEncodeEnum, genericDecodeEnum, genericEncodeEnum)
-import Data.Ord
 
 defaultEnumDecode :: forall a b. Generic a b => GenericDecodeEnum b => Foreign -> F a
 defaultEnumDecode x = genericDecodeEnum { constructorTagTransform: id } x
@@ -66,6 +67,8 @@ data SomeResponse = SomeResponse
   { code      :: Int
   , string :: String
   }
+
+type SomeGenericResponse = Either (Response ErrorPayload) SomeResponse
 
 derive instance genericSomeRequest :: Generic SomeRequest _
 derive instance eqSomeRequest      :: Eq      SomeRequest
@@ -148,14 +151,32 @@ callAPIScript = do
   eRes2 <- callAPI emptyHeaders $ SomeRequest { code: 2, number: 2.0 }
   pure $ Tuple eRes1 eRes2
 
+callAPIGenericScript :: BackendFlow Unit Unit (Tuple (APIResult SomeGenericResponse) (APIResult SomeGenericResponse))
+callAPIGenericScript = do
+  eRes1 <- callAPIGeneric emptyHeaders $ SomeRequest { code: 1, number: 1.0 }
+  eRes2 <- callAPIGeneric emptyHeaders $ SomeRequest { code: 2, number: 2.0 }
+  pure $ Tuple eRes1 eRes2
+
+
 capi1 = "{\"contents\":{\"jsonResult\":{\"contents\":{\"string\":\"Hello there!\",\"code\":1},\"tag\":\"RightEx\"},\"jsonRequest\":{\"url\":\"1\",\"payload\":\"{\\\"number\\\":1,\\\"code\\\":1}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}},\"tag\":\"CallAPIEntry\"}"
 capi2 = "{\"contents\":{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":{\"url\":\"2\",\"payload\":\"{\\\"number\\\":2,\\\"code\\\":2}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}},\"tag\":\"CallAPIEntry\"}"
+
+capig1 = "{\"contents\":{\"jsonResult\":{\"contents\":{\"string\":\"Hello there!\",\"code\":1},\"tag\":\"RightEx\"},\"jsonRequest\":{\"url\":\"1\",\"payload\":\"{\\\"number\\\":1,\\\"code\\\":1}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}},\"tag\":\"CallAPIGenericEntry\"}"
+capig2 = "{\"contents\":{\"jsonResult\":{\"contents\":{\"status\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"response\":{\"userMessage\":\"Unknown request\",\"errorMessage\":\"Unknown request: {\\\"url\\\":\\\"2\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":2,\\\\\\\"code\\\\\\\":2}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}\",\"error\":true},\"code\":400},\"tag\":\"LeftEx\"},\"jsonRequest\":{\"url\":\"2\",\"payload\":\"{\\\"number\\\":2,\\\"code\\\":2}\",\"method\":{\"tag\":\"GET\"},\"headers\":[]}},\"tag\":\"CallAPIGenericEntry\"}"
+
 
 callAPIScript' :: BackendFlow Unit Unit (Tuple (APIResult SomeResponse) (APIResult SomeResponse))
 callAPIScript' = do
   eRes1 <- callAPI emptyHeaders $ SomeRequest { code: 1, number: 3.0 }
   eRes2 <- callAPI emptyHeaders $ SomeRequest { code: 2, number: 4.0 }
   pure $ Tuple eRes1 eRes2
+
+callAPIGenericScript' :: BackendFlow Unit Unit (Tuple (APIResult SomeGenericResponse) (APIResult SomeGenericResponse))
+callAPIGenericScript' = do
+  eRes1 <- callAPIGeneric emptyHeaders $ SomeRequest { code: 1, number: 3.0 }
+  eRes2 <- callAPIGeneric emptyHeaders $ SomeRequest { code: 2, number: 4.0 }
+  pure $ Tuple eRes1 eRes2
+
 
 logAndCallAPIScript :: BackendFlow Unit Unit (Tuple (APIResult SomeResponse) (APIResult SomeResponse))
 logAndCallAPIScript = do
@@ -166,6 +187,16 @@ logAndCallAPIScript' :: BackendFlow Unit Unit (Tuple (APIResult SomeResponse) (A
 logAndCallAPIScript' = do
   logScript'
   callAPIScript'
+
+logAndCallAPIGenericScript :: BackendFlow Unit Unit (Tuple (APIResult SomeGenericResponse) (APIResult SomeGenericResponse))
+logAndCallAPIGenericScript = do
+  logScript
+  callAPIGenericScript
+
+logAndCallAPIGenericScript' :: BackendFlow Unit Unit (Tuple (APIResult SomeGenericResponse) (APIResult SomeGenericResponse))
+logAndCallAPIGenericScript' = do
+  logScript'
+  callAPIGenericScript'
 
 runSysCmdScript :: BackendFlow Unit Unit String
 runSysCmdScript = runSysCmd "echo 'ABC'"
@@ -375,6 +406,16 @@ runTests = do
           isRight eRes1 `shouldEqual` true    -- TODO: check particular results
           isRight eRes2 `shouldEqual` false   -- TODO: check particular results
 
+    it "CallAPIGeneric regular mode test" $ do
+      brt <- createRegularBackendRuntime
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt callAPIGenericScript) unit) unit)
+      case eResult of
+        Left err -> fail $ show err
+        Right (Tuple (Tuple eRes1 eRes2) _) -> do
+          isRight eRes1 `shouldEqual` true    -- TODO: check particular results
+          isRight eRes2 `shouldEqual` false   -- TODO: check particular results
+
+
   describe "Recording/replaying mode tests" do
     it "Record test" $ do
       Tuple brt recordingVar <- createRecordingBackendRuntime
@@ -507,6 +548,139 @@ runTests = do
       pbError  <- readVar errorVar
       isRight eResult2 `shouldEqual` false
       pbError `shouldEqual` (Just (PlaybackError { errorMessage: "\n    Flow step: tag: logging1, message: \"try1\"\n    Recording entry: (RecordingEntry 2 Normal \"CallAPIEntry\" \"{\\\"contents\\\":{\\\"jsonResult\\\":{\\\"contents\\\":{\\\"string\\\":\\\"Hello there!\\\",\\\"code\\\":1},\\\"tag\\\":\\\"RightEx\\\"},\\\"jsonRequest\\\":{\\\"url\\\":\\\"1\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":1,\\\\\\\"code\\\\\\\":1}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}},\\\"tag\\\":\\\"CallAPIEntry\\\"}\")", errorType: UnknownRRItem }))
+      curStep `shouldEqual` 3
+
+    it "Record test" $ do
+      Tuple brt recordingVar <- createRecordingBackendRuntime
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt logAndCallAPIGenericScript) unit) unit)
+      case eResult of
+        Left err -> fail $ show err
+        Right _  -> do
+          recording <- readVar recordingVar
+          length recording `shouldEqual` 4
+          index recording 0 `shouldEqual` (Just $ RecordingEntry 0 Normal "LogEntry" log1 )
+          index recording 1 `shouldEqual` (Just $ RecordingEntry 1 Normal "LogEntry" log2 )
+          index recording 2 `shouldEqual` (Just (RecordingEntry 2 Normal  "CallAPIGenericEntry" capig1 ))
+          index recording 3 `shouldEqual` (Just (RecordingEntry 3 Normal  "CallAPIGenericEntry" capig2 ))
+
+    it "Record / replay test: log and callAPI success" $ do
+      Tuple brt recordingVar <- createRecordingBackendRuntime
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt logAndCallAPIGenericScript) unit) unit)
+      isRight eResult `shouldEqual` true
+
+      stepVar     <- makeVar 0
+      errorVar    <- makeVar Nothing
+      recording   <- readVar recordingVar
+      kvdbRuntime <- createKVDBRuntime
+      forkedFlowErrorsVar <- makeVar StrMap.empty
+      options <- mkOptions
+      let replayingBackendRuntime = BackendRuntime
+            { apiRunner   : failingApiRunner
+            , connections : StrMap.empty
+            , logRunner   : failingLogRunner
+            , affRunner   : failingAffRunner
+            , kvdbRuntime
+            , mode        : ReplayingMode
+              { flowGUID : ""
+              , forkedFlowRecordings : StrMap.empty
+              , forkedFlowErrorsVar
+              , recording
+              , disableVerify : []
+              , disableMocking : []
+              , skipEntries : []
+              , entriesFiltered : false
+              , stepVar
+              , errorVar
+              }
+              , options
+            }
+      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIGenericScript) unit) unit)
+      curStep  <- readVar stepVar
+      isRight eResult2 `shouldEqual` true
+      case [eResult, eResult2] of
+        [Right res, Right res2] -> res `shouldEqual` res2
+        _ -> fail "Not equal."
+      curStep `shouldEqual` 4
+      mbErr <- readVar errorVar
+      mbErr `shouldEqual` Nothing
+
+    it "Record / replay test: index out of range" $ do
+      Tuple brt recordingVar <- createRecordingBackendRuntime
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt logAndCallAPIGenericScript) unit) unit)
+      isRight eResult `shouldEqual` true
+
+      stepVar     <- makeVar 10
+      errorVar    <- makeVar Nothing
+      recording   <- readVar recordingVar
+      kvdbRuntime <- createKVDBRuntime
+      forkedFlowErrorsVar <- makeVar StrMap.empty
+      options <- mkOptions
+      let replayingBackendRuntime = BackendRuntime
+            { apiRunner   : failingApiRunner
+            , connections : StrMap.empty
+            , logRunner   : failingLogRunner
+            , affRunner   : failingAffRunner
+            , kvdbRuntime
+            , mode        : ReplayingMode
+              { flowGUID : ""
+              , forkedFlowRecordings : StrMap.empty
+              , forkedFlowErrorsVar
+              , recording
+              , disableVerify : []
+              , disableMocking : []
+              , skipEntries : []
+              , entriesFiltered : false
+              , stepVar
+              , errorVar
+              }
+              , options
+            }
+      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIGenericScript) unit) unit)
+      curStep  <- readVar stepVar
+      pbError  <- readVar errorVar
+      isRight eResult2 `shouldEqual` false
+      pbError `shouldEqual` (Just (PlaybackError
+        { errorMessage: "\n    Flow step: tag: logging1, message: \"try1\""
+        , errorType: UnexpectedRecordingEnd
+        }))
+      curStep `shouldEqual` 10
+
+    it "Record / replay test: started from the middle" $ do
+      Tuple brt recordingVar <- createRecordingBackendRuntime
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt logAndCallAPIGenericScript) unit) unit)
+      isRight eResult `shouldEqual` true
+
+      stepVar     <- makeVar 2
+      errorVar    <- makeVar Nothing
+      recording   <- readVar recordingVar
+      kvdbRuntime <- createKVDBRuntime
+      forkedFlowErrorsVar <- makeVar StrMap.empty
+      options <- mkOptions
+      let replayingBackendRuntime = BackendRuntime
+            { apiRunner   : failingApiRunner
+            , connections : StrMap.empty
+            , logRunner   : failingLogRunner
+            , affRunner   : failingAffRunner
+            , kvdbRuntime
+            , mode        : ReplayingMode
+              { flowGUID : ""
+              , forkedFlowRecordings : StrMap.empty
+              , forkedFlowErrorsVar
+              , recording
+              , disableVerify : []
+              , disableMocking : []
+              , skipEntries : []
+              , entriesFiltered : false
+              , stepVar
+              , errorVar
+              }
+              , options
+            }
+      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime logAndCallAPIGenericScript) unit) unit)
+      curStep  <- readVar stepVar
+      pbError  <- readVar errorVar
+      isRight eResult2 `shouldEqual` false
+      pbError `shouldEqual` (Just (PlaybackError { errorMessage: "\n    Flow step: tag: logging1, message: \"try1\"\n    Recording entry: (RecordingEntry 2 Normal \"CallAPIGenericEntry\" \"{\\\"contents\\\":{\\\"jsonResult\\\":{\\\"contents\\\":{\\\"string\\\":\\\"Hello there!\\\",\\\"code\\\":1},\\\"tag\\\":\\\"RightEx\\\"},\\\"jsonRequest\\\":{\\\"url\\\":\\\"1\\\",\\\"payload\\\":\\\"{\\\\\\\"number\\\\\\\":1,\\\\\\\"code\\\\\\\":1}\\\",\\\"method\\\":{\\\"tag\\\":\\\"GET\\\"},\\\"headers\\\":[]}},\\\"tag\\\":\\\"CallAPIGenericEntry\\\"}\")", errorType: UnknownRRItem }))
       curStep `shouldEqual` 3
 
     it "Record / replay test: runSysCmd success" $ do
@@ -864,6 +1038,44 @@ runTests = do
               , options
             }
       eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime callAPIScript') unit) unit)
+      curStep  <- readVar stepVar
+      isRight eResult2 `shouldEqual` true
+      curStep `shouldEqual` 2
+      mbErr <- readVar errorVar
+      mbErr `shouldEqual` Nothing
+
+  it "Replay test : CallAPIGenericEntry" $ do
+      Tuple brt recordingVar <- createRecordingBackendRuntime
+      eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt callAPIGenericScript) unit) unit)
+      isRight eResult `shouldEqual` true
+
+      stepVar     <- makeVar 0
+      errorVar    <- makeVar Nothing
+      recording   <- readVar recordingVar
+      kvdbRuntime <- createKVDBRuntime
+      forkedFlowErrorsVar <- makeVar StrMap.empty
+      options <- mkOptions
+      let replayingBackendRuntime = BackendRuntime
+            { apiRunner   : failingApiRunner
+            , connections : StrMap.empty
+            , logRunner   : failingLogRunner
+            , affRunner   : failingAffRunner
+            , kvdbRuntime
+            , mode        : ReplayingMode
+              { flowGUID : ""
+              , forkedFlowRecordings : StrMap.empty
+              , forkedFlowErrorsVar
+              , recording
+              , disableVerify : ["CallAPIGenericEntry"]
+              , disableMocking : []
+              , skipEntries : []
+              , entriesFiltered : false
+              , stepVar
+              , errorVar
+              }
+              , options
+            }
+      eResult2 <- liftAff $ runExceptT (runStateT (runReaderT (runBackend replayingBackendRuntime callAPIGenericScript') unit) unit)
       curStep  <- readVar stepVar
       isRight eResult2 `shouldEqual` true
       curStep `shouldEqual` 2
