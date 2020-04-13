@@ -23,8 +23,7 @@ module Presto.Backend.Flow where
 
 import Prelude
 
-import Cache.Types (EntryID(..), Item(..))
-import Control.Monad (when, unless)
+import Cache.Types (EntryID, Item)
 import Control.Monad.Aff (Aff)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (Error)
@@ -35,6 +34,8 @@ import Data.Exists (Exists, mkExists)
 import Data.Foreign (Foreign, toForeign)
 import Data.Foreign.Class (class Decode, class Encode, encode)
 import Data.Foreign.Generic (encodeJSON, decodeJSON)
+import Data.Foreign.Generic.Class (class GenericDecode)
+import Data.Generic.Rep (class Generic)
 import Data.Maybe (Maybe(Just, Nothing))
 import Data.Newtype (class Newtype)
 import Data.Options (Options)
@@ -53,11 +54,11 @@ import Presto.Backend.Language.Types.KVDB (Multi)
 import Presto.Backend.Language.Types.KVDB (getKVDBName) as KVDB
 import Presto.Backend.Language.Types.MaybeEx (MaybeEx)
 import Presto.Backend.Language.Types.UnitEx (UnitEx, fromUnitEx, toUnitEx)
-import Presto.Backend.Playback.Entries (CallAPIEntry, CallAPIGenericEntry(..), DoAffEntry, ForkFlowEntry, GenerateGUIDEntry, GetDBConnEntry, GetKVDBConnEntry, GetOptionEntry, LogEntry, RunDBEntry, RunKVDBEitherEntry, RunKVDBSimpleEntry, RunSysCmdEntry, SetOptionEntry, mkCallAPIEntry, mkCallAPIGenericEntry, mkDoAffEntry, mkForkFlowEntry, mkGenerateGUIDEntry, mkGetDBConnEntry, mkGetKVDBConnEntry, mkGetOptionEntry, mkLogEntry, mkRunDBEntry, mkRunKVDBEitherEntry, mkRunKVDBSimpleEntry, mkRunSysCmdEntry, mkSetOptionEntry) as Playback
+import Presto.Backend.Playback.Entries (CallAPIEntry, CallAPIGenericEntry, DoAffEntry, ForkFlowEntry, GenerateGUIDEntry, GetDBConnEntry, GetKVDBConnEntry, GetOptionEntry, LogEntry, RunDBEntry, RunKVDBEitherEntry, RunKVDBSimpleEntry, RunSysCmdEntry, SetOptionEntry, mkCallAPIEntry, mkCallAPIGenericEntry, mkDoAffEntry, mkForkFlowEntry, mkGenerateGUIDEntry, mkGetDBConnEntry, mkGetKVDBConnEntry, mkGetOptionEntry, mkLogEntry, mkRunDBEntry, mkRunKVDBEitherEntry, mkRunKVDBSimpleEntry, mkRunSysCmdEntry, mkSetOptionEntry) as Playback
 import Presto.Backend.Playback.Types (RRItemDict, mkEntryDict) as Playback
 import Presto.Backend.Runtime.Common (jsonStringify)
 import Presto.Backend.Types (BackendAff)
-import Presto.Backend.Types.API (class RestEndpoint, APIResult, ErrorResponse, Headers, Response(..), makeRequest)
+import Presto.Backend.Types.API (class RestEndpoint, APIResult, ErrorResponse, Headers, makeRequest)
 import Presto.Backend.Types.Options (class OptionEntity)
 import Presto.Core.Types.Language.Interaction (Interaction)
 import Sequelize.Class (class Model)
@@ -222,14 +223,16 @@ callAPI headers a = wrap $ CallAPI
   id
 
 callAPIGeneric
-  :: ∀ st rt a b err
+  :: ∀ st rt a b err x
    . Encode a
    ⇒ Encode b
    ⇒ Decode b
    ⇒ Encode err
+   ⇒ Generic err x
+   ⇒ GenericDecode x
    ⇒ Decode err
    ⇒ RestEndpoint a b
-   ⇒ Headers → a → BackendFlow st rt (Either ErrorResponse (Either (Response err) b))
+   ⇒ Headers → a → BackendFlow st rt (Either ErrorResponse (Either err b))
 callAPIGeneric headers a = wrap $ CallAPIGeneric
   (apiInteractGeneric a headers)
   (Playback.mkEntryDict
