@@ -174,6 +174,11 @@ interpret brt@(BackendRuntime rt) (CallAPI apiAct rrItemDict next) = do
     (lift3 $ runAPIInteraction rt.apiRunner apiAct)
   pure $ next $ fromEitherEx resultEx
 
+interpret brt@(BackendRuntime rt) (CallAPIGeneric apiAct rrItemDict next) = do
+  next <<< fromEitherEx
+  <$> withRunModeClassless brt rrItemDict
+        (lift3 $ runAPIInteraction rt.apiRunner apiAct)
+
 interpret _ (DoAff aff next) = next <$> lift3 aff
 
 interpret brt@(BackendRuntime rt) (DoAffRR aff rrItemDict next) = do
