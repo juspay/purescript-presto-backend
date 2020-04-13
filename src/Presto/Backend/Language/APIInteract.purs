@@ -26,8 +26,9 @@ module Presto.Backend.APIInteract
 
 import Control.Monad.Except (runExcept)
 import Data.Either (Either(..))
-import Data.Foreign (toForeign)
 import Data.Foreign.Class (class Decode, class Encode, decode, encode)
+import Data.Foreign.Generic.Class (class GenericDecode)
+import Data.Generic.Rep (class Generic)
 import Prelude (bind, pure, show, ($), (<>), (>>=))
 import Presto.Backend.Language.Types.EitherEx (EitherEx(..))
 import Presto.Backend.Types.API (class RestEndpoint, ErrorPayload(..), ErrorResponse, Response(..), Headers, decodeResponse, makeRequest)
@@ -35,14 +36,16 @@ import Presto.Core.Types.Language.Interaction (Interaction, request)
 import Presto.Core.Utils.Encoding (defaultDecodeJSON)
 
 apiInteractGeneric
-  :: ∀ a b err
+  :: ∀ a b err x
    . Encode a
    ⇒ Encode b
    ⇒ Decode b
    ⇒ Decode err
+   ⇒ Generic err x
+   ⇒ GenericDecode x
    ⇒ RestEndpoint a b
    ⇒ a
-   → Headers → Interaction (EitherEx ErrorResponse (Either (Response err) b))
+   → Headers → Interaction (EitherEx ErrorResponse (Either err b))
 apiInteractGeneric a headers = do
   fgnOut ← request $ encode $ makeRequest a headers
   pure $ case runExcept $ decode fgnOut >>= decodeResponse of
@@ -50,13 +53,12 @@ apiInteractGeneric a headers = do
     Left x     →
       case runExcept $ decode fgnOut >>= defaultDecodeJSON of
       -- See if the server sent an error response, else create our own
-        Right e@(Response _) →
-          case runExcept $ decode $ toForeign e of
-            Right (err :: ErrorResponse)  → LeftEx err
-            Left _                        → RightEx $ Left e
-        Left y →
-          LeftEx $
-            Response
+      Right (err :: Response ErrorPayload) → LeftEx err
+      Left _ →
+        case runExcept $ decode fgnOut >>= defaultDecodeJSON of
+          Right (e :: err) → RightEx $ Left e
+          Left y →
+            LeftEx $ Response
               { code : 0
               , status : ""
               , response : ErrorPayload
