@@ -138,6 +138,7 @@ data BackendFlowCommands next st rt s
         (Playback.RRItemDict Playback.SetOptionEntry UnitEx)
         (UnitEx -> next)
 
+    -- Can't be used for flows which shares it states in parallel computation.
     | ParSequence (Array (BackendFlow st rt s))
         (Array (Either Error s) → next)
 
