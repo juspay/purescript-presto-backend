@@ -138,6 +138,9 @@ data BackendFlowCommands next st rt s
         (Playback.RRItemDict Playback.SetOptionEntry UnitEx)
         (UnitEx -> next)
 
+    | ParSequence (Array (BackendFlow st rt s))
+        (Array (Either Error s) → next)
+
 type BackendFlowCommandsWrapper st rt s next = BackendFlowCommands next st rt s
 
 newtype BackendFlowWrapper st rt next = BackendFlowWrapper (Exists (BackendFlowCommands next st rt))
@@ -777,3 +780,6 @@ setMessageHandler dbName f = do
         ("dbName: " <> dbName <> ", setMessageHandler")
         $ Playback.mkRunKVDBSimpleEntry dbName "setMessageHandler" "")
       id
+
+parSequence :: ∀ st rt a. Array (BackendFlow st rt a) → BackendFlow st rt (Array (Either Error a))
+parSequence tbf = wrap $ ParSequence tbf id
