@@ -27,34 +27,37 @@ module Presto.Backend.Runtime.Interpreter
 import Prelude
 
 import Control.Monad.Aff (forkAff)
-import Control.Monad.Aff.AVar (AVAR, AVar, makeVar, readVar, takeVar, putVar)
+import Control.Monad.Aff.AVar (makeVar, putVar, readVar, takeVar)
 import Control.Monad.Aff.Class (liftAff)
-import Control.Monad.Eff.Exception (Error, throwException, error)
 import Control.Monad.Eff.Class (liftEff)
+import Control.Monad.Eff.Exception (Error)
 import Control.Monad.Except.Trans (runExceptT) as E
 import Control.Monad.Free (foldFree)
 import Control.Monad.Reader.Trans (ask, lift, runReaderT) as R
 import Control.Monad.State.Trans (get, modify, put, runStateT) as S
+import Control.Parallel (parSequence)
+import Data.Array (foldl, (:))
+import Data.Bifunctor (bimap)
 import Data.Exists (runExists)
-import Data.Tuple (Tuple)
-import Data.StrMap as StrMap
-import Data.UUID (genUUID)
 import Data.Maybe (Maybe(..))
+import Data.StrMap as StrMap
+import Data.Tuple (Tuple, fst)
+import Data.UUID (genUUID)
+import Presto.Backend.DB.Mock.Types (DBActionDict)
 import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), BackendFlowCommandsWrapper, BackendFlowWrapper(..))
-import Presto.Backend.SystemCommands (runSysCmd)
-import Presto.Backend.Language.Types.EitherEx (fromEitherEx, toEitherEx)
-import Presto.Backend.Language.Types.MaybeEx (fromMaybeEx, toMaybeEx)
-import Presto.Backend.Language.Types.UnitEx (UnitEx(..), fromUnitEx)
 import Presto.Backend.Language.Types.DB (SqlConn(..))
+import Presto.Backend.Language.Types.EitherEx (fromEitherEx)
+import Presto.Backend.Language.Types.MaybeEx (fromMaybeEx, toMaybeEx)
+import Presto.Backend.Language.Types.UnitEx (UnitEx(UnitEx))
+import Presto.Backend.Playback.Entries (mkThrowExceptionEntry)
+import Presto.Backend.Playback.Machine.Classless (withRunModeClassless)
+import Presto.Backend.Playback.Types (PlaybackError(PlaybackError), PlaybackErrorType(ForkedFlowRecordingsMissed), PlayerRuntime, RecorderRuntime, mkEntryDict)
+import Presto.Backend.Runtime.API (runAPIInteraction)
 import Presto.Backend.Runtime.Common (lift3, throwException', getDBConn', getKVDBConn')
+import Presto.Backend.Runtime.KVDBInterpreter (runKVDB)
 import Presto.Backend.Runtime.Types (InterpreterMT, InterpreterMT', BackendRuntime(..), RunningMode(..))
 import Presto.Backend.Runtime.Types as X
-import Presto.Backend.Playback.Machine.Classless (withRunModeClassless)
-import Presto.Backend.Playback.Entries (mkThrowExceptionEntry)
-import Presto.Backend.Playback.Types (RecorderRuntime(..), PlayerRuntime(..), PlaybackError(..), PlaybackErrorType(..), mkEntryDict)
-import Presto.Backend.Runtime.API (runAPIInteraction)
-import Presto.Backend.Runtime.KVDBInterpreter (runKVDB)
-import Presto.Backend.DB.Mock.Types (DBActionDict)
+import Presto.Backend.SystemCommands (runSysCmd)
 
 forkF :: forall eff rt st a. BackendRuntime -> BackendFlow st rt a -> InterpreterMT rt st (Tuple Error st) eff Unit
 forkF brt flow = do
@@ -236,6 +239,14 @@ interpret brt (RunKVDBEither dbName kvDBF mockedKvDbActDictF rrItemDict next) =
 
 interpret brt (RunKVDBSimple dbName kvDBF mockedKvDbActDictF rrItemDict next) =
   next <$> runKVDB brt dbName kvDBF mockedKvDbActDictF rrItemDict
+
+interpret brt@(BackendRuntime rt) (ParSequence aflow next) = do
+  st ← R.lift S.get
+  reader ← R.ask
+  (next <<< map (bimap fst fst)) <$> (lift3 $ parSequence $ foldl (flowToAff st reader) [] aflow)
+
+  where
+    flowToAff st reader acc flow = E.runExceptT (S.runStateT (R.runReaderT (runBackend brt flow) reader) st) : acc
 
 runBackend :: forall st rt eff a. BackendRuntime -> BackendFlow st rt a -> InterpreterMT' rt st eff a
 runBackend backendRuntime = foldFree (\(BackendFlowWrapper x) -> runExists (interpret backendRuntime) x)
