@@ -291,7 +291,6 @@ runKVDB brt dbName kvDBAct mockedKvDbActDictF rrItemDict = do
     MockedKVDB mocked -> withRunModeClassless brt rrItemDict
         (getMockedKVDBValue brt $ mockedKvDbActDictF mocked)
 
-
 runKVDBEither'
   :: forall st rt eff rrItem a
    . BackendRuntime
@@ -303,14 +302,8 @@ runKVDBEither'
 runKVDBEither' brt dbName kvDBAct mockedKvDbActDictF rrItemDict = do
   eitherConn <- getKVDBConn brt dbName
   case eitherConn of
-    Right (Redis simpleConn) -> do
-      res <- withRunModeClassless brt rrItemDict (runKVDB' brt dbName simpleConn kvDBAct)
-      case res of
-        RightEx val -> pure $  RightEx val
-        LeftEx err -> pure $ LeftEx err
-    Right (MockedKVDB mocked) -> do
-      res <- withRunModeClassless brt rrItemDict (getMockedKVDBValue brt $ mockedKvDbActDictF mocked)
-      case res of
-        RightEx val -> pure $ RightEx val
-        LeftEx err -> pure $ LeftEx err
+    Right (Redis simpleConn) ->
+      withRunModeClassless brt rrItemDict (runKVDB' brt dbName simpleConn kvDBAct)
+    Right (MockedKVDB mocked) ->
+      withRunModeClassless brt rrItemDict (getMockedKVDBValue brt $ mockedKvDbActDictF mocked)
     Left err -> pure $ LeftEx (DBError err)
