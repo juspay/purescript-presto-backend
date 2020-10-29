@@ -124,6 +124,12 @@ data BackendFlowCommands next st rt s
         (Playback.RRItemDict Playback.RunKVDBEitherEntry (EitherEx DBError s))
         (EitherEx DBError s -> next)
 
+    | RunKVDBEither' String
+        (KVDB.KVDB (EitherEx DBError s))
+        (MockedKVDBConn -> KVDBMock.KVDBActionDict)
+        (Playback.RRItemDict Playback.RunKVDBEitherEntry (EitherEx DBError s))
+        (EitherEx DBError s -> next)
+
     | RunKVDBSimple String
         (KVDB.KVDB s)
         (MockedKVDBConn -> KVDBMock.KVDBActionDict)
@@ -416,7 +422,7 @@ getKVDBConn dbName = wrap $ GetKVDBConn dbName
 -- Should we wrap Unit?
 setCache :: forall st rt. String -> String ->  String -> BackendFlow st rt (Either Error Unit)
 setCache dbName key value = do
-  eRes <- wrap $ RunKVDBEither dbName
+  eRes <- wrap $ RunKVDBEither' dbName
       (toCustomEitherExF toUnitEx <$> KVDB.setCache key value Nothing)
       KVDBMock.mkKVDBActionDict
       (Playback.mkEntryDict
@@ -427,7 +433,7 @@ setCache dbName key value = do
 
 setCacheWithOpts :: forall st rt. String -> String ->  String -> Maybe Milliseconds -> SetOptions -> BackendFlow st rt (Either Error Boolean)
 setCacheWithOpts dbName key value mbTtl opts = do
-  eRes <- wrap $ RunKVDBEither dbName
+  eRes <- wrap $ RunKVDBEither' dbName
           ((toEitherEx <<< bimap toDBError id) <$> KVDB.setCacheWithOpts key value mbTtl opts)
           KVDBMock.mkKVDBActionDict
           (Playback.mkEntryDict
@@ -440,7 +446,7 @@ setCacheWithOpts dbName key value mbTtl opts = do
 -- Should we wrap Unit?
 setCacheWithExpiry :: forall st rt. String -> String -> String -> Milliseconds -> BackendFlow st rt (Either Error Unit)
 setCacheWithExpiry dbName key value ttl = do
-  eRes <- wrap $ RunKVDBEither dbName
+  eRes <- wrap $ RunKVDBEither' dbName
       (toCustomEitherExF toUnitEx <$> KVDB.setCache key value (Just ttl))
       KVDBMock.mkKVDBActionDict
       (Playback.mkEntryDict
@@ -451,7 +457,7 @@ setCacheWithExpiry dbName key value ttl = do
 
 getCache :: forall st rt. String -> String -> BackendFlow st rt (Either Error (Maybe String))
 getCache dbName key = do
-  eRes <- wrap $ RunKVDBEither dbName
+  eRes <- wrap $ RunKVDBEither' dbName
       (toDBMaybeResult <$> KVDB.getCache key)
       KVDBMock.mkKVDBActionDict
       (Playback.mkEntryDict
