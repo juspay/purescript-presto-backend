@@ -63,10 +63,10 @@ getKVDBConn' brt@(BackendRuntime rt) dbName = do
     Just (SqlConn _)         -> throwException' "Found SQL DB Connection instead KV DB Connection."
     _                        -> throwException' "No DB found"
 
-getKVDBConn :: forall st rt eff. BackendRuntime -> String -> InterpreterMT' rt st eff (Either String KVDBConn)
-getKVDBConn brt@(BackendRuntime rt) dbName = do
+getKVDBConnection :: forall st rt eff. BackendRuntime -> String -> InterpreterMT' rt st eff (Either String KVDBConn)
+getKVDBConnection brt@(BackendRuntime rt) dbName = do
   let mbConn = lookup dbName rt.connections
   case mbConn of
     Just (KVDBConn kvDBConn) -> pure $ Right kvDBConn
     Just (SqlConn _)         -> pure $ Left "Found SQL DB Connection instead KV DB Connection."
-    _                        -> pure $ Left "No DB found"
+    _                        -> pure $ Left "No DB Connection found"

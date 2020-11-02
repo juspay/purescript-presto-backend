@@ -50,7 +50,7 @@ import Presto.Backend.Language.Types.DB (KVDBConn(MockedKVDB, Redis), MockedKVDB
 import Presto.Backend.Language.Types.KVDB (Multi(..), getMultiGUID)
 import Presto.Backend.Playback.Machine.Classless (withRunModeClassless)
 import Presto.Backend.Playback.Types (RRItemDict)
-import Presto.Backend.Runtime.Common (getKVDBConn', getKVDBConn, lift3, throwException')
+import Presto.Backend.Runtime.Common (getKVDBConn', getKVDBConnection, lift3, throwException')
 import Presto.Backend.Runtime.Types (BackendRuntime(BackendRuntime), InterpreterMT', KVDBRuntime(KVDBRuntime))
 
 
@@ -300,7 +300,7 @@ runKVDBEither'
   -> RRItemDict rrItem (EitherEx DBError a)
   -> InterpreterMT' rt st eff (EitherEx DBError a)
 runKVDBEither' brt dbName kvDBAct mockedKvDbActDictF rrItemDict = do
-  eitherConn <- getKVDBConn brt dbName
+  eitherConn <- getKVDBConnection brt dbName
   case eitherConn of
     Right (Redis simpleConn) ->
       withRunModeClassless brt rrItemDict (runKVDB' brt dbName simpleConn kvDBAct)
