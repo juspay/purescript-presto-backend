@@ -2,6 +2,7 @@ module Presto.Backend.RunModesSpec where
 
 import Data.Ord
 
+import Cache (SimpleConn, SimpleConnOpts, newConn)
 import Control.Monad.Aff (Aff)
 import Control.Monad.Aff.AVar (AVAR, AVar, makeVar, readVar)
 import Control.Monad.Aff.Class (liftAff)
@@ -14,21 +15,21 @@ import Data.Array (length, index)
 import Data.Either (Either(Left, Right), isRight)
 import Data.Foreign (Foreign, F)
 import Data.Foreign.Class (class Decode, class Encode)
-import Data.Foreign.Generic (encodeJSON, decodeJSON)
+import Data.Foreign.Generic (encodeJSON)
 import Data.Foreign.Generic.EnumEncoding (class GenericDecodeEnum, class GenericEncodeEnum, genericDecodeEnum, genericEncodeEnum)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Show as GShow
 import Data.Maybe (Maybe(Nothing, Just))
+import Data.Options (Option, Options, opt, (:=))
 import Data.StrMap as StrMap
 import Data.Traversable (traverse)
 import Data.Tuple (Tuple(..))
 import Debug.Trace (spy)
 import Prelude (class Eq, class Show, Unit, (<$>), bind, discard, pure, show, unit, ($), (*>), (<>), (==), id)
-import Presto.Backend.Flow (BackendFlow, BackendFlowCommands(..), callAPI, callAPIGeneric, doAffRR, forkFlow, forkFlow', generateGUID, generateGUID', getDBConn, getOption, log, runSysCmd, setOption, throwException)
-import Presto.Backend.Language.Types.DB (MockedSqlConn(MockedSqlConn), SqlConn(MockedSql))
-import Presto.Backend.Playback.Entries (CallAPIEntry(..), DoAffEntry(..), LogEntry(..), RunSysCmdEntry(..))
-import Presto.Backend.Playback.Types (RecordingEntries, EntryReplayingMode(..), GlobalReplayingMode(..), PlaybackError(..), PlaybackErrorType(..), RecordingEntry(..))
-import Presto.Backend.Runtime.Interpreter (RunningMode(..), runBackend)
+import Presto.Backend.Flow (BackendFlow, callAPI, callAPIGeneric, doAffRR, forkFlow', getDBConn, getOption, log, runSysCmd, setCache, setOption, throwException)
+import Presto.Backend.Language.Types.DB (KVDBConn(..), MockedSqlConn(MockedSqlConn), SqlConn(MockedSql))
+import Presto.Backend.Playback.Types (EntryReplayingMode(NoMock, NoVerify, Normal), PlaybackError(PlaybackError), PlaybackErrorType(UnknownRRItem, UnexpectedRecordingEnd), RecordingEntries, RecordingEntry(RecordingEntry))
+import Presto.Backend.Runtime.Interpreter (runBackend)
 import Presto.Backend.Runtime.Types (Connection(..), BackendRuntime(..), RunningMode(..), KVDBRuntime(..))
 import Presto.Backend.Types.API (class RestEndpoint, APIResult, Request(..), Headers(..), Response(..), ErrorPayload(..), Method(..), defaultDecodeResponse)
 import Presto.Backend.Types.Options (class OptionEntity)
@@ -273,10 +274,10 @@ setOptionScript = do
   setOption (GatewayKey  "explicitGWC") GwC
   getOption $ GatewayKey "explicitGWC"
 
-mkBackendRuntime :: AVar (StrMap.StrMap String) -> KVDBRuntime -> RunningMode -> BackendRuntime
-mkBackendRuntime options kvdbRuntime mode = BackendRuntime
+mkBackendRuntime :: AVar (StrMap.StrMap String) -> StrMap.StrMap Connection -> KVDBRuntime -> RunningMode -> BackendRuntime
+mkBackendRuntime options connections kvdbRuntime mode = BackendRuntime
   { apiRunner
-  , connections : StrMap.empty
+  , connections
   , logRunner
   , affRunner
   , kvdbRuntime
@@ -297,15 +298,16 @@ createKVDBRuntime = do
     }
 
 createRegularBackendRuntime :: forall t274.
+  StrMap.StrMap Connection ->
   Aff
     ( avar :: AVAR
     | t274
     )
     BackendRuntime
-createRegularBackendRuntime = do
+createRegularBackendRuntime connections = do
   kvdbRuntime <- createKVDBRuntime
   options <-mkOptions
-  pure $ mkBackendRuntime options kvdbRuntime RegularMode
+  pure $ mkBackendRuntime options connections kvdbRuntime RegularMode
 
 createRecordingBackendRuntimeForked
   :: forall eff
@@ -319,7 +321,7 @@ createRecordingBackendRuntimeForked = do
   recordingVar <- makeVar []
   options <- mkOptions
   forkedRecordingsVar <- makeVar StrMap.empty
-  let brt = mkBackendRuntime options kvdbRuntime $ RecordingMode
+  let brt = mkBackendRuntime options StrMap.empty kvdbRuntime $ RecordingMode
         { flowGUID : ""
         , recordingVar
         , forkedRecordingsVar
@@ -335,7 +337,7 @@ createRecordingBackendRuntime = do
   recordingVar <- makeVar []
   forkedRecordingsVar <- makeVar StrMap.empty
   options <- mkOptions
-  let brt = mkBackendRuntime options kvdbRuntime $ RecordingMode
+  let brt = mkBackendRuntime options StrMap.empty kvdbRuntime $ RecordingMode
         { flowGUID : ""
         , recordingVar
         , forkedRecordingsVar
@@ -348,7 +350,7 @@ createRecordingBackendRuntimeWithMode entries  = do
     recordingVar <- makeVar []
     forkedRecordingsVar <- makeVar StrMap.empty
     options <- mkOptions
-    let brt = mkBackendRuntime options kvdbRuntime $ RecordingMode
+    let brt = mkBackendRuntime options StrMap.empty kvdbRuntime $ RecordingMode
           { flowGUID : ""
           , recordingVar
           , forkedRecordingsVar
@@ -361,7 +363,7 @@ createRecordingBackendRuntimeWithEntryMode entryMode = do
   recordingVar <- makeVar entryMode
   forkedRecordingsVar <- makeVar StrMap.empty
   options <- mkOptions
-  let brt = mkBackendRuntime options kvdbRuntime $ RecordingMode
+  let brt = mkBackendRuntime options StrMap.empty kvdbRuntime $ RecordingMode
         { flowGUID : ""
         , forkedRecordingsVar
         , recordingVar
@@ -369,12 +371,26 @@ createRecordingBackendRuntimeWithEntryMode entryMode = do
         }
   pure $ Tuple brt recordingVar
 
+redisOptions :: Options SimpleConnOpts
+redisOptions =
+  host := "localhost"
+  <> port := 6379
+  <> db := 0
+
+host :: Option SimpleConnOpts String
+host = opt "host"
+
+port :: Option SimpleConnOpts Int
+port = opt "port"
+
+db :: Option SimpleConnOpts Int
+db = opt "db"
 
 runTests :: Spec _ Unit
 runTests = do
   describe "Options test" do
     it "getOption test" $ do
-      brt <- createRegularBackendRuntime
+      brt <- createRegularBackendRuntime StrMap.empty
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt getOptionScript) unit) unit)
       case eResult of
         Left err -> fail $ show err
@@ -383,7 +399,7 @@ runTests = do
           gwb `shouldEqual` (Just GwB)
 
     it "setOption test" $ do
-      brt <- createRegularBackendRuntime
+      brt <- createRegularBackendRuntime StrMap.empty
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt setOptionScript) unit) unit)
       case eResult of
         Left err -> fail $ show err
@@ -391,14 +407,14 @@ runTests = do
 
   describe "Regular mode tests" do
     it "Log regular mode test" $ do
-      brt <- createRegularBackendRuntime
+      brt <- createRegularBackendRuntime StrMap.empty
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt logScript) unit) unit)
       case eResult of
         Left err -> fail $ show err
         Right _  -> pure unit
 
     it "CallAPI regular mode test" $ do
-      brt <- createRegularBackendRuntime
+      brt <- createRegularBackendRuntime StrMap.empty
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt callAPIScript) unit) unit)
       case eResult of
         Left err -> fail $ show err
@@ -407,7 +423,7 @@ runTests = do
           isRight eRes2 `shouldEqual` false   -- TODO: check particular results
 
     it "CallAPIGeneric regular mode test" $ do
-      brt <- createRegularBackendRuntime
+      brt <- createRegularBackendRuntime StrMap.empty
       eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt callAPIGenericScript) unit) unit)
       case eResult of
         Left err -> fail $ show err
@@ -415,6 +431,16 @@ runTests = do
           isRight eRes1 `shouldEqual` true    -- TODO: check particular results
           isRight eRes2 `shouldEqual` false   -- TODO: check particular results
 
+    it "setCache regular mode test" $ do
+      eSimpleConn <- newConn redisOptions
+      case eSimpleConn of
+        Left err -> pure unit
+        Right simpleConn -> do
+          brt <- createRegularBackendRuntime (StrMap.insert "redisName" (KVDBConn $ Redis $ simpleConn) StrMap.empty)
+          eResult <- liftAff $ runExceptT (runStateT (runReaderT (runBackend brt $ setCache "redisName" "key" "value") unit) unit)
+          case eResult of
+            Left err -> fail $ show err
+            Right (Tuple eRes1 _) -> isRight eRes1 `shouldEqual` true
 
   describe "Recording/replaying mode tests" do
     it "Record test" $ do
