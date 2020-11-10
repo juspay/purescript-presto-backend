@@ -23,17 +23,17 @@ module Presto.Backend.Runtime.Common where
 
 import Prelude
 
-import Data.Tuple (Tuple(..))
-import Data.Either (Either(..))
-import Data.Maybe (Maybe(..))
-import Data.StrMap (lookup)
 import Control.Monad.Eff.Exception (error)
 import Control.Monad.Except.Trans (ExceptT(..), lift) as E
 import Control.Monad.Reader.Trans (lift) as R
 import Control.Monad.State.Trans (get, lift) as S
-import Presto.Backend.Types (BackendAff)
-import Presto.Backend.Runtime.Types (BackendRuntime(BackendRuntime), Connection(SqlConn, KVDBConn), InterpreterMT')
+import Data.Either (Either(..))
+import Data.Maybe (Maybe(..))
+import Data.StrMap (lookup)
+import Data.Tuple (Tuple(..))
 import Presto.Backend.Language.Types.DB (KVDBConn, SqlConn)
+import Presto.Backend.Runtime.Types (BackendRuntime(BackendRuntime), Connection(SqlConn, KVDBConn), InterpreterMT')
+import Presto.Backend.Types (BackendAff)
 
 foreign import jsonStringify :: forall a. a -> String
 
@@ -56,12 +56,11 @@ getDBConn' brt@(BackendRuntime rt) dbName = do
     _                      -> throwException' "No DB found"
 
 getKVDBConn' :: forall st rt eff. BackendRuntime -> String -> InterpreterMT' rt st eff KVDBConn
-getKVDBConn' brt@(BackendRuntime rt) dbName = do
-  let mbConn = lookup dbName rt.connections
-  case mbConn of
-    Just (KVDBConn kvDBConn) -> pure kvDBConn
-    Just (SqlConn _)         -> throwException' "Found SQL DB Connection instead KV DB Connection."
-    _                        -> throwException' "No DB found"
+getKVDBConn' brt dbName = do
+  eitherConn <- getKVDBConnection brt dbName
+  case eitherConn of
+    Right conn -> pure conn
+    Left err -> throwException' err
 
 getKVDBConnection :: forall st rt eff. BackendRuntime -> String -> InterpreterMT' rt st eff (Either String KVDBConn)
 getKVDBConnection brt@(BackendRuntime rt) dbName = do
@@ -69,4 +68,4 @@ getKVDBConnection brt@(BackendRuntime rt) dbName = do
   case mbConn of
     Just (KVDBConn kvDBConn) -> pure $ Right kvDBConn
     Just (SqlConn _)         -> pure $ Left "Found SQL DB Connection instead KV DB Connection."
-    _                        -> pure $ Left "No DB Connection found"
+    _                        -> pure $ Left "No KVDB Connection found"
