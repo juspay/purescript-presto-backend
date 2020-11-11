@@ -21,7 +21,7 @@
 
 module Presto.Backend.Runtime.KVDBInterpreter
   ( runKVDB
-  , runKVDBEither'
+  , runKVDBEither
   ) where
 
 import Prelude
@@ -291,7 +291,7 @@ runKVDB brt dbName kvDBAct mockedKvDbActDictF rrItemDict = do
     MockedKVDB mocked -> withRunModeClassless brt rrItemDict
         (getMockedKVDBValue brt $ mockedKvDbActDictF mocked)
 
-runKVDBEither'
+runKVDBEither
   :: forall st rt eff rrItem a
    . BackendRuntime
   -> String
@@ -299,7 +299,7 @@ runKVDBEither'
   -> (MockedKVDBConn -> KVDBActionDict)
   -> RRItemDict rrItem (EitherEx DBError a)
   -> InterpreterMT' rt st eff (EitherEx DBError a)
-runKVDBEither' brt dbName kvDBAct mockedKvDbActDictF rrItemDict = do
+runKVDBEither brt dbName kvDBAct mockedKvDbActDictF rrItemDict = do
   eitherConn <- getKVDBConnection brt dbName
   case eitherConn of
     Right (Redis simpleConn) ->
