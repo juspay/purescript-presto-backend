@@ -235,9 +235,6 @@ interpret brt@(BackendRuntime rt) (GetKVDBConn dbName rrItemDict next) = do
   pure $ next res
 
 interpret brt (RunKVDBEither dbName kvDBF mockedKvDbActDictF rrItemDict next) =
-  next <$> runKVDB brt dbName kvDBF mockedKvDbActDictF rrItemDict
-
-interpret brt (RunKVDBEither' dbName kvDBF mockedKvDbActDictF rrItemDict next) =
   next <$> runKVDBEither' brt dbName kvDBF mockedKvDbActDictF rrItemDict
 
 interpret brt (RunKVDBSimple dbName kvDBF mockedKvDbActDictF rrItemDict next) =
