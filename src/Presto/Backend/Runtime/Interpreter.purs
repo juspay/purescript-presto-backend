@@ -54,7 +54,7 @@ import Presto.Backend.Playback.Machine.Classless (withRunModeClassless)
 import Presto.Backend.Playback.Types (PlaybackError(PlaybackError), PlaybackErrorType(ForkedFlowRecordingsMissed), PlayerRuntime, RecorderRuntime, mkEntryDict)
 import Presto.Backend.Runtime.API (runAPIInteraction)
 import Presto.Backend.Runtime.Common (lift3, throwException', getDBConn', getKVDBConn')
-import Presto.Backend.Runtime.KVDBInterpreter (runKVDB)
+import Presto.Backend.Runtime.KVDBInterpreter (runKVDB, runKVDBEither)
 import Presto.Backend.Runtime.Types (InterpreterMT, InterpreterMT', BackendRuntime(..), RunningMode(..))
 import Presto.Backend.Runtime.Types as X
 import Presto.Backend.SystemCommands (runSysCmd)
@@ -235,7 +235,7 @@ interpret brt@(BackendRuntime rt) (GetKVDBConn dbName rrItemDict next) = do
   pure $ next res
 
 interpret brt (RunKVDBEither dbName kvDBF mockedKvDbActDictF rrItemDict next) =
-  next <$> runKVDB brt dbName kvDBF mockedKvDbActDictF rrItemDict
+  next <$> runKVDBEither brt dbName kvDBF mockedKvDbActDictF rrItemDict
 
 interpret brt (RunKVDBSimple dbName kvDBF mockedKvDbActDictF rrItemDict next) =
   next <$> runKVDB brt dbName kvDBF mockedKvDbActDictF rrItemDict

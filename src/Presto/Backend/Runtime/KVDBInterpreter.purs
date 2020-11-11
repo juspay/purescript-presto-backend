@@ -21,18 +21,19 @@
 
 module Presto.Backend.Runtime.KVDBInterpreter
   ( runKVDB
+  , runKVDBEither
   ) where
 
 import Prelude
 
 import Cache (SetOptions(..), SimpleConn, del, exists, expire, get, incr, publish, set, setMessageHandler, subscribe)
 import Cache.Hash (hget, hset)
-import Cache.Multi as Native
 import Cache.List (lindex, lpop, rpush)
 import Cache.Multi (execMulti, expireMulti, getMulti, hgetMulti, hsetMulti, incrMulti, lindexMulti, lpopMulti, newMulti, publishMulti, rpushMulti, setMulti, subscribeMulti, xaddMulti)
+import Cache.Multi as Native
 import Control.Monad.Aff (Aff)
-import Control.Monad.Aff.Class (liftAff)
 import Control.Monad.Aff.AVar (AVAR, putVar, takeVar, readVar)
+import Control.Monad.Aff.Class (liftAff)
 import Control.Monad.Eff.Class (liftEff)
 import Control.Monad.Eff.Exception (Error, message)
 import Control.Monad.Free (foldFree)
@@ -42,14 +43,15 @@ import Data.Exists (runExists)
 import Data.Maybe (Maybe(Just, Nothing))
 import Data.StrMap as StrMap
 import Data.UUID (GENUUID, genUUID)
+import Presto.Backend.KVDB.Mock.Types (KVDBActionDict)
 import Presto.Backend.Language.KVDB (KVDB, KVDBMethod(..), KVDBMethodWrapper, KVDBWrapper(..))
+import Presto.Backend.Language.Types (DBError(..), EitherEx(..))
 import Presto.Backend.Language.Types.DB (KVDBConn(MockedKVDB, Redis), MockedKVDBConn)
 import Presto.Backend.Language.Types.KVDB (Multi(..), getMultiGUID)
-import Presto.Backend.KVDB.Mock.Types (KVDBActionDict)
-import Presto.Backend.Runtime.Common (getKVDBConn', lift3, throwException')
-import Presto.Backend.Runtime.Types (BackendRuntime(BackendRuntime), InterpreterMT', KVDBRuntime(KVDBRuntime))
-import Presto.Backend.Playback.Types (RRItemDict)
 import Presto.Backend.Playback.Machine.Classless (withRunModeClassless)
+import Presto.Backend.Playback.Types (RRItemDict)
+import Presto.Backend.Runtime.Common (getKVDBConn', getKVDBConnection, lift3, throwException')
+import Presto.Backend.Runtime.Types (BackendRuntime(BackendRuntime), InterpreterMT', KVDBRuntime(KVDBRuntime))
 
 
 getMockedKVDBValue :: forall st rt eff a. BackendRuntime -> KVDBActionDict -> InterpreterMT' rt st eff a
@@ -288,3 +290,20 @@ runKVDB brt dbName kvDBAct mockedKvDbActDictF rrItemDict = do
         (runKVDB' brt dbName simpleConn kvDBAct)
     MockedKVDB mocked -> withRunModeClassless brt rrItemDict
         (getMockedKVDBValue brt $ mockedKvDbActDictF mocked)
+
+runKVDBEither
+  :: forall st rt eff rrItem a
+   . BackendRuntime
+  -> String
+  -> KVDB (EitherEx DBError a)
+  -> (MockedKVDBConn -> KVDBActionDict)
+  -> RRItemDict rrItem (EitherEx DBError a)
+  -> InterpreterMT' rt st eff (EitherEx DBError a)
+runKVDBEither brt dbName kvDBAct mockedKvDbActDictF rrItemDict = do
+  eitherConn <- getKVDBConnection brt dbName
+  case eitherConn of
+    Right (Redis simpleConn) ->
+      withRunModeClassless brt rrItemDict (runKVDB' brt dbName simpleConn kvDBAct)
+    Right (MockedKVDB mocked) ->
+      withRunModeClassless brt rrItemDict (getMockedKVDBValue brt $ mockedKvDbActDictF mocked)
+    Left err -> pure $ LeftEx (DBError err)
