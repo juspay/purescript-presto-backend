@@ -21,7 +21,6 @@
 
 module Presto.Backend.Types where
 
-import Effect.Aff (Aff)
 import Presto.Backend.Types.API (URL)
 
 type ZipkinConfig =

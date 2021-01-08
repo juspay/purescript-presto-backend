@@ -23,7 +23,7 @@ module Presto.Backend.Interpreter where
 
 import Prelude
 
-import Cache (CacheConn, delKey, expire, getHashKey, getKey, incr, publishToChannel, setHash, setKey, setMessageHandler, setex, subscribe, set)
+import Cache (CacheConn, delKey, expire, getHashKey, getKey,keys, incr,decr, publishToChannel, setHash, setKey, setMessageHandler, setex, subscribe, set)
 import Control.Monad.Except.Trans (ExceptT(..), lift, throwError, runExceptT) as E
 import Control.Monad.Free (foldFree)
 import Control.Monad.Reader.Trans (ReaderT, ask, lift, runReaderT) as R
@@ -36,7 +36,7 @@ import Effect.Aff (Aff, forkAff)
 import Effect.Aff.Class (liftAff)
 import Effect.Exception (error)
 import Foreign.Object as O
-import Presto.Backend.Flow (BackendException(..), BackendFlow, BackendFlowCommands(..), BackendFlowCommandsWrapper, BackendFlowWrapper(..))
+import Presto.Backend.Flow (BackendException(..), BackendFlow, BackendFlowCommands(..), BackendFlowCommandsWrapper, BackendFlowWrapper(..), LogLevel)
 import Presto.Backend.Language.Runtime.API (APIRunner, runAPIInteraction)
 import Presto.Backend.SystemCommands (runSysCmd)
 import Sequelize.Types (Conn)
@@ -53,7 +53,7 @@ type DB = {
   , connection :: Conn
 }
 
-type LogRunner = forall a. String -> a -> Aff Unit
+type LogRunner = forall a.LogLevel -> String -> a -> Aff Unit
 
 data Connection = Sequelize Conn | Redis CacheConn | NoConnection
 
@@ -78,23 +78,27 @@ interpret _ (SetCacheWithExpiry cacheConn key value ttl next) = (R.lift $ S.lift
 
 interpret _ (GetCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ getKey cacheConn key) >>= (pure <<< next)
 
+interpret _ (GetKeysCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ keys cacheConn key) >>= (pure <<< next)
+
 interpret _ (DelCache cacheConn key next) = (R.lift $ S.lift $ E.lift $ delKey cacheConn key) >>= (pure <<< next)
 
 interpret _ (Expire cacheConn key ttl next) = (R.lift $ S.lift $ E.lift $ expire cacheConn key ttl) >>= (pure <<< next)
-    
-interpret _ (Incr cacheConn key next) = (R.lift $ S.lift $ E.lift $ incr cacheConn key) >>= (pure <<< next) 
 
-interpret _ (SetHash cacheConn key value next) = (R.lift $ S.lift $ E.lift $ setHash cacheConn key value) >>= (pure <<< next) 
+interpret _ (Incr cacheConn key next) = (R.lift $ S.lift $ E.lift $ incr cacheConn key) >>= (pure <<< next)
 
-interpret _ (GetHashKey cacheConn key field next) = (R.lift $ S.lift $ E.lift $ getHashKey cacheConn key field) >>= (pure <<< next) 
+interpret _ (Decr cacheConn key next) = (R.lift $ S.lift $ E.lift $ decr cacheConn key) >>= (pure <<< next)
+
+interpret _ (SetHash cacheConn key value next) = (R.lift $ S.lift $ E.lift $ setHash cacheConn key value) >>= (pure <<< next)
+
+interpret _ (GetHashKey cacheConn key field next) = (R.lift $ S.lift $ E.lift $ getHashKey cacheConn key field) >>= (pure <<< next)
 
 interpret _ (SetWithOptions cacheConn arr next) = (R.lift $ S.lift $ E.lift $ set cacheConn arr) >>= (pure <<< next)
 
-interpret _ (PublishToChannel cacheConn channel message next) = (R.lift $ S.lift $ E.lift $ publishToChannel cacheConn channel message) >>= (pure <<< next) 
+interpret _ (PublishToChannel cacheConn channel message next) = (R.lift $ S.lift $ E.lift $ publishToChannel cacheConn channel message) >>= (pure <<< next)
 
-interpret _ (Subscribe cacheConn channel next) = (R.lift $ S.lift $ E.lift $ subscribe cacheConn channel) >>= (pure <<< next) 
+interpret _ (Subscribe cacheConn channel next) = (R.lift $ S.lift $ E.lift $ subscribe cacheConn channel) >>= (pure <<< next)
 
-interpret _ (SetMessageHandler cacheConn f next) = (R.lift $ S.lift $ E.lift $ setMessageHandler cacheConn f) >>= (pure <<< next) 
+interpret _ (SetMessageHandler cacheConn f next) = (R.lift $ S.lift $ E.lift $ setMessageHandler cacheConn f) >>= (pure <<< next)
 
 interpret (BackendRuntime a connections c) (GetCacheConn cacheName next) = do
   maybeCache <- pure $ O.lookup cacheName connections
@@ -123,13 +127,13 @@ interpret ((BackendRuntime a connections c)) (GetDBConn dbName next) = do
     Just (Sequelize db) -> (pure <<< next) db
     Just _ -> interpret (BackendRuntime a connections c) (ThrowException (StringException $ error "No DB Found") next)
     Nothing -> interpret (BackendRuntime a connections c) (ThrowException (StringException $ error "No DB Found") next)
-  
+
 
 interpret (BackendRuntime apiRunner _ _) (CallAPI apiInteractionF nextF) = do
   R.lift $ S.lift $ E.lift $ runAPIInteraction apiRunner apiInteractionF
     >>= (pure <<< nextF)
 
-interpret (BackendRuntime _ _ logRunner) (Log tag message next) = (R.lift ( S.lift ( E.lift (logRunner tag message)))) *> pure next
+interpret (BackendRuntime _ _ logRunner) (Log level tag message next) = (R.lift ( S.lift ( E.lift (logRunner level tag message)))) *> pure next
 
 interpret r (Fork flow nextF) = do
   st <- R.lift $ S.get
