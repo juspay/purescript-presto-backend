@@ -231,7 +231,7 @@ skipScript2 = do
 forkFlowScript :: BackendFlow Unit Unit String
 forkFlowScript = do
   _ <- doAffRR (pure "doAff from main flow")
-  _ <- forkFlow' "Child 1" $ do
+  _ <- forkFlow' "Child 1" true $ do
           _ <- doAffRR (pure "doAff 1 from forkFlow")
           _ <- doAffRR (pure "doAff 2 from forkFlow")
           _ <- runSysCmd "sleep 0.5s"
@@ -243,9 +243,9 @@ forkFlowScript = do
   _ <- doAffRR (pure "doAff from main flow")
   _ <- runSysCmd "echo 'mainflow 1'"
   _ <- runSysCmd "echo 'mainflow 2'"
-  _ <- forkFlow' "Child 2" $ do
+  _ <- forkFlow' "Child 2" true $ do
           _ <- doAffRR (pure "doAff 1 from forkFlow 2")
-          _ <- forkFlow' "Child 2 Child 1" $ do
+          _ <- forkFlow' "Child 2 Child 1" true $ do
                 _ <- doAffRR (pure "doAff 1 from forkFlow Child 2 Child 1")
                 _ <- doAffRR (pure "doAff 2 from forkFlow Child 2 Child 1")
                 doAffRR (pure "doAff 3 from forkFlow Child 2 Child 1")
