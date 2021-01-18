@@ -276,7 +276,7 @@ log tag message = void $ wrap $ Log tag message
 
 forkFlow' :: forall st rt a. String -> Boolean -> BackendFlow st rt a -> BackendFlow st rt Unit
 forkFlow' description shouldLog flow = do
-  flowGUID <- if shouldLog then generateGUID' description else pure ""
+  flowGUID <- generateGUID' description
   when shouldLog $ do
     unless (null description) $ log "forkFlow" $ "Flow forked. Description: " <> description <> " GUID: " <> flowGUID
     when   (null description) $ log "forkFlow" $ "Flow forked. GUID: " <> flowGUID
