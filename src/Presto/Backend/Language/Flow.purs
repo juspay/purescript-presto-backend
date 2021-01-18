@@ -274,11 +274,12 @@ log tag message = void $ wrap $ Log tag message
       $ Playback.mkLogEntry tag $ jsonStringify message)
     id
 
-forkFlow' :: forall st rt a. String -> BackendFlow st rt a -> BackendFlow st rt Unit
-forkFlow' description flow = do
+forkFlow' :: forall st rt a. String -> Boolean -> BackendFlow st rt a -> BackendFlow st rt Unit
+forkFlow' description shouldLog flow = do
   flowGUID <- generateGUID' description
-  unless (null description) $ log "forkFlow" $ "Flow forked. Description: " <> description <> " GUID: " <> flowGUID
-  when   (null description) $ log "forkFlow" $ "Flow forked. GUID: " <> flowGUID
+  when shouldLog $ do
+    unless (null description) $ log "forkFlow" $ "Flow forked. Description: " <> description <> " GUID: " <> flowGUID
+    when   (null description) $ log "forkFlow" $ "Flow forked. GUID: " <> flowGUID
   void $ wrap $ Fork flow flowGUID
     (Playback.mkEntryDict
       ("description: " <> description <> " GUID: " <> flowGUID)
@@ -286,7 +287,10 @@ forkFlow' description flow = do
     id
 
 forkFlow :: forall st rt a. BackendFlow st rt a -> BackendFlow st rt Unit
-forkFlow = forkFlow' ""
+forkFlow = forkFlow' "" true
+
+forkWithoutLogging :: forall st rt a. BackendFlow st rt a -> BackendFlow st rt Unit
+forkWithoutLogging = forkFlow' "" false
 
 runSysCmd :: forall st rt. String -> BackendFlow st rt String
 runSysCmd cmd =
