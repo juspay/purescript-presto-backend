@@ -23,7 +23,7 @@ module Presto.Backend.Language.KVDB where
 
 import Prelude
 
-import Cache.Types (EntryID(..), Item(..), SetOptions)
+import Cache.Types (EntryID(..), Item(..), SetOptions, Entry(..))
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (Error)
 import Control.Monad.Free (Free, liftF)
@@ -33,6 +33,8 @@ import Data.Foreign (Foreign)
 import Data.Maybe (Maybe)
 import Data.Time.Duration (Milliseconds, Seconds)
 import Presto.Backend.Language.Types.KVDB (Multi)
+import Data.Tuple (Tuple)
+import Data.StrMap (StrMap)
 
 data KVDBMethod next s
     = SetCache String String (Maybe Milliseconds) (Either Error Unit -> next)
@@ -67,6 +69,10 @@ data KVDBMethod next s
     | AddInMulti  String EntryID  (Array Item)  Multi (Either Error Multi -> next)
 
     | SetMessageHandler (forall eff. (String -> String -> Eff eff Unit)) (Unit -> next)
+
+    | AddToStream String EntryID (Array Item) (Either Error EntryID -> next)
+    | GetFromStream String String (Maybe Int) Boolean (Array (Tuple String EntryID)) (Either Error (StrMap (Array Entry)) -> next)
+    | CreateStreamGroup String String EntryID (Either Error Unit -> next)
 
 type KVDBMethodWrapper s next = KVDBMethod next s
 
@@ -167,3 +173,12 @@ execMulti multi = wrapKVDBMethod $ Exec multi id
 
 setMessageHandler :: forall st rt. (forall eff. (String -> String -> Eff eff Unit)) -> KVDB Unit
 setMessageHandler f = wrapKVDBMethod $ SetMessageHandler f id
+
+addToStream :: forall st rt. String -> EntryID -> Array Item -> KVDB (Either Error EntryID)
+addToStream key entryID args = wrapKVDBMethod $ AddToStream key entryID args id
+
+getFromStream :: forall st rt. String -> String -> Maybe Int -> Boolean -> Array (Tuple String EntryID) -> KVDB (Either Error (StrMap (Array Entry)))
+getFromStream groupName consumerName mCount noAck streamIds = wrapKVDBMethod $ GetFromStream groupName consumerName mCount noAck streamIds id
+
+createStreamGroup :: forall st rt. String -> String -> EntryID -> KVDB (Either Error Unit)
+createStreamGroup key groupName entryId = wrapKVDBMethod $ CreateStreamGroup key groupName entryId id

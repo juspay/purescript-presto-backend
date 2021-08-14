@@ -52,6 +52,7 @@ import Presto.Backend.Playback.Machine.Classless (withRunModeClassless)
 import Presto.Backend.Playback.Types (RRItemDict)
 import Presto.Backend.Runtime.Common (getKVDBConn', getKVDBConnection, lift3, throwException')
 import Presto.Backend.Runtime.Types (BackendRuntime(BackendRuntime), InterpreterMT', KVDBRuntime(KVDBRuntime))
+import Cache.Stream (xadd, xreadGroup, xgroupCreate)
 
 
 getMockedKVDBValue :: forall st rt eff a. BackendRuntime -> KVDBActionDict -> InterpreterMT' rt st eff a
@@ -174,6 +175,15 @@ interpretKVDB _ _ simpleConn (SetHash key field value next) =
 
 interpretKVDB _ _ simpleConn (GetHashKey key field next) =
   (lift3 $ hget simpleConn key field) >>= (pure <<< next)
+
+interpretKVDB _ _ simpleConn (AddToStream key entryID args next) =
+  (lift3 $ xadd simpleConn key entryID args) >>= (pure <<< next)
+
+interpretKVDB _ _ simpleConn (GetFromStream groupName consumerName mCount noAck streamIds next) =
+  (lift3 $ xreadGroup simpleConn groupName consumerName mCount noAck streamIds) >>= (pure <<< next)
+
+interpretKVDB _ _ simpleConn (CreateStreamGroup key groupName entryId next) =
+  (lift3 $ xgroupCreate simpleConn key groupName entryId) >>= (pure <<< next)
 
 interpretKVDB _ _ simpleConn (PublishToChannel channel message next) =
   (lift3 $ publish simpleConn channel message) >>= (pure <<< next)
