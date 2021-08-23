@@ -817,10 +817,10 @@ getFromStream dbName groupName consumerName mCount noAck streamIds = do
 createStreamGroup :: forall st rt. String -> String -> String -> EntryID -> BackendFlow st rt (Either Error Unit)
 createStreamGroup dbName key groupName entryID = do
   eRes <- wrap $ RunKVDBEither dbName
-      (toCustomEitherEx <$> KVDB.createStreamGroup key groupName entryID)
+      (toCustomEitherExF toUnitEx <$> KVDB.createStreamGroup key groupName entryID)
       KVDBMock.mkKVDBActionDict
       (Playback.mkEntryDict
         ("dbName: " <> dbName <> ", createStreamGroup, key: " <> key <> ", entryID: " <> show entryID <> ", groupName: " <> groupName)
         $ Playback.mkRunKVDBEitherEntry dbName "addToStream" ("key: " <> key <> ", entryID: " <> show entryID <> ", groupName: " <> groupName))
       id
-  pure $ fromCustomEitherEx eRes
+  pure $ fromCustomEitherExF fromUnitEx eRes
