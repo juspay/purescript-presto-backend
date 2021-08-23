@@ -23,7 +23,7 @@ module Presto.Backend.Flow where
 
 import Prelude
 
-import Cache.Types (EntryID, Item, SetOptions)
+import Cache.Types (Entry, EntryID, Item, SetOptions)
 import Control.Monad.Aff (Aff)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (Error)
@@ -41,14 +41,16 @@ import Data.Maybe (Maybe(Just, Nothing))
 import Data.Newtype (class Newtype)
 import Data.Options (Options)
 import Data.Options (options) as Opt
+import Data.StrMap (StrMap)
 import Data.String (null)
 import Data.Time.Duration (Milliseconds, Seconds)
+import Data.Tuple (Tuple)
 import Presto.Backend.APIInteract (apiInteract, apiInteractGeneric)
 import Presto.Backend.DB.Mock.Actions (mkCreate, mkCreateWithOpts, mkDelete, mkFindAll, mkFindOne, mkQuery, mkUpdate) as SqlDBMock
 import Presto.Backend.DB.Mock.Types (DBActionDict, mkDbActionDict) as SqlDBMock
 import Presto.Backend.DBImpl (create, createWithOpts, delete, findAll, findOne, query, update, update') as DB
 import Presto.Backend.KVDB.Mock.Types as KVDBMock
-import Presto.Backend.Language.KVDB (KVDB, addInMulti, delCache, delCacheInMulti, dequeue, dequeueInMulti, enqueue, enqueueInMulti, execMulti, expire, expireInMulti, getCache, getCacheInMulti, getHashKey, getHashKeyInMulti, getQueueIdx, getQueueIdxInMulti, incr, incrInMulti, keyExistsCache, newMulti, publishToChannel, publishToChannelInMulti, setCache, setCacheInMulti, setCacheWithOpts, setHash, setHashInMulti, setMessageHandler, subscribe, subscribeToMulti, addToStream) as KVDB
+import Presto.Backend.Language.KVDB (KVDB, addInMulti, addToStream, createStreamGroup, delCache, delCacheInMulti, dequeue, dequeueInMulti, enqueue, enqueueInMulti, execMulti, expire, expireInMulti, getCache, getCacheInMulti, getFromStream, getHashKey, getHashKeyInMulti, getQueueIdx, getQueueIdxInMulti, incr, incrInMulti, keyExistsCache, newMulti, publishToChannel, publishToChannelInMulti, setCache, setCacheInMulti, setCacheWithOpts, setHash, setHashInMulti, setMessageHandler, subscribe, subscribeToMulti) as KVDB
 import Presto.Backend.Language.Types.DB (DBError, KVDBConn, MockedKVDBConn, MockedSqlConn, SqlConn, fromDBError, fromDBMaybeResult, toDBError, toDBMaybeResult)
 import Presto.Backend.Language.Types.EitherEx (EitherEx, fromCustomEitherEx, fromCustomEitherExF, fromEitherEx, toCustomEitherEx, toCustomEitherExF, toEitherEx)
 import Presto.Backend.Language.Types.KVDB (Multi)
@@ -789,14 +791,36 @@ setMessageHandler dbName f = do
 parSequence :: ∀ st rt a. Array (BackendFlow st rt a) → BackendFlow st rt (Array (Either Error a))
 parSequence tbf = wrap $ ParSequence tbf id
 
--- TODO: Ned to add stream related functions here
--- addToStream :: forall st rt. String -> String -> EntryID -> Array Item -> BackendFlow st rt (Either Error EntryID)
--- addToStream dbName key entryID args = do
---   eRes <- wrap $ RunKVDBEither dbName
---       (toCustomEitherEx <$> KVDB.addToStream key entryID args)
---       KVDBMock.mkKVDBActionDict
---       (Playback.mkEntryDict
---         ("dbName: " <> dbName <> ", addToStream, key: " <> key <> ", entryID: " <> show entryID <> ", args: " <> show args)
---         $ Playback.mkRunKVDBEitherEntry dbName "addToStream" ("key: " <> key <> ", entryID: " <> show entryID <> ", args: " <> show args))
---       id
---   pure $ fromCustomEitherEx eRes
+--TODO: Need to add stream related functions here
+addToStream :: forall st rt. String -> String -> EntryID -> Array Item -> BackendFlow st rt (Either Error EntryID)
+addToStream dbName key entryID args = do
+  eRes <- wrap $ RunKVDBEither dbName
+      (toCustomEitherEx <$> KVDB.addToStream key entryID args)
+      KVDBMock.mkKVDBActionDict
+      (Playback.mkEntryDict
+        ("dbName: " <> dbName <> ", addToStream, key: " <> key <> ", entryID: " <> show entryID <> ", args: " <> show args)
+        $ Playback.mkRunKVDBEitherEntry dbName "addToStream" ("key: " <> key <> ", entryID: " <> show entryID <> ", args: " <> show args))
+      id
+  pure $ fromCustomEitherEx eRes
+
+getFromStream :: forall st rt. String -> String -> String -> Maybe Int -> Boolean -> Array (Tuple String EntryID) -> BackendFlow st rt (Either Error (StrMap (Array Entry)))
+getFromStream dbName groupName consumerName mCount noAck streamIds = do
+  eRes <- wrap $ RunKVDBEither dbName
+      (toCustomEitherEx <$> KVDB.getFromStream groupName consumerName mCount noAck streamIds)
+      KVDBMock.mkKVDBActionDict
+      (Playback.mkEntryDict
+        ("dbName: " <> dbName <> ", getFromStream, groupName: " <> groupName <> ", consumerName: " <> consumerName <> ", streamIds" <> show streamIds)
+        $ Playback.mkRunKVDBEitherEntry dbName "getFromStream" ("groupName: " <> groupName <> ", consumerName: " <> consumerName <> ", streamIds" <> show streamIds))
+      id
+  pure $ fromCustomEitherEx eRes
+
+createStreamGroup :: forall st rt. String -> String -> String -> EntryID -> BackendFlow st rt (Either Error Unit)
+createStreamGroup dbName key groupName entryID = do
+  eRes <- wrap $ RunKVDBEither dbName
+      (toCustomEitherEx <$> KVDB.createStreamGroup key groupName entryID)
+      KVDBMock.mkKVDBActionDict
+      (Playback.mkEntryDict
+        ("dbName: " <> dbName <> ", createStreamGroup, key: " <> key <> ", entryID: " <> show entryID <> ", groupName: " <> groupName)
+        $ Playback.mkRunKVDBEitherEntry dbName "addToStream" ("key: " <> key <> ", entryID: " <> show entryID <> ", groupName: " <> groupName))
+      id
+  pure $ fromCustomEitherEx eRes
