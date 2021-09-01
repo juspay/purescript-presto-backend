@@ -31,6 +31,7 @@ import Cache.Hash (hget, hset)
 import Cache.List (lindex, lpop, rpush)
 import Cache.Multi (execMulti, expireMulti, getMulti, hgetMulti, hsetMulti, incrMulti, lindexMulti, lpopMulti, newMulti, publishMulti, rpushMulti, setMulti, subscribeMulti, xaddMulti)
 import Cache.Multi as Native
+import Cache.Stream (xadd, xgroupCreate, xreadGroup, xtrim)
 import Control.Monad.Aff (Aff)
 import Control.Monad.Aff.AVar (AVAR, putVar, takeVar, readVar)
 import Control.Monad.Aff.Class (liftAff)
@@ -52,7 +53,6 @@ import Presto.Backend.Playback.Machine.Classless (withRunModeClassless)
 import Presto.Backend.Playback.Types (RRItemDict)
 import Presto.Backend.Runtime.Common (getKVDBConn', getKVDBConnection, lift3, throwException')
 import Presto.Backend.Runtime.Types (BackendRuntime(BackendRuntime), InterpreterMT', KVDBRuntime(KVDBRuntime))
-import Cache.Stream (xadd, xreadGroup, xgroupCreate)
 
 
 getMockedKVDBValue :: forall st rt eff a. BackendRuntime -> KVDBActionDict -> InterpreterMT' rt st eff a
@@ -181,6 +181,9 @@ interpretKVDB _ _ simpleConn (AddToStream key entryID args next) =
 
 interpretKVDB _ _ simpleConn (GetFromStream groupName consumerName mCount noAck streamIds next) =
   (lift3 $ xreadGroup simpleConn groupName consumerName mCount noAck streamIds) >>= (pure <<< next)
+
+interpretKVDB _ _ simpleConn (TrimStream key strategy approx len next) =
+  (lift3 $ xtrim simpleConn key strategy approx len) >>= (pure <<< next)
 
 interpretKVDB _ _ simpleConn (CreateStreamGroup key groupName entryId next) =
   (lift3 $ xgroupCreate simpleConn key groupName entryId) >>= (pure <<< next)

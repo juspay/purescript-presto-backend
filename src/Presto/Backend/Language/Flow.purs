@@ -23,7 +23,7 @@ module Presto.Backend.Flow where
 
 import Prelude
 
-import Cache.Types (Entry, EntryID, Item, SetOptions)
+import Cache.Types (Entry, EntryID, Item, SetOptions, TrimStrategy)
 import Control.Monad.Aff (Aff)
 import Control.Monad.Eff (Eff)
 import Control.Monad.Eff.Exception (Error)
@@ -50,7 +50,7 @@ import Presto.Backend.DB.Mock.Actions (mkCreate, mkCreateWithOpts, mkDelete, mkF
 import Presto.Backend.DB.Mock.Types (DBActionDict, mkDbActionDict) as SqlDBMock
 import Presto.Backend.DBImpl (create, createWithOpts, delete, findAll, findOne, query, update, update') as DB
 import Presto.Backend.KVDB.Mock.Types as KVDBMock
-import Presto.Backend.Language.KVDB (KVDB, addInMulti, addToStream, createStreamGroup, delCache, delCacheInMulti, dequeue, dequeueInMulti, enqueue, enqueueInMulti, execMulti, expire, expireInMulti, getCache, getCacheInMulti, getFromStream, getHashKey, getHashKeyInMulti, getQueueIdx, getQueueIdxInMulti, incr, incrInMulti, keyExistsCache, newMulti, publishToChannel, publishToChannelInMulti, setCache, setCacheInMulti, setCacheWithOpts, setHash, setHashInMulti, setMessageHandler, subscribe, subscribeToMulti) as KVDB
+import Presto.Backend.Language.KVDB (KVDB, addInMulti, addToStream, createStreamGroup, delCache, delCacheInMulti, dequeue, dequeueInMulti, enqueue, enqueueInMulti, execMulti, expire, expireInMulti, getCache, getCacheInMulti, getFromStream, getHashKey, getHashKeyInMulti, getQueueIdx, getQueueIdxInMulti, incr, incrInMulti, keyExistsCache, newMulti, publishToChannel, publishToChannelInMulti, setCache, setCacheInMulti, setCacheWithOpts, setHash, setHashInMulti, setMessageHandler, subscribe, subscribeToMulti, trimStream) as KVDB
 import Presto.Backend.Language.Types.DB (DBError, KVDBConn, MockedKVDBConn, MockedSqlConn, SqlConn, fromDBError, fromDBMaybeResult, toDBError, toDBMaybeResult)
 import Presto.Backend.Language.Types.EitherEx (EitherEx, fromCustomEitherEx, fromCustomEitherExF, fromEitherEx, toCustomEitherEx, toCustomEitherExF, toEitherEx)
 import Presto.Backend.Language.Types.KVDB (Multi)
@@ -824,3 +824,14 @@ createStreamGroup dbName key groupName entryID = do
         $ Playback.mkRunKVDBEitherEntry dbName "addToStream" ("key: " <> key <> ", entryID: " <> show entryID <> ", groupName: " <> groupName))
       id
   pure $ fromCustomEitherExF fromUnitEx eRes
+
+trimStream :: forall st rt. String -> String -> TrimStrategy -> Boolean -> Int -> BackendFlow st rt (Either Error Int)
+trimStream dbName key strategy approx len = do
+  eRes <- wrap $ RunKVDBEither dbName
+      (toCustomEitherEx <$> KVDB.trimStream key strategy approx len)
+      KVDBMock.mkKVDBActionDict
+      (Playback.mkEntryDict
+        ("dbName: " <> dbName <> ", trimStream, key: " <> key <> ", strategy: " <> show strategy <> ", approx: " <> show approx <> ", len: " <> show len)
+        $ Playback.mkRunKVDBEitherEntry dbName "addToStream" ("key: " <> key <> ", strategy: " <> show strategy <> ", approx: " <> show approx <> ", len: " <> show len))
+      id
+  pure $ fromCustomEitherEx eRes
