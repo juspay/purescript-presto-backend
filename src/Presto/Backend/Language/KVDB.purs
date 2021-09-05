@@ -74,6 +74,8 @@ data KVDBMethod next s
     | GetFromStream String String (Maybe Int) Boolean (Array (Tuple String EntryID)) (Either Error (StrMap (Array Entry)) -> next)
     | CreateStreamGroup String String EntryID (Either Error Unit -> next)
     | TrimStream String TrimStrategy Boolean Int (Either Error Int -> next)
+    | DeleteFromStream String EntryID (Either Error Int -> next)
+    | GetStreamLength String (Either Error Int -> next)
 
 type KVDBMethodWrapper s next = KVDBMethod next s
 
@@ -186,3 +188,9 @@ createStreamGroup key groupName entryId = wrapKVDBMethod $ CreateStreamGroup key
 
 trimStream :: forall st rt. String -> TrimStrategy -> Boolean -> Int -> KVDB (Either Error Int)
 trimStream key strategy approx len = wrapKVDBMethod $ TrimStream key strategy approx len id
+
+deleteFromStream :: forall st rt. String -> EntryID -> KVDB (Either Error Int)
+deleteFromStream key entryId = wrapKVDBMethod $ DeleteFromStream key entryId id
+
+getStreamLength :: forall st rt. String -> KVDB (Either Error Int)
+getStreamLength key = wrapKVDBMethod $ GetStreamLength key id

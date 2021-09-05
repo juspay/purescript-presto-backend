@@ -50,7 +50,7 @@ import Presto.Backend.DB.Mock.Actions (mkCreate, mkCreateWithOpts, mkDelete, mkF
 import Presto.Backend.DB.Mock.Types (DBActionDict, mkDbActionDict) as SqlDBMock
 import Presto.Backend.DBImpl (create, createWithOpts, delete, findAll, findOne, query, update, update') as DB
 import Presto.Backend.KVDB.Mock.Types as KVDBMock
-import Presto.Backend.Language.KVDB (KVDB, addInMulti, addToStream, createStreamGroup, delCache, delCacheInMulti, dequeue, dequeueInMulti, enqueue, enqueueInMulti, execMulti, expire, expireInMulti, getCache, getCacheInMulti, getFromStream, getHashKey, getHashKeyInMulti, getQueueIdx, getQueueIdxInMulti, incr, incrInMulti, keyExistsCache, newMulti, publishToChannel, publishToChannelInMulti, setCache, setCacheInMulti, setCacheWithOpts, setHash, setHashInMulti, setMessageHandler, subscribe, subscribeToMulti, trimStream) as KVDB
+import Presto.Backend.Language.KVDB (KVDB, addInMulti, addToStream, createStreamGroup, delCache, delCacheInMulti, deleteFromStream, dequeue, dequeueInMulti, enqueue, enqueueInMulti, execMulti, expire, expireInMulti, getCache, getCacheInMulti, getFromStream, getHashKey, getHashKeyInMulti, getQueueIdx, getQueueIdxInMulti, getStreamLength, incr, incrInMulti, keyExistsCache, newMulti, publishToChannel, publishToChannelInMulti, setCache, setCacheInMulti, setCacheWithOpts, setHash, setHashInMulti, setMessageHandler, subscribe, subscribeToMulti, trimStream) as KVDB
 import Presto.Backend.Language.Types.DB (DBError, KVDBConn, MockedKVDBConn, MockedSqlConn, SqlConn, fromDBError, fromDBMaybeResult, toDBError, toDBMaybeResult)
 import Presto.Backend.Language.Types.EitherEx (EitherEx, fromCustomEitherEx, fromCustomEitherExF, fromEitherEx, toCustomEitherEx, toCustomEitherExF, toEitherEx)
 import Presto.Backend.Language.Types.KVDB (Multi)
@@ -821,7 +821,7 @@ createStreamGroup dbName key groupName entryID = do
       KVDBMock.mkKVDBActionDict
       (Playback.mkEntryDict
         ("dbName: " <> dbName <> ", createStreamGroup, key: " <> key <> ", entryID: " <> show entryID <> ", groupName: " <> groupName)
-        $ Playback.mkRunKVDBEitherEntry dbName "addToStream" ("key: " <> key <> ", entryID: " <> show entryID <> ", groupName: " <> groupName))
+        $ Playback.mkRunKVDBEitherEntry dbName "createStreamGroup" ("key: " <> key <> ", entryID: " <> show entryID <> ", groupName: " <> groupName))
       id
   pure $ fromCustomEitherExF fromUnitEx eRes
 
@@ -832,6 +832,28 @@ trimStream dbName key strategy approx len = do
       KVDBMock.mkKVDBActionDict
       (Playback.mkEntryDict
         ("dbName: " <> dbName <> ", trimStream, key: " <> key <> ", strategy: " <> show strategy <> ", approx: " <> show approx <> ", len: " <> show len)
-        $ Playback.mkRunKVDBEitherEntry dbName "addToStream" ("key: " <> key <> ", strategy: " <> show strategy <> ", approx: " <> show approx <> ", len: " <> show len))
+        $ Playback.mkRunKVDBEitherEntry dbName "trimStream" ("key: " <> key <> ", strategy: " <> show strategy <> ", approx: " <> show approx <> ", len: " <> show len))
+      id
+  pure $ fromCustomEitherEx eRes
+
+delFromStream :: forall st rt. String -> String -> EntryID -> BackendFlow st rt (Either Error Int)
+delFromStream dbName key entryId = do
+  eRes <- wrap $ RunKVDBEither dbName
+      (toCustomEitherEx <$> KVDB.deleteFromStream key entryId)
+      KVDBMock.mkKVDBActionDict
+      (Playback.mkEntryDict
+        ("dbName: " <> dbName <> ", deleteFromStream, key: " <> key <> ", entryId: " <> show entryId)
+        $ Playback.mkRunKVDBEitherEntry dbName "deleteFromStream" ("key: " <> key <> ", entryId: " <> show entryId))
+      id
+  pure $ fromCustomEitherEx eRes
+
+getStreamLength :: forall st rt. String -> String -> BackendFlow st rt (Either Error Int)
+getStreamLength dbName key = do
+  eRes <- wrap $ RunKVDBEither dbName
+      (toCustomEitherEx <$> KVDB.getStreamLength key)
+      KVDBMock.mkKVDBActionDict
+      (Playback.mkEntryDict
+        ("dbName: " <> dbName <> ", getStreamLength, key: " <> key)
+        $ Playback.mkRunKVDBEitherEntry dbName "getStreamLength" ("key: " <> key))
       id
   pure $ fromCustomEitherEx eRes
