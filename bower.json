@@ -27,7 +27,7 @@
     "purescript-sequelize": "https://github.com/juspay/purescript-sequelize.git#cfc0c9245322520115eca7b2c1fa0d6bbcebf315",
     "purescript-body-parser": "https://github.com/juspay/purescript-body-parser.git#0.1.0",
     "purescript-uuid": "^4.0.0",
-    "purescript-redis": "https://github.com/ArpitSumanJuspay/purescript-redis.git#0d6ba66c8a16c78f0f07fc9754be4e6b7c4d94bf",
+    "purescript-redis": "https://github.com/ArpitSumanJuspay/purescript-redis.git#8e320cb631c1a3a2b29b8b610c1493bed87dbe21",
     "purescript-now": "3.0.0",
     "purescript-node-fs": "^4.0.0",
     "purescript-node-process": "^5.0.0"
