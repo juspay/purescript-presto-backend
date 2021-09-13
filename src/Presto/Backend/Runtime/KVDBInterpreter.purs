@@ -31,6 +31,7 @@ import Cache.Hash (hget, hset)
 import Cache.List (lindex, lpop, rpush)
 import Cache.Multi (execMulti, expireMulti, getMulti, hgetMulti, hsetMulti, incrMulti, lindexMulti, lpopMulti, newMulti, publishMulti, rpushMulti, setMulti, subscribeMulti, xaddMulti)
 import Cache.Multi as Native
+import Cache.Stream (xadd, xdel, xgroupCreate, xlen, xreadGroup, xtrim)
 import Control.Monad.Aff (Aff)
 import Control.Monad.Aff.AVar (AVAR, putVar, takeVar, readVar)
 import Control.Monad.Aff.Class (liftAff)
@@ -174,6 +175,24 @@ interpretKVDB _ _ simpleConn (SetHash key field value next) =
 
 interpretKVDB _ _ simpleConn (GetHashKey key field next) =
   (lift3 $ hget simpleConn key field) >>= (pure <<< next)
+
+interpretKVDB _ _ simpleConn (AddToStream key entryID args next) =
+  (lift3 $ xadd simpleConn key entryID args) >>= (pure <<< next)
+
+interpretKVDB _ _ simpleConn (GetFromStream groupName consumerName mCount noAck streamIds next) =
+  (lift3 $ xreadGroup simpleConn groupName consumerName mCount noAck streamIds) >>= (pure <<< next)
+
+interpretKVDB _ _ simpleConn (TrimStream key strategy approx len next) =
+  (lift3 $ xtrim simpleConn key strategy approx len) >>= (pure <<< next)
+
+interpretKVDB _ _ simpleConn (CreateStreamGroup key groupName entryId next) =
+  (lift3 $ xgroupCreate simpleConn key groupName entryId) >>= (pure <<< next)
+
+interpretKVDB _ _ simpleConn (DeleteFromStream key entryId next) =
+  (lift3 $ xdel simpleConn key entryId) >>= (pure <<< next)
+
+interpretKVDB _ _ simpleConn (GetStreamLength key next) =
+  (lift3 $ xlen simpleConn key) >>= (pure <<< next)
 
 interpretKVDB _ _ simpleConn (PublishToChannel channel message next) =
   (lift3 $ publish simpleConn channel message) >>= (pure <<< next)
