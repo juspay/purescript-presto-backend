@@ -25,21 +25,21 @@
   },
   "homepage": "https://github.com/juspay/purescript-presto-backend#readme",
   "dependencies": {
-    "axios": "^0.18.0",
+    "axios": "^0.21.4",
     "big-integer": "^1.6.43",
     "child_process": "^1.0.2",
+    "cls-hooked": "^4.2.2",
     "express": "^4.16.3",
     "ioredis": "^4.9.0",
+    "sequelize": "^6.6.5",
+    "sequelize-cli": "^6.2.0",
     "zipkin": "^0.13.0",
     "zipkin-context-cls": "^0.13.0",
     "zipkin-instrumentation-axios": "git://github.com/juspay/zipkin-instrumentation-axios",
-    "zipkin-transport-http": "^0.13.0",
-    "sequelize": "^4.4.2",
-    "sequelize-cli": "^2.7.0",
-    "cls-hooked": "^4.2.2"
+    "zipkin-transport-http": "^0.22.0"
   },
   "devDependencies": {
-    "pulp": "11.0.0",
+    "pulp": "^15.0.0",
     "purescript": "0.11.7",
     "sqlite3": "^3.1.8"
   }
