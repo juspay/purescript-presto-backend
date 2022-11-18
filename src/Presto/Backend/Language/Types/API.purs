@@ -93,7 +93,7 @@ newtype Headers = Headers (Array Header)
 
 type URL = String
 
-data Method = POST | GET | PUT | DELETE
+data Method = POST | GET | PUT | DELETE | POST_CONTINUE | GET_CONTINUE
 data GetReqBody = GetReqBody
 
 newtype Request = Request
