@@ -28,7 +28,7 @@
     "axios": "^0.18.0",
     "big-integer": "^1.6.43",
     "child_process": "^1.0.2",
-    "express": "^4.16.3",
+    "express": "^4.17.3",
     "ioredis": "^4.9.0",
     "zipkin": "^0.13.0",
     "zipkin-context-cls": "^0.13.0",
