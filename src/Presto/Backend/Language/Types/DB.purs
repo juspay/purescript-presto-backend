@@ -53,6 +53,11 @@ toDBMaybeResult = either (LeftEx <<< toDBError) (RightEx <<< toMaybeEx)
 fromDBMaybeResult :: forall a. EitherEx DBError (MaybeEx a) -> Either Error (Maybe a)
 fromDBMaybeResult = eitherEx (Left <<< fromDBError) (Right <<< fromMaybeEx)
 
+toDBResult :: forall a. Either Error a -> EitherEx DBError a
+toDBResult = either (LeftEx <<< toDBError) RightEx
+
+fromDBResult :: forall a. EitherEx DBError a -> Either Error a
+fromDBResult = eitherEx (Left <<< fromDBError) Right
 -- TODO: this should be reworked.
 -- DB facilities design is not good enough.
 -- For now, mocking approach is suboptimal, fast & dirty.

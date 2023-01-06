@@ -34,7 +34,8 @@ module Presto.Backend.DBImpl
     createWithOpts,
     update,
     update',
-    delete
+    delete,
+    findCount
   ) where
 
 import Prelude
@@ -53,7 +54,7 @@ import Data.Options (Options, assoc, opt)
 import Sequelize.CRUD.Create (create')
 import Sequelize.CRUD.Create (createWithOpts') as Seql
 import Sequelize.CRUD.Destroy (delete) as Destroy
-import Sequelize.CRUD.Read (findAll', findOne', query')
+import Sequelize.CRUD.Read (findAll', findOne', query', count)
 import Sequelize.CRUD.Update (updateModel)
 import Sequelize.Class (class Model, modelName)
 import Sequelize.Instance (instanceToModelE)
@@ -75,6 +76,17 @@ getModelByName
 getModelByName conn = do
     let mName = modelName (Proxy :: Proxy a)
     attempt $ liftEff $ runFn2 _getModelByName conn mName
+
+findCount :: forall a e. Model a => Conn -> Options a -> Aff (sequelize :: SEQUELIZE | e) (Either Error Int)
+findCount conn options = do
+    model <- getModelByName conn :: (Aff (sequelize :: SEQUELIZE | e) (Either Error (ModelOf a)))
+    case model of
+        Right m -> do
+            val <- attempt $ count m options
+            case val of
+                Right count -> pure $ Right count
+                Left err -> pure <<< Left $ error $ show err
+        Left err -> pure $ Left $ error $ show err
 
 findOne :: forall a e. Model a => Conn -> Options a -> Aff (sequelize :: SEQUELIZE | e) (Either Error (Maybe a))
 findOne conn options = do

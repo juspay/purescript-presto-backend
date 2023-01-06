@@ -6,6 +6,7 @@ import Presto.Backend.DB.Mock.Types ()
 -- TODO, draft
 
 data GetModelByName  = GetModelByName
+data FindCount       = FindCount
 data FindOne         = FindOne
 data FindAll         = FindAll
 data Update          = Update
@@ -17,6 +18,7 @@ data GenericDBAction = GenericDBAction
 
 
 mkGetModelByName  dbName = GetModelByName
+mkFindCount       dbName = FindCount
 mkFindOne         dbName = FindOne
 mkFindAll         dbName = FindAll
 mkUpdate          dbName = Update
