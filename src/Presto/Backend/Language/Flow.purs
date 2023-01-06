@@ -46,12 +46,12 @@ import Data.String (null)
 import Data.Time.Duration (Milliseconds, Seconds)
 import Data.Tuple (Tuple)
 import Presto.Backend.APIInteract (apiInteract, apiInteractGeneric)
-import Presto.Backend.DB.Mock.Actions (mkCreate, mkCreateWithOpts, mkDelete, mkFindAll, mkFindOne, mkQuery, mkUpdate) as SqlDBMock
+import Presto.Backend.DB.Mock.Actions (mkCreate, mkCreateWithOpts, mkDelete, mkFindAll, mkFindOne, mkQuery, mkUpdate, mkFindCount) as SqlDBMock
 import Presto.Backend.DB.Mock.Types (DBActionDict, mkDbActionDict) as SqlDBMock
-import Presto.Backend.DBImpl (create, createWithOpts, delete, findAll, findOne, query, update, update') as DB
+import Presto.Backend.DBImpl (create, createWithOpts, delete, findAll, findOne, query, update, update', findCount) as DB
 import Presto.Backend.KVDB.Mock.Types as KVDBMock
 import Presto.Backend.Language.KVDB (KVDB, addInMulti, addToStream, createStreamGroup, delCache, delCacheInMulti, deleteFromStream, dequeue, dequeueInMulti, enqueue, enqueueInMulti, execMulti, expire, expireInMulti, getCache, getCacheInMulti, getFromStream, getHashKey, getHashKeyInMulti, getQueueIdx, getQueueIdxInMulti, getStreamLength, incr, incrInMulti, keyExistsCache, newMulti, publishToChannel, publishToChannelInMulti, setCache, setCacheInMulti, setCacheWithOpts, setHash, setHashInMulti, setMessageHandler, subscribe, subscribeToMulti, trimStream) as KVDB
-import Presto.Backend.Language.Types.DB (DBError, KVDBConn, MockedKVDBConn, MockedSqlConn, SqlConn, fromDBError, fromDBMaybeResult, toDBError, toDBMaybeResult)
+import Presto.Backend.Language.Types.DB (DBError, KVDBConn, MockedKVDBConn, MockedSqlConn, SqlConn, fromDBError, fromDBMaybeResult, toDBError, toDBMaybeResult, toDBResult, fromDBResult)
 import Presto.Backend.Language.Types.EitherEx (EitherEx, fromCustomEitherEx, fromCustomEitherExF, fromEitherEx, toCustomEitherEx, toCustomEitherExF, toEitherEx)
 import Presto.Backend.Language.Types.KVDB (Multi)
 import Presto.Backend.Language.Types.KVDB (getKVDBName) as KVDB
@@ -311,6 +311,20 @@ getDBConn dbName = wrap $ GetDBConn dbName
     ("dbName: " <> dbName <> ", getDBConn")
     $ Playback.mkGetDBConnEntry dbName)
   id
+
+findCount
+  :: forall model st rt
+   . Model model
+  => String -> Options model -> BackendFlow st rt (Either Error Int)
+findCount dbName options = do
+  eResEx <- wrap $ RunDB dbName
+    (\conn     -> toDBResult <$> DB.findCount conn options)
+    (\connMock -> SqlDBMock.mkDbActionDict $ SqlDBMock.mkFindCount  dbName)
+    (Playback.mkEntryDict
+      (dbName <> ", query: findOne, opts: " <> encodeJSON (Opt.options options) )
+      $ Playback.mkRunDBEntry dbName "findOne" [Opt.options options] (encode ""))
+    id
+  pure $ fromDBResult eResEx
 
 findOne
   :: forall model st rt
